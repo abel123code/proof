@@ -24,7 +24,7 @@ export const KeywordOverlay: React.FC<{ cues: KeywordCue[]; accent: string }> = 
     <div
       style={{
         position: "absolute",
-        top: "16%",
+        top: "8%", // top zone, above the face (subtitles own the bottom)
         left: 0,
         right: 0,
         display: "flex",

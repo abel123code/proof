@@ -24,8 +24,10 @@ export const DiagramOverlay: React.FC<{ cues: OverlayCue[]; accent: string }> = 
 
   const isImage = active.type === "image" || active.type === "architecture-diagram";
 
+  // Overlays live in the TOP zone, above the face. The face (center) and the subtitles
+  // (bottom) stay clear — no graphic ever covers the speaker.
   return (
-    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", opacity }}>
+    <AbsoluteFill style={{ alignItems: "center", justifyContent: "flex-start", paddingTop: "5%", opacity }}>
       {isImage ? (
         <div
           style={{
@@ -34,7 +36,7 @@ export const DiagramOverlay: React.FC<{ cues: OverlayCue[]; accent: string }> = 
             borderRadius: 18,
             padding: 24,
             maxWidth: "84%",
-            maxHeight: "70%",
+            maxHeight: "34%",
             boxShadow: "0 24px 60px rgba(0,0,0,0.5)",
           }}
         >
