@@ -10,7 +10,7 @@ import { NextStage } from "@/components/studio/next-stage";
 import type { Project } from "@/lib/types";
 
 export function ProjectPanel() {
-  const [repoUrl, setRepoUrl] = useState("");
+  const [username, setUsername] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -33,20 +33,20 @@ export function ProjectPanel() {
   }, [loadProjects]);
 
   async function analyzeRepo() {
-    if (!repoUrl.trim()) return;
+    if (!username.trim()) return;
     setAnalyzing(true);
     try {
       const res = await fetch("/api/analyze-repo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repoUrl }),
+        body: JSON.stringify({ username }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Analysis failed");
       setProjects((prev) => [data.project, ...prev]);
       setSelectedProjectId(data.project.id);
-      setRepoUrl("");
-      toast.success(`Understood "${data.project.name}"`);
+      setUsername("");
+      toast.success(`Built profile for @${data.project.name}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Analysis failed");
     } finally {
@@ -56,28 +56,29 @@ export function ProjectPanel() {
 
   return (
     <div className="mx-auto w-full max-w-[760px] px-8 py-10">
-      <SectionMarker n="01" title="Connect a repo" />
+      <SectionMarker n="01" title="Connect GitHub" />
       <p className="mt-3 max-w-md text-sm text-muted-foreground">
-        Paste a public GitHub repo. We pull the README, file tree, and languages, then
-        understand what the project is and what is interesting about it.
+        Enter a GitHub username. We scan their public repos and recent activity, then
+        build a profile of what this person actually ships - the credibility base for
+        everything downstream.
       </p>
 
       <div className="mt-6 flex gap-2">
         <Input
-          placeholder="https://github.com/owner/repo"
-          value={repoUrl}
-          onChange={(e) => setRepoUrl(e.target.value)}
+          placeholder="github username (e.g. torvalds)"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && analyzeRepo()}
           className="font-mono text-sm"
         />
-        <Button onClick={analyzeRepo} disabled={analyzing || !repoUrl.trim()}>
-          {analyzing ? "Analyzing..." : "Analyze"}
+        <Button onClick={analyzeRepo} disabled={analyzing || !username.trim()}>
+          {analyzing ? "Building..." : "Connect"}
         </Button>
       </div>
 
       {projects.length > 0 && (
         <div className="mt-6">
-          <Kicker>Your projects</Kicker>
+          <Kicker>Your builders</Kicker>
           <div className="mt-2 flex flex-wrap gap-2">
             {projects.map((p) => (
               <button
@@ -145,18 +146,42 @@ export function ProjectPanel() {
             </ul>
           </div>
 
+          {selectedProject.understanding.notableRepos?.length > 0 && (
+            <div className="mt-6">
+              <Kicker>Notable repos</Kicker>
+              <div className="mt-2 flex flex-col gap-2">
+                {selectedProject.understanding.notableRepos.map((r) => (
+                  <a
+                    key={r.url}
+                    href={r.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-md border border-border p-3 transition-colors hover:border-foreground/30"
+                  >
+                    <span className="font-mono text-sm text-primary underline-offset-2 hover:underline">
+                      {r.name}
+                    </span>
+                    {r.description && (
+                      <p className="mt-1 text-sm text-muted-foreground">{r.description}</p>
+                    )}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
           <NextStage from="/" />
         </div>
       )}
 
       {!selectedProject?.understanding && projects.length > 0 && (
         <div className="mt-8 border-t border-border pt-8">
-          <Kicker>Pick a project</Kicker>
+          <Kicker>Pick a builder</Kicker>
           <p className="mt-3 max-w-sm font-display text-xl leading-snug tracking-tight">
-            Select one of your projects above to view its understanding.
+            Select one of your builders above to view its profile.
           </p>
           <p className="mt-2 max-w-md text-sm text-muted-foreground">
-            Or paste another GitHub repo to analyze a new one.
+            Or enter another GitHub username to build a new profile.
           </p>
         </div>
       )}
@@ -165,20 +190,20 @@ export function ProjectPanel() {
         <div className="mt-8 border-t border-border pt-8">
           <Kicker>Get started</Kicker>
           <p className="mt-3 max-w-sm font-display text-xl leading-snug tracking-tight">
-            Paste a GitHub repo above to see what your project is really about.
+            Enter a GitHub username above to see what they really build.
           </p>
           <p className="mt-2 max-w-md text-sm text-muted-foreground">
-            We read the README, file tree, and languages, then lay out the problem it
-            solves, the stack, and the single most interesting thing about it - the raw
-            material for your video.
+            We scan their most active public repos and READMEs, then lay out what they
+            ship, their stack, and the single most impressive thing about their work -
+            the credibility base for your content.
           </p>
           <Button
             variant="outline"
             size="sm"
             className="mt-4"
-            onClick={() => setRepoUrl("https://github.com/vercel/ms")}
+            onClick={() => setUsername("torvalds")}
           >
-            Try an example repo
+            Try an example
           </Button>
         </div>
       )}

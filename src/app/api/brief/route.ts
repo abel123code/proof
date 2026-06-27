@@ -1,30 +1,13 @@
 import { NextResponse } from "next/server";
-import { generateBrief } from "@/lib/brief";
-import {
-  createBrief,
-  getProject,
-  getReferenceVideo,
-  listBriefs,
-} from "@/lib/db";
+import { getLatestBriefForReference } from "@/lib/db";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const briefs = await listBriefs();
-    return NextResponse.json({ briefs });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
-}
-
-export async function POST(req: Request) {
-  try {
-    const body = await req.json().catch(() => ({}));
-    const projectId: string | undefined = body?.projectId;
-    const referenceVideoId: string | undefined = body?.referenceVideoId;
+    const { searchParams } = new URL(req.url);
+    const projectId = searchParams.get("projectId");
+    const referenceVideoId = searchParams.get("referenceVideoId");
 
     if (!projectId || !referenceVideoId) {
       return NextResponse.json(
@@ -33,44 +16,21 @@ export async function POST(req: Request) {
       );
     }
 
-    const [project, reference] = await Promise.all([
-      getProject(projectId),
-      getReferenceVideo(referenceVideoId),
-    ]);
-
-    if (!project) {
-      return NextResponse.json({ error: "Project not found." }, { status: 404 });
-    }
-    if (!project.understanding) {
-      return NextResponse.json(
-        { error: "Project has no understanding yet - analyze the repo first." },
-        { status: 400 },
-      );
-    }
-    if (!reference) {
-      return NextResponse.json({ error: "Reference video not found." }, { status: 404 });
-    }
-    if (!reference.structure) {
-      return NextResponse.json(
-        { error: "Reference video isn't analysed yet - analyse it in the pool first." },
-        { status: 400 },
-      );
+    const brief = await getLatestBriefForReference(projectId, referenceVideoId);
+    if (!brief?.doc) {
+      return NextResponse.json({ brief: null });
     }
 
-    const content = await generateBrief({
-      understanding: project.understanding,
-      structure: reference.structure,
-      referenceCaption: reference.caption,
+    return NextResponse.json({
+      brief: {
+        id: brief.id,
+        doc: brief.doc,
+        gaps: brief.gaps ?? [],
+        answers: brief.answers ?? {},
+      },
     });
-
-    const brief = await createBrief({
-      projectId,
-      referenceVideoId,
-      content,
-    });
-
-    return NextResponse.json({ brief });
   } catch (err) {
+    console.error("brief GET failed:", err);
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
   }

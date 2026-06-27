@@ -1,12 +1,15 @@
+import { Suspense } from "react";
 import { StudioHeader } from "@/components/studio/studio-header";
-import { ReferencePool } from "@/components/studio/reference-pool";
+import { ClipsPanel } from "@/components/studio/clips-panel";
 
-export default function PoolPage() {
+export default function ClipsPage() {
   return (
     <div className="flex flex-1 flex-col">
       <StudioHeader />
       <main className="flex-1">
-        <ReferencePool />
+        <Suspense>
+          <ClipsPanel />
+        </Suspense>
       </main>
     </div>
   );

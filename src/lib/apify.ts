@@ -25,6 +25,7 @@ export function getApify(): ApifyClient {
 export interface ScrapedClip {
   url: string;
   downloadUrl: string | null;
+  thumbnail: string | null;
   author: string | null;
   caption: string | null;
   views: number | null;
@@ -36,11 +37,39 @@ interface RawTikTokItem {
   webVideoUrl?: string;
   videoUrl?: string;
   mediaUrls?: string[];
-  videoMeta?: { downloadAddr?: string };
+  videoMeta?: {
+    downloadAddr?: string;
+    coverUrl?: string;
+    originalCoverUrl?: string;
+    cover?: string;
+    dynamicCover?: string;
+  };
+  covers?: string[] | { default?: string; origin?: string; dynamic?: string };
+  cover?: string;
   text?: string;
-  authorMeta?: { name?: string; nickName?: string };
+  authorMeta?: { name?: string; nickName?: string; avatar?: string };
   playCount?: number;
   diggCount?: number;
+}
+
+/** Pull the first usable cover/thumbnail URL from the (variable) item shape. */
+function extractThumbnail(item: RawTikTokItem): string | null {
+  const covers = item.covers;
+  const fromCovers = Array.isArray(covers)
+    ? covers[0]
+    : (covers?.default ?? covers?.origin ?? covers?.dynamic);
+  const candidates = [
+    item.videoMeta?.coverUrl,
+    item.videoMeta?.originalCoverUrl,
+    item.videoMeta?.cover,
+    item.videoMeta?.dynamicCover,
+    fromCovers,
+    item.cover,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.startsWith("http")) return c;
+  }
+  return null;
 }
 
 function mapItem(item: RawTikTokItem): ScrapedClip | null {
@@ -51,6 +80,7 @@ function mapItem(item: RawTikTokItem): ScrapedClip | null {
   return {
     url,
     downloadUrl,
+    thumbnail: extractThumbnail(item),
     author: item.authorMeta?.name ?? item.authorMeta?.nickName ?? null,
     caption: item.text ?? null,
     views: typeof item.playCount === "number" ? item.playCount : null,

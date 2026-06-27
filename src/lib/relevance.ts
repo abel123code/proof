@@ -28,3 +28,31 @@ export async function classifyFounderStory(captions: string[]): Promise<Set<numb
   });
   return new Set(keep);
 }
+
+const TOPIC_RELEVANCE_SYSTEM =
+  "You filter TikTok clips for relevance to a specific TOPIC. " +
+  "You are given a TOPIC and a list of {i, caption} objects. " +
+  "KEEP a clip ONLY if its caption is genuinely about the TOPIC - someone discussing, explaining, demoing, reacting to, or telling a story related to it. " +
+  "REJECT clips that merely share a keyword but are about something unrelated, and reject off-topic noise (generic lifestyle, crafts, fashion, fitness, food). " +
+  "When unsure, REJECT. " +
+  'Return ONLY JSON: { "keep": [<indices to keep>] }.';
+
+/**
+ * Classify captions for relevance to a given topic.
+ * Returns the set of indices (into the input array) that should be KEPT.
+ */
+export async function classifyTopicRelevant(
+  captions: string[],
+  topic: string,
+): Promise<Set<number>> {
+  const candidates = captions
+    .map((caption, i) => ({ i, caption: caption ?? "" }))
+    .filter((c) => c.caption.trim().length > 0);
+  if (candidates.length === 0) return new Set();
+
+  const { keep } = await openaiJSON<{ keep: number[] }>({
+    system: TOPIC_RELEVANCE_SYSTEM,
+    user: JSON.stringify({ TOPIC: topic, CLIPS: candidates }),
+  });
+  return new Set(keep);
+}

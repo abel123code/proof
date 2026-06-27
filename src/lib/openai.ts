@@ -10,7 +10,7 @@ export function getOpenAI(): OpenAI {
 }
 
 /** Default text model for the intelligence steps. */
-export const OPENAI_TEXT_MODEL = "gpt-4o";
+export const OPENAI_TEXT_MODEL = "gpt-5.5";
 
 /**
  * Helper that asks the model for a JSON object and parses it.
