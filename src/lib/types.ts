@@ -237,6 +237,12 @@ export interface Brief {
   gaps: InfoGap[] | null;
   /** The creator's answers, keyed by question id. */
   answers: Record<string, string> | null;
+  /** Zo render job id, once a render has been kicked off. */
+  renderJobId: string | null;
+  /** Latest render status from the Zo service. */
+  renderStatus: string | null;
+  /** Public URL of the finished edited MP4 (persisted to our Storage). */
+  renderUrl: string | null;
   createdAt: string;
 }
 

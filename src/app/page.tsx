@@ -1,13 +1,18 @@
-import { StudioHeader } from "@/components/studio/studio-header";
-import { ProjectPanel } from "@/components/studio/project-panel";
+import type { Metadata } from "next";
 
-export default function Home() {
+export const metadata: Metadata = {
+  title: "Proof — You build. We get you seen.",
+};
+
+// The pitch deck IS the landing page. It's a self-contained slide deck served from
+// /public, mounted full-screen here. Its closing slide (and the "skip to demo" link)
+// navigate the top window into the app at /connect.
+export default function Landing() {
   return (
-    <div className="flex flex-1 flex-col">
-      <StudioHeader />
-      <main className="flex-1">
-        <ProjectPanel />
-      </main>
-    </div>
+    <iframe
+      src="/proof-deck.html"
+      title="Proof pitch deck"
+      className="fixed inset-0 h-full w-full border-0"
+    />
   );
 }

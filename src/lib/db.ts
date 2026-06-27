@@ -49,6 +49,9 @@ interface BriefRow {
   doc: BriefDoc | null;
   gaps: InfoGap[] | null;
   answers: Record<string, string> | null;
+  render_job_id: string | null;
+  render_status: string | null;
+  render_url: string | null;
   created_at: string;
 }
 
@@ -90,6 +93,9 @@ function mapBrief(r: BriefRow): Brief {
     doc: r.doc ?? null,
     gaps: r.gaps ?? null,
     answers: r.answers ?? null,
+    renderJobId: r.render_job_id ?? null,
+    renderStatus: r.render_status ?? null,
+    renderUrl: r.render_url ?? null,
     createdAt: r.created_at,
   };
 }
@@ -412,6 +418,33 @@ export async function saveBriefDoc(input: {
     .single();
   if (error) throw new Error(`saveBriefDoc failed: ${error.message}`);
   return mapBrief(data as BriefRow);
+}
+
+/** Fetch a single brief by id. */
+export async function getBriefById(briefId: string): Promise<Brief | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("briefs")
+    .select("*")
+    .eq("id", briefId)
+    .maybeSingle();
+  if (error) throw new Error(`getBriefById failed: ${error.message}`);
+  return data ? mapBrief(data as BriefRow) : null;
+}
+
+/** Persist the Zo render state (job id / status / finished MP4 URL) on a brief. */
+export async function saveBriefRender(
+  briefId: string,
+  patch: { jobId?: string; status?: string; url?: string },
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const row: Record<string, unknown> = {};
+  if (patch.jobId !== undefined) row.render_job_id = patch.jobId;
+  if (patch.status !== undefined) row.render_status = patch.status;
+  if (patch.url !== undefined) row.render_url = patch.url;
+  if (Object.keys(row).length === 0) return;
+  const { error } = await supabase.from("briefs").update(row).eq("id", briefId);
+  if (error) throw new Error(`saveBriefRender failed: ${error.message}`);
 }
 
 // ---- scripts ----

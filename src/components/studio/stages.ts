@@ -11,7 +11,7 @@ export type Stage = {
 export const STAGES: Stage[] = [
   {
     n: "01",
-    href: "/",
+    href: "/connect",
     label: "Connect GitHub",
     blurb: "Build a profile of what this person actually ships.",
     enabled: true,

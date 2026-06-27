@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Proof</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap');
+
+:root{
+  --paper:#F3EEE4;
+  --paper-2:#FBF8F2;
+  --ink:#211C16;
+  --ink-soft:#4a4339;
+  --muted:#8d8475;
+  --rust:#D2502A;
+  --rust-soft:rgba(210,80,42,.10);
+  --line:rgba(33,28,22,.12);
+  --line-2:rgba(33,28,22,.06);
+  --serif:"Newsreader",Georgia,serif;
+  --sans:"Inter",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:var(--sans);background:var(--paper);color:var(--ink);overflow:hidden;-webkit-font-smoothing:antialiased}
+
+/* deck */
+.deck{position:relative;height:100vh;width:100vw}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;
+  padding:clamp(2.2rem,7vw,7rem);
+  opacity:0;visibility:hidden;transform:translateY(8px);
+  transition:opacity .45s ease,transform .55s cubic-bezier(.2,.7,.2,1)}
+.slide.is-active{opacity:1;visibility:visible;transform:none}
+
+[data-r]{opacity:0;transform:translateY(14px);transition:opacity .55s ease,transform .65s cubic-bezier(.2,.7,.2,1);transition-delay:calc(var(--d,0)*80ms)}
+.slide.is-active [data-r]{opacity:1;transform:none}
+
+.kicker{font-family:var(--mono);font-size:clamp(.62rem,.95vw,.76rem);letter-spacing:.28em;text-transform:uppercase;
+  color:var(--rust);display:flex;align-items:center;gap:.7rem;margin-bottom:clamp(1.4rem,3vh,2.2rem)}
+.kicker::before{content:"";width:clamp(20px,3vw,38px);height:1px;background:var(--rust);opacity:.6}
+
+h1{font-family:var(--serif);font-size:clamp(3.4rem,12vw,10rem);font-weight:500;letter-spacing:-.03em;line-height:.9}
+.big{font-family:var(--serif);font-size:clamp(2.4rem,6.5vw,5.6rem);font-weight:500;letter-spacing:-.025em;line-height:1.02;max-width:16ch}
+.big em{font-style:normal;color:var(--rust)}
+.sub{font-size:clamp(1.05rem,1.9vw,1.5rem);color:var(--ink-soft);max-width:42ch;line-height:1.45;margin-top:clamp(1.1rem,2.6vh,1.8rem)}
+.sub b{color:var(--ink);font-weight:600}
+.foot{font-family:var(--mono);font-size:clamp(.74rem,1vw,.9rem);color:var(--muted);margin-top:clamp(1.4rem,3.4vh,2.4rem);letter-spacing:.02em}
+.foot b{color:var(--rust);font-weight:500}
+
+/* hero */
+.badge{display:inline-flex;align-items:center;gap:.7rem;margin-bottom:clamp(1.6rem,4vh,2.6rem)}
+.badge .mk{width:38px;height:38px;border-radius:9px;background:var(--rust);color:var(--paper-2);
+  font-family:var(--mono);font-weight:700;font-size:.95rem;display:grid;place-items:center;letter-spacing:-.02em}
+.badge .nm{font-family:var(--mono);font-weight:500;letter-spacing:.04em;font-size:.95rem;color:var(--ink-soft)}
+
+/* hero art */
+.hero-copy{position:relative;z-index:2;max-width:56%}
+.hero-copy h1{font-size:clamp(2.6rem,6vw,6rem)}
+.hero-art{position:absolute;right:clamp(1.5rem,4vw,4rem);top:50%;transform:translateY(-50%);
+  width:min(34vw,440px);height:auto;border-radius:22px;z-index:1;
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 26%);
+  mask-image:linear-gradient(to right,transparent,#000 26%);pointer-events:none}
+@media (max-width:980px){.hero-art{display:none}.hero-copy{max-width:100%}}
+
+/* enter-app CTA link */
+.cta{display:inline-flex;align-items:center;gap:.6rem;margin-top:clamp(1.4rem,3.4vh,2.4rem);
+  font-family:var(--mono);font-size:clamp(.82rem,1.1vw,.98rem);font-weight:500;text-decoration:none;
+  background:var(--rust);color:var(--paper-2);border-radius:999px;padding:.7rem 1.3rem;
+  transition:.18s;width:fit-content}
+.cta:hover{filter:brightness(1.05);transform:translateX(2px)}
+
+/* tags row */
+.tags{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:clamp(1.6rem,3.6vh,2.4rem)}
+.tag{font-family:var(--mono);font-size:clamp(.74rem,1vw,.88rem);border:1px solid var(--line);
+  border-radius:999px;padding:.5rem .95rem;color:var(--ink-soft);background:var(--paper-2)}
+
+/* side by side */
+.sbs{display:grid;grid-template-columns:1fr 1fr;gap:clamp(1rem,2.4vw,1.8rem);margin-top:clamp(1.6rem,3.5vh,2.4rem);max-width:90ch}
+.card{border:1px solid var(--line);border-radius:16px;padding:clamp(1.2rem,2.2vw,1.9rem);background:var(--paper-2)}
+.card .lbl{font-family:var(--mono);font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:1rem}
+.card .quote{font-family:var(--serif);font-size:clamp(1.05rem,1.55vw,1.35rem);line-height:1.42;color:var(--ink)}
+.card ul{list-style:none;margin-top:1.1rem;display:grid;gap:.55rem}
+.card li{font-family:var(--mono);font-size:clamp(.72rem,1vw,.84rem);line-height:1.4;padding-left:1.3rem;position:relative;color:var(--muted)}
+.card.bad{filter:saturate(.85)}
+.card.bad .quote{color:var(--muted)}
+.card.bad li::before{content:"\00d7";position:absolute;left:0;color:#b5603f;font-weight:700}
+.card.good{border-color:rgba(210,80,42,.45);background:#fff}
+.card.good .lbl{color:var(--rust)}
+.card.good li{color:var(--ink-soft)}
+.card.good li::before{content:"\2713";position:absolute;left:0;color:var(--rust);font-weight:700}
+
+/* pipeline */
+.pipe{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin-top:clamp(1.6rem,3.5vh,2.4rem);max-width:70ch}
+.node{font-family:var(--mono);font-size:clamp(.74rem,1vw,.9rem);border:1px solid var(--line);border-radius:9px;
+  padding:.55rem .8rem;color:var(--ink-soft);white-space:nowrap;background:var(--paper-2)}
+.node.key{color:var(--paper-2);background:var(--rust);border-color:var(--rust);font-weight:500}
+.arrow{color:var(--muted);font-family:var(--mono)}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:clamp(1rem,2.4vw,1.8rem);margin-top:clamp(1.6rem,3.4vh,2.2rem);max-width:80ch}
+.duo .b{border-left:2px solid var(--rust);padding-left:1.1rem}
+.duo .b .h{font-family:var(--mono);font-weight:700;color:var(--rust);font-size:clamp(.85rem,1.3vw,1.05rem);margin-bottom:.4rem}
+.duo .b .p{color:var(--ink-soft);font-size:clamp(.92rem,1.3vw,1.1rem);line-height:1.45}
+
+/* logic / argument lines */
+.logic{margin-top:clamp(1.4rem,3.2vh,2.2rem);display:grid;gap:clamp(.7rem,1.6vh,1.05rem);max-width:42ch}
+.logic .ln{font-size:clamp(1.05rem,1.9vw,1.5rem);line-height:1.4;color:var(--ink-soft);
+  padding-left:1.5rem;position:relative}
+.logic .ln::before{content:"";position:absolute;left:0;top:.62em;width:7px;height:7px;
+  background:var(--rust);opacity:.5;transform:rotate(45deg)}
+.logic .ln em{font-style:normal;color:var(--ink);font-weight:600}
+.payoff{font-family:var(--serif);font-size:clamp(1.4rem,3vw,2.3rem);font-weight:500;line-height:1.12;
+  letter-spacing:-.02em;margin-top:clamp(1.3rem,3vh,2rem);max-width:24ch;color:var(--ink)}
+.payoff em{font-style:normal;color:var(--rust)}
+
+/* team */
+.team{display:flex;gap:clamp(1.6rem,5vw,4rem);margin-top:clamp(1.4rem,3.4vh,2.2rem)}
+.team .who{font-family:var(--mono);color:var(--rust);font-size:clamp(.9rem,1.2vw,1.05rem)}
+
+/* chrome */
+.chrome{position:fixed;z-index:50;font-family:var(--mono)}
+.brand{top:clamp(1.6rem,3.4vh,2.4rem);left:clamp(1.8rem,4.5vw,3.4rem);display:flex;align-items:center;gap:.55rem;
+  font-weight:500;font-size:.9rem;color:var(--ink-soft);letter-spacing:.03em}
+.brand .blip{width:8px;height:8px;border-radius:2px;background:var(--rust)}
+.counter{top:clamp(1.6rem,3.4vh,2.4rem);right:clamp(1.8rem,4.5vw,3.4rem);font-size:.8rem;color:var(--muted);letter-spacing:.12em}
+.counter b{color:var(--rust)}
+.nav{bottom:clamp(1.6rem,3.4vh,2.4rem);right:clamp(1.8rem,4.5vw,3.4rem);display:flex;gap:.5rem}
+.nav button{font-family:var(--mono);font-size:.82rem;color:var(--ink);background:var(--paper-2);border:1px solid var(--line);
+  border-radius:9px;padding:.5rem .8rem;cursor:pointer;transition:.18s}
+.nav button:hover{background:var(--rust);color:var(--paper-2);border-color:var(--rust)}
+.nav button:disabled{opacity:.3;cursor:default}
+.bar{position:fixed;z-index:50;left:0;bottom:0;height:2px;background:var(--rust);width:0;transition:width .45s cubic-bezier(.2,.7,.2,1)}
+.hint{position:fixed;z-index:50;bottom:clamp(1.6rem,3.4vh,2.4rem);left:50%;transform:translateX(-50%);
+  font-family:var(--mono);font-size:.7rem;color:var(--muted);letter-spacing:.06em;transition:opacity .6s}
+.skip{top:clamp(1.6rem,3.4vh,2.4rem);left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:.74rem;
+  color:var(--muted);text-decoration:none;letter-spacing:.06em;border-bottom:1px dotted var(--muted);transition:.18s}
+.skip:hover{color:var(--rust);border-color:var(--rust)}
+
+@media (max-width:760px){.sbs,.duo{grid-template-columns:1fr}.big{max-width:none}.slide{padding:2rem 1.4rem 4rem}}
+@page{size:1280px 720px;margin:0}
+@media print{
+  html,body{overflow:visible}
+  .chrome,.nav,.bar,.hint{display:none!important}
+  .deck{height:auto}
+  .slide{position:relative;inset:auto;width:1280px;height:720px;opacity:1!important;visibility:visible!important;transform:none!important;page-break-after:always;overflow:hidden}
+  .slide [data-r]{opacity:1!important;transform:none!important}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<div class="chrome brand"><span class="blip"></span>Proof</div>
+<div class="chrome counter"><b id="cur">01</b> / <span id="tot">07</span></div>
+<a class="chrome skip" href="/connect" target="_top">skip to demo →</a>
+<div class="chrome nav"><button id="prev">←</button><button id="next">→</button></div>
+<div class="hint" id="hint">← → to move</div>
+<div class="bar" id="bar"></div>
+
+<div class="deck" id="deck">
+
+  <!-- 1 HERO -->
+  <section class="slide">
+    <img class="hero-art" src="/hero.png" alt="" data-r style="--d:2" />
+    <div class="hero-copy">
+      <div class="badge" data-r style="--d:0"><span class="mk">P</span><span class="nm">PROOF · 'SUP BUILD2026</span></div>
+      <h1 data-r style="--d:1">You build.<br>We get you seen.</h1>
+      <div class="foot" data-r style="--d:3">recruiters spend <b>11 seconds</b> on your github.</div>
+    </div>
+  </section>
+
+  <!-- 2 PROBLEM -->
+  <section class="slide">
+    <div class="kicker" data-r style="--d:0">the problem</div>
+    <div class="big" data-r style="--d:1">Good code <em>isn't enough.</em></div>
+    <div class="logic">
+      <div class="ln" data-r style="--d:2">Shipping is easy now. Getting people to <em>use</em> it isn't.</div>
+      <div class="ln" data-r style="--d:3">Traction comes from marketing — not from the code being good.</div>
+      <div class="ln" data-r style="--d:4">And marketing is the one thing developers <em>won't</em> do.</div>
+    </div>
+    <div class="payoff" data-r style="--d:5">So the best work goes unseen — <em>and no one ever hears about you.</em></div>
+  </section>
+
+  <!-- 3 WHY US -->
+  <section class="slide">
+    <div class="kicker" data-r style="--d:0">why us</div>
+    <div class="big" data-r style="--d:1">We're devs who never market our own work.</div>
+    <div class="sub" data-r style="--d:2">so we built the thing that does it for us.</div>
+    <div class="team" data-r style="--d:3">
+      <div class="who">Abel</div>
+      <div class="who">Abhishek</div>
+      <div class="who" style="color:var(--muted)">built in 12 hours</div>
+    </div>
+  </section>
+
+  <!-- 4 WHAT IT IS -->
+  <section class="slide">
+    <div class="kicker" data-r style="--d:0">what it is</div>
+    <div class="big" data-r style="--d:1">Connect a repo.<br><em>Get a video you'd post.</em></div>
+    <div class="sub" data-r style="--d:2">you film. it does the rest.</div>
+    <div class="tags" data-r style="--d:3">
+      <span class="tag">teleprompter</span>
+      <span class="tag">auto-edit</span>
+      <span class="tag">captions + overlays</span>
+    </div>
+  </section>
+
+  <!-- 5 SIDE BY SIDE -->
+  <section class="slide">
+    <div class="kicker" data-r style="--d:0">side by side</div>
+    <div class="big" data-r style="--d:1">Same project. <em>One is slop.</em></div>
+    <div class="sbs">
+      <div class="card bad" data-r style="--d:2">
+        <div class="lbl">generic ai</div>
+        <div class="quote">"Hi everyone! Today I want to share a project I've been working on called Proof, an AI-powered platform that helps developers…"</div>
+        <ul>
+          <li>opens on a throat-clear</li>
+          <li>"platform," "powerful," "engaging"</li>
+          <li>recruiter already scrolled</li>
+        </ul>
+      </div>
+      <div class="card good" data-r style="--d:3">
+        <div class="lbl">proof</div>
+        <div class="quote">"I spent the weekend making my AI app feel less like a vibe-coded demo and more like an actual product. here's the part that took three rewrites."</div>
+        <ul>
+          <li>opens on the real decision</li>
+          <li>names the mechanic, no filler</li>
+          <li>keywords flagged for overlays</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 HOW IT WORKS -->
+  <section class="slide">
+    <div class="kicker" data-r style="--d:0">how it works</div>
+    <div class="big" data-r style="--d:1">Repo in. <em>MP4 out.</em></div>
+    <div class="pipe" data-r style="--d:2">
+      <span class="node">repo</span><span class="arrow">→</span>
+      <span class="node key">Exa</span><span class="arrow">→</span>
+      <span class="node">brief</span><span class="arrow">→</span>
+      <span class="node">script</span><span class="arrow">→</span>
+      <span class="node">teleprompter</span><span class="arrow">→</span>
+      <span class="node">cut</span><span class="arrow">→</span>
+      <span class="node key">Zo</span><span class="arrow">→</span>
+      <span class="node">mp4</span>
+    </div>
+    <div class="duo" data-r style="--d:3">
+      <div class="b"><div class="h">Exa</div><div class="p">finds what's working in your niche — so the script is grounded, not generic.</div></div>
+      <div class="b"><div class="h">Zo</div><div class="p">renders on a real machine — the full Linux workload serverless can't hold.</div></div>
+    </div>
+  </section>
+
+  <!-- 7 CLOSE -->
+  <section class="slide">
+    <div class="kicker" data-r style="--d:0">demo</div>
+    <div class="big" data-r style="--d:1">The best version of you. <em>Posted.</em></div>
+    <a class="cta" href="/connect" target="_top" data-r style="--d:3">connect your repo →</a>
+  </section>
+
+</div>
+
+<script>
+const slides=[...document.querySelectorAll('.slide')];
+const bar=document.getElementById('bar'),cur=document.getElementById('cur');
+const prevB=document.getElementById('prev'),nextB=document.getElementById('next'),hint=document.getElementById('hint');
+document.getElementById('tot').textContent=String(slides.length).padStart(2,'0');
+let i=0;
+function show(n){
+  i=Math.max(0,Math.min(slides.length-1,n));
+  slides.forEach((s,k)=>s.classList.toggle('is-active',k===i));
+  bar.style.width=((i+1)/slides.length*100)+'%';
+  cur.textContent=String(i+1).padStart(2,'0');
+  prevB.disabled=i===0;nextB.disabled=i===slides.length-1;
+}
+document.addEventListener('keydown',e=>{
+  if(['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)){e.preventDefault();show(i+1);}
+  else if(['ArrowLeft','ArrowUp','PageUp'].includes(e.key)){e.preventDefault();show(i-1);}
+  else if(e.key==='Home')show(0);
+  else if(e.key==='End')show(slides.length-1);
+  else if(/^[1-7]$/.test(e.key))show(+e.key-1);
+});
+nextB.onclick=()=>show(i+1);prevB.onclick=()=>show(i-1);
+setTimeout(()=>hint.style.opacity='0',4000);
+document.addEventListener('keydown',()=>hint.style.opacity='0',{once:true});
+show(0);
+</script>
+</body>
+</html>

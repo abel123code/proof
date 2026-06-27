@@ -10,7 +10,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { Teleprompter } from "@/components/studio/teleprompter";
+import { toRenderBrief } from "@/lib/render-brief";
 import type { BriefDoc, InfoGap, Project } from "@/lib/types";
+
+// Demo insurance: set NEXT_PUBLIC_DEMO_RENDER_URL to a public path (e.g. /demo-render.mp4)
+// to SKIP the live Zo render and reveal a pre-rendered MP4. Leave it unset/empty to use
+// the real render pipeline.
+const DEMO_RENDER_URL: string | null =
+  process.env.NEXT_PUBLIC_DEMO_RENDER_URL || null;
 
 function hostOf(url: string): string {
   try {
@@ -37,6 +44,10 @@ export function BriefPanel() {
   const [briefId, setBriefId] = useState<string | null>(null);
   const [footage, setFootage] = useState<Record<number, string>>({});
   const [recordScene, setRecordScene] = useState<number | null>(null);
+  const [renderJobId, setRenderJobId] = useState<string | null>(null);
+  const [renderStatus, setRenderStatus] = useState<string | null>(null);
+  const [renderUrl, setRenderUrl] = useState<string | null>(null);
+  const [showRender, setShowRender] = useState(false);
 
   const ready = !!projectId && trendIndex != null && !!referenceVideoId;
 
@@ -91,6 +102,19 @@ export function BriefPanel() {
           setAnswers(briefRes.brief.answers ?? {});
           setBriefId(briefRes.brief.id ?? null);
           setPhase("brief");
+          setRenderUrl(briefRes.brief.renderUrl ?? null);
+          setRenderStatus(briefRes.brief.renderStatus ?? null);
+          {
+            const st: string | null = briefRes.brief.renderStatus ?? null;
+            if (
+              briefRes.brief.renderJobId &&
+              !briefRes.brief.renderUrl &&
+              st !== "done" &&
+              st !== "error"
+            ) {
+              setRenderJobId(briefRes.brief.renderJobId);
+            }
+          }
           if (briefRes.brief.id) {
             fetch(`/api/footage?briefId=${briefRes.brief.id}`)
               .then((r) => r.json())
@@ -141,6 +165,82 @@ export function BriefPanel() {
       setPhase("questions");
     }
   }, [ready, projectId, trendIndex, referenceVideoId, gaps, answers]);
+
+  const sendToEditor = useCallback(async () => {
+    if (!doc) return;
+
+    // Demo mode: fake the pipeline then reveal the pre-rendered MP4.
+    if (DEMO_RENDER_URL) {
+      setRenderUrl(null);
+      setShowRender(false);
+      const steps = ["queued", "transcribing", "cutting", "rendering", "uploading"];
+      for (const s of steps) {
+        setRenderStatus(s);
+        await new Promise((r) => setTimeout(r, 900));
+      }
+      setRenderStatus("done");
+      setRenderUrl(DEMO_RENDER_URL);
+      setShowRender(true);
+      toast.success("Edited video ready");
+      return;
+    }
+
+    if (!briefId) return;
+    const videoUrls = doc.scenes.map((_, i) => footage[i]).filter(Boolean) as string[];
+    if (videoUrls.length === 0) {
+      toast.error("Film at least one scene first.");
+      return;
+    }
+    const filmedScenes = doc.scenes.filter((_, i) => footage[i]);
+    const brief = toRenderBrief(filmedScenes);
+    setRenderUrl(null);
+    setShowRender(false);
+    setRenderStatus("queued");
+    try {
+      const res = await fetch("/api/render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ briefId, videoUrls, brief }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not start the render");
+      setRenderJobId(data.jobId);
+      toast.success("Sent to editor — rendering your cut…");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to send");
+      setRenderStatus(null);
+    }
+  }, [doc, briefId, footage]);
+
+  // Poll the render job until it finishes, then persist + reveal the edited video.
+  useEffect(() => {
+    if (!renderJobId || renderUrl || !briefId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/render?jobId=${renderJobId}&briefId=${briefId}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.status) setRenderStatus(data.status);
+        if (data.status === "done" && data.url) {
+          setRenderUrl(data.url);
+          setRenderStatus("done");
+          toast.success("Edited video ready");
+        } else if (data.status === "error") {
+          toast.error(data.error ?? "Render failed");
+          setRenderJobId(null);
+        }
+      } catch {
+        // transient; keep polling
+      }
+    };
+    poll();
+    const id = setInterval(poll, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [renderJobId, renderUrl, briefId]);
 
   const exportBrief = useCallback(() => {
     if (!doc) return;
@@ -228,6 +328,23 @@ export function BriefPanel() {
     [briefId],
   );
 
+  const filmedCount = doc ? doc.scenes.filter((_, i) => footage[i]).length : 0;
+  const renderActive =
+    !renderUrl &&
+    !!renderStatus &&
+    renderStatus !== "done" &&
+    renderStatus !== "error";
+  const RENDER_LABELS: Record<string, string> = {
+    queued: "Queued…",
+    transcribing: "Transcribing…",
+    cutting: "Cutting…",
+    rendering: "Rendering…",
+    uploading: "Uploading…",
+  };
+  const renderStatusLabel = renderStatus
+    ? RENDER_LABELS[renderStatus] ?? "Working…"
+    : "Working…";
+
   if (!ready) {
     return (
       <div className="mx-auto w-full max-w-[920px] px-8 py-10">
@@ -255,9 +372,32 @@ export function BriefPanel() {
             <Button size="sm" variant="outline" onClick={exportBrief}>
               ↓ Export for Remotion
             </Button>
-            <Button size="sm" onClick={() => setRecordScene(0)}>
+            <Button size="sm" variant="outline" onClick={() => setRecordScene(0)}>
               ● Record
             </Button>
+            {renderUrl ? (
+              <>
+                <Button size="sm" onClick={() => setShowRender(true)}>
+                  ▶ View edited video
+                </Button>
+                <Button size="sm" variant="outline" onClick={sendToEditor}>
+                  Re-render
+                </Button>
+              </>
+            ) : renderActive ? (
+              <Button size="sm" disabled>
+                <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />
+                {renderStatusLabel}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={sendToEditor}
+                disabled={!DEMO_RENDER_URL && filmedCount === 0}
+              >
+                ✦ Send to editor
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -310,6 +450,47 @@ export function BriefPanel() {
           }
           onClose={() => setRecordScene(null)}
         />
+      )}
+
+      {showRender && renderUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowRender(false)}
+        >
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+          <button
+            onClick={() => setShowRender(false)}
+            aria-label="Close"
+            className="absolute right-5 top-5 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-lg text-white/80 backdrop-blur transition hover:bg-white/20 hover:text-white"
+          >
+            ✕
+          </button>
+          <div
+            className="relative z-10 flex flex-col items-center gap-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/60">
+              Edited by Zo
+            </p>
+            <div className="aspect-[9/16] h-[80vh] max-h-[80vh] overflow-hidden rounded-[2rem] border-[5px] border-neutral-800 bg-black shadow-2xl">
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <video
+                src={renderUrl}
+                controls
+                autoPlay
+                playsInline
+                className="h-full w-full bg-black object-contain"
+              />
+            </div>
+            <a
+              href={renderUrl}
+              download
+              className="rounded-full bg-white px-4 py-1.5 text-xs font-medium text-black transition hover:bg-white/90"
+            >
+              ↓ Download MP4
+            </a>
+          </div>
+        </div>
       )}
     </div>
   );

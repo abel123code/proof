@@ -30,6 +30,11 @@ function hostOf(url: string): string {
   }
 }
 
+// Demo mode is on when a pre-rendered MP4 is configured for the brief stage.
+const DEMO_MODE = !!process.env.NEXT_PUBLIC_DEMO_RENDER_URL;
+// The only trend with a prepared end-to-end output (the 5th card, 0-based index 4).
+const DEMO_TREND_INDEX = 4;
+
 export function TrendsPanel() {
   const searchParams = useSearchParams();
   const initialProject = searchParams.get("project");
@@ -40,6 +45,7 @@ export function TrendsPanel() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [researching, setResearching] = useState(false);
   const [selectedTrend, setSelectedTrend] = useState<number | null>(null);
+  const [showDemoNote, setShowDemoNote] = useState(DEMO_MODE);
 
   const readyProjects = useMemo(() => projects.filter((p) => p.understanding), [projects]);
   const selectedProject = useMemo(
@@ -113,6 +119,37 @@ export function TrendsPanel() {
 
   return (
     <div className="mx-auto w-full max-w-[1000px] px-8 py-10">
+      {showDemoNote && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowDemoNote(false)}
+        >
+          <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" />
+          <div
+            className="relative z-10 w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary">
+              Demo mode
+            </span>
+            <p className="mt-2 font-display text-xl tracking-tight">
+              Pick the 5th trend — “Build in public”
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              For this demo, only the{" "}
+              <span className="font-medium text-foreground">5th card (“Build in public”)</span>{" "}
+              has a prepared end-to-end output. The other trends won&apos;t produce a
+              finished video — so please pick that one to see the full repo → video flow.
+            </p>
+            <div className="mt-5 flex justify-end">
+              <Button size="sm" onClick={() => setShowDemoNote(false)}>
+                Got it
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <SectionMarker n="02" title="What's trending" />
       <p className="mt-3 max-w-xl text-sm text-muted-foreground">
         Exa reasons over the web - Reddit, Hacker News, X - to find what builders are
@@ -129,7 +166,7 @@ export function TrendsPanel() {
       {!loading && readyProjects.length === 0 && (
         <div className="mt-6 rounded-md border border-dashed border-border p-6 text-sm text-muted-foreground">
           No connected builder yet. Go to{" "}
-          <Link href="/" className="text-foreground underline underline-offset-2">
+          <Link href="/connect" className="text-foreground underline underline-offset-2">
             01 Connect GitHub
           </Link>{" "}
           and build a profile first.
@@ -195,7 +232,13 @@ export function TrendsPanel() {
                   return (
                     <button
                       key={i}
-                      onClick={() => setSelectedTrend(active ? null : i)}
+                      onClick={() => {
+                        if (DEMO_MODE && i !== DEMO_TREND_INDEX) {
+                          setShowDemoNote(true);
+                          return;
+                        }
+                        setSelectedTrend(active ? null : i);
+                      }}
                       className={`flex flex-col rounded-lg border p-4 text-left transition-colors ${
                         active
                           ? "border-primary bg-primary/5 ring-1 ring-primary"

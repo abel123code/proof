@@ -11,7 +11,7 @@ export function StudioHeader() {
   return (
     <header className="border-b border-border">
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-8 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <Link href="/" className="flex items-center gap-3">
+        <Link href="/connect" className="flex items-center gap-3">
           <span className="flex size-8 items-center justify-center rounded-md bg-primary/12 font-mono text-sm font-bold text-primary">
             RE
           </span>
