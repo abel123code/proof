@@ -29,8 +29,12 @@ app.get("/health", (_req, res) => {
 
 app.post("/render", (req, res) => {
   const input = req.body as RenderJobInput;
-  if (!input || (!input.captureId && (!input.videoUrl || !input.brief))) {
-    res.status(400).json({ error: "Provide captureId, or both videoUrl and brief." });
+  const hasSingle = !!input?.videoUrl && !!input?.brief;
+  const hasMulti = Array.isArray(input?.videoUrls) && input.videoUrls.length > 0 && !!input?.brief;
+  if (!input || (!input.captureId && !hasSingle && !hasMulti)) {
+    res.status(400).json({
+      error: "Provide captureId, or videoUrl+brief, or videoUrls[]+brief.",
+    });
     return;
   }
 

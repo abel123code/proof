@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 
 import type { JobState, RenderBrief, RenderJobInput, RenderProps } from "./types.js";
 import { getCaptureWithScript, createTranscript, createRender, updateRender } from "./db.js";
-import { extractAudio, buildCutVideo, compositeOverlay, probeVideo } from "./ffmpeg.js";
+import { extractAudio, buildCutVideo, compositeOverlay, probeVideo, concatClips } from "./ffmpeg.js";
 import { transcribeWords } from "./transcribe.js";
 import { planCut } from "./cut.js";
 import { remap } from "./remap.js";
@@ -49,7 +49,8 @@ export async function runJob(
   onStatus: (status: JobState["status"], extra?: Partial<JobState>) => void,
 ): Promise<JobResult> {
   // 1. Resolve the recording URL + brief, from DB (captureId) or directly (tests).
-  let videoSrc: string;
+  let videoSrc: string | undefined;
+  let videoUrls: string[] | undefined;
   let brief: RenderBrief;
   let captureId: string | undefined;
 
@@ -58,9 +59,13 @@ export async function runJob(
     videoSrc = c.videoUrl;
     brief = c.brief;
     captureId = c.captureId;
+  } else if (input.videoUrls?.length && input.brief) {
+    // Multiple per-scene clips: concatenated into one take below.
+    videoUrls = input.videoUrls;
+    brief = input.brief;
   } else {
     if (!input.videoUrl || !input.brief) {
-      throw new Error("Provide either captureId, or both videoUrl and brief.");
+      throw new Error("Provide captureId, or videoUrl+brief, or videoUrls[]+brief.");
     }
     videoSrc = input.videoUrl;
     brief = input.brief;
@@ -78,13 +83,25 @@ export async function runJob(
   await mkdir(join(RENDER_ROOT, "out"), { recursive: true });
   await mkdir(PUBLIC_DIR, { recursive: true });
 
-  const recordingPath = join(workDir, "recording.input");
+  let recordingPath = join(workDir, "recording.input");
   const audioPath = join(workDir, "audio.mp3");
   const baseTmpPath = join(workDir, "base.mp4");
 
   try {
     // 2. Get the recording locally (ffmpeg reads webm/mp4/mov alike — no pre-transcode).
-    await fetchToFile(videoSrc, recordingPath);
+    //    Multiple per-scene clips are fetched and concatenated into one take first.
+    if (videoUrls?.length) {
+      const clipPaths: string[] = [];
+      for (let i = 0; i < videoUrls.length; i++) {
+        const clipPath = join(workDir, `clip-${i}.input`);
+        await fetchToFile(videoUrls[i], clipPath);
+        clipPaths.push(clipPath);
+      }
+      recordingPath = join(workDir, "recording.mp4");
+      await concatClips(clipPaths, recordingPath);
+    } else {
+      await fetchToFile(videoSrc as string, recordingPath);
+    }
 
     // 3. Transcribe (word-level, whisper-1).
     onStatus("transcribing");

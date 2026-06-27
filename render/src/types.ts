@@ -78,6 +78,8 @@ export interface RenderProps {
 export interface RenderJobInput {
   captureId?: string;
   videoUrl?: string;
+  /** Multiple per-scene clips to concatenate (in order) into one take before rendering. */
+  videoUrls?: string[];
   brief?: RenderBrief;
 }
 

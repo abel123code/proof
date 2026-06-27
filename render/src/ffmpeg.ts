@@ -51,6 +51,55 @@ export async function transcodeToMp4(inputPath: string, outPath: string): Promis
 }
 
 /**
+ * Concatenate multiple per-scene clips (recorded/uploaded separately, possibly different
+ * containers, codecs and resolutions) into one continuous take. Each input is scaled and
+ * padded to a common 1080x1920 H.264 CFR30 frame inside a single filter_complex, then
+ * concatenated. The result is a normal recording the rest of the pipeline can transcribe
+ * and cut as if it were one take.
+ */
+export async function concatClips(inputPaths: string[], outPath: string): Promise<void> {
+  if (inputPaths.length === 0) throw new Error("concatClips: no inputs");
+  if (inputPaths.length === 1) {
+    // Single clip: just normalize it to the canonical format.
+    await transcodeToMp4(inputPaths[0], outPath);
+    return;
+  }
+
+  const inputArgs: string[] = [];
+  inputPaths.forEach((p) => {
+    inputArgs.push("-i", p);
+  });
+
+  const parts: string[] = [];
+  const concatInputs: string[] = [];
+  inputPaths.forEach((_, i) => {
+    // Scale to fit inside 1080x1920, pad to exact size, force 30fps + SAR 1; resample
+    // audio to a common rate so the concat filter accepts every stream.
+    parts.push(
+      `[${i}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
+        `pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v${i}]`,
+    );
+    parts.push(`[${i}:a]aresample=48000,asetpts=N/SR/TB[a${i}]`);
+    concatInputs.push(`[v${i}][a${i}]`);
+  });
+  const filter =
+    `${parts.join(";")};` +
+    `${concatInputs.join("")}concat=n=${inputPaths.length}:v=1:a=1[outv][outa]`;
+
+  await run(FFMPEG, [
+    "-y",
+    ...inputArgs,
+    "-filter_complex", filter,
+    "-map", "[outv]", "-map", "[outa]",
+    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+    "-r", "30", "-fps_mode", "cfr",
+    "-c:a", "aac", "-ar", "48000",
+    "-movflags", "+faststart",
+    outPath,
+  ]);
+}
+
+/**
  * Cut the kept segments out of the source and concatenate them back-to-back into one
  * clean clip. Single filter_complex pass (trim + setpts + concat) = frame-accurate, no
  * intermediate files. Remotion then overlays captions on this single clip.
