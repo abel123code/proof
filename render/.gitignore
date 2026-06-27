@@ -1,0 +1,5 @@
+node_modules
+out
+tmp
+remotion/public/*.mp4
+*.log
