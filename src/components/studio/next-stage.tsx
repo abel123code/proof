@@ -5,10 +5,11 @@ import { STAGES } from "@/components/studio/stages";
 // Renders the "what's next" transition at the bottom of a stage. The parent
 // decides *when* to show it (e.g. only once a stage's work is done); this just
 // renders the handoff to the following stage.
-export function NextStage({ from }: { from: string }) {
+export function NextStage({ from, query }: { from: string; query?: string }) {
   const idx = STAGES.findIndex((s) => s.href === from);
   const next = idx === -1 ? undefined : STAGES[idx + 1];
   if (!next) return null;
+  const href = `${next.href}${query ?? ""}`;
 
   return (
     <div className="mt-10 flex flex-col gap-3 rounded-lg border border-border bg-secondary/40 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -23,7 +24,7 @@ export function NextStage({ from }: { from: string }) {
       </div>
       {next.enabled ? (
         <Button asChild className="shrink-0">
-          <Link href={next.href}>Continue →</Link>
+          <Link href={href}>Continue →</Link>
         </Button>
       ) : (
         <Button disabled variant="outline" className="shrink-0">

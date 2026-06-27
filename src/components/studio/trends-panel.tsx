@@ -126,23 +126,27 @@ export function TrendsPanel() {
         >
           <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" />
           <div
-            className="relative z-10 w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl"
+            className="relative z-10 w-full max-w-3xl rounded-3xl border border-border bg-card p-10 text-center shadow-2xl sm:p-14"
             onClick={(e) => e.stopPropagation()}
           >
-            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary">
+            <span className="font-mono text-sm uppercase tracking-[0.3em] text-primary">
               Demo mode
             </span>
-            <p className="mt-2 font-display text-xl tracking-tight">
-              Pick the 5th trend — “Build in public”
+            <p className="mt-5 font-display text-6xl font-medium leading-[0.95] tracking-tight sm:text-8xl">
+              Pick the{" "}
+              <span className="text-primary">5th</span>
+              <br />
+              trend
             </p>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              For this demo, only the{" "}
-              <span className="font-medium text-foreground">5th card (“Build in public”)</span>{" "}
-              has a prepared end-to-end output. The other trends won&apos;t produce a
-              finished video — so please pick that one to see the full repo → video flow.
+            <p className="mt-6 font-display text-2xl tracking-tight text-foreground/80 sm:text-3xl">
+              “Build in public”
             </p>
-            <div className="mt-5 flex justify-end">
-              <Button size="sm" onClick={() => setShowDemoNote(false)}>
+            <p className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-muted-foreground">
+              It&apos;s the <span className="font-medium text-foreground">only</span> trend with
+              a prepared end-to-end output. The others won&apos;t produce a finished video.
+            </p>
+            <div className="mt-8 flex justify-center">
+              <Button size="lg" className="px-8" onClick={() => setShowDemoNote(false)}>
                 Got it
               </Button>
             </div>

@@ -170,7 +170,10 @@ export function ProjectPanel() {
             </div>
           )}
 
-          <NextStage from="/" />
+          <NextStage
+            from="/connect"
+            query={selectedProjectId ? `?project=${selectedProjectId}` : undefined}
+          />
         </div>
       )}
 
