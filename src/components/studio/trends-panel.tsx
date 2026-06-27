@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Kicker, SectionMarker } from "@/components/studio/primitives";
+import { DemoBanner } from "@/components/studio/demo-hint";
 import type { Project, TrendResearch } from "@/lib/types";
 
 function timeAgo(iso: string | null | undefined): string {
@@ -45,7 +46,6 @@ export function TrendsPanel() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [researching, setResearching] = useState(false);
   const [selectedTrend, setSelectedTrend] = useState<number | null>(null);
-  const [showDemoNote, setShowDemoNote] = useState(DEMO_MODE);
 
   const readyProjects = useMemo(() => projects.filter((p) => p.understanding), [projects]);
   const selectedProject = useMemo(
@@ -119,46 +119,19 @@ export function TrendsPanel() {
 
   return (
     <div className="mx-auto w-full max-w-[1000px] px-8 py-10">
-      {showDemoNote && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          onClick={() => setShowDemoNote(false)}
-        >
-          <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" />
-          <div
-            className="relative z-10 w-full max-w-3xl rounded-3xl border border-border bg-card p-10 text-center shadow-2xl sm:p-14"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="font-mono text-sm uppercase tracking-[0.3em] text-primary">
-              Demo mode
-            </span>
-            <p className="mt-5 font-display text-6xl font-medium leading-[0.95] tracking-tight sm:text-8xl">
-              Pick the{" "}
-              <span className="text-primary">5th</span>
-              <br />
-              trend
-            </p>
-            <p className="mt-6 font-display text-2xl tracking-tight text-foreground/80 sm:text-3xl">
-              “Build in public”
-            </p>
-            <p className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-muted-foreground">
-              It&apos;s the <span className="font-medium text-foreground">only</span> trend with
-              a prepared end-to-end output. The others won&apos;t produce a finished video.
-            </p>
-            <div className="mt-8 flex justify-center">
-              <Button size="lg" className="px-8" onClick={() => setShowDemoNote(false)}>
-                Got it
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <SectionMarker n="02" title="What's trending" />
       <p className="mt-3 max-w-xl text-sm text-muted-foreground">
         Exa reasons over the web - Reddit, Hacker News, X - to find what builders are
         talking about right now, with real sources. Pick the one you want to ride.
       </p>
+
+      {DEMO_MODE && (
+        <DemoBanner>
+          Pick the <span className="text-primary">5th</span> trend —{" "}
+          <span className="text-primary">&ldquo;Build in public&rdquo;</span>. It&apos;s the only
+          one wired end-to-end for the demo.
+        </DemoBanner>
+      )}
 
       {loading && (
         <div className="mt-6 flex flex-col gap-3">
@@ -238,7 +211,7 @@ export function TrendsPanel() {
                       key={i}
                       onClick={() => {
                         if (DEMO_MODE && i !== DEMO_TREND_INDEX) {
-                          setShowDemoNote(true);
+                          toast.error('For the demo, pick the 5th trend — "Build in public".');
                           return;
                         }
                         setSelectedTrend(active ? null : i);
@@ -246,7 +219,9 @@ export function TrendsPanel() {
                       className={`flex flex-col rounded-lg border p-4 text-left transition-colors ${
                         active
                           ? "border-primary bg-primary/5 ring-1 ring-primary"
-                          : "border-border bg-card hover:border-foreground/30"
+                          : DEMO_MODE && i === DEMO_TREND_INDEX
+                            ? "border-primary/60 bg-card ring-2 ring-primary/40"
+                            : "border-border bg-card hover:border-foreground/30"
                       }`}
                     >
                       <div className="flex items-start gap-2">

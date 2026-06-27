@@ -9,7 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Kicker, SectionMarker, formatCount } from "@/components/studio/primitives";
+import { DemoBanner } from "@/components/studio/demo-hint";
 import type { Project, ReferenceVideo } from "@/lib/types";
+
+// Demo mode is on when a pre-rendered MP4 is configured for the brief stage.
+const DEMO_MODE = !!process.env.NEXT_PUBLIC_DEMO_RENDER_URL;
+// The prepared clip for the demo is the 2nd tile (0-based index 1).
+const DEMO_CLIP_INDEX = 1;
 
 export function ClipsPanel() {
   const searchParams = useSearchParams();
@@ -168,6 +174,13 @@ export function ClipsPanel() {
         </p>
       )}
 
+      {DEMO_MODE && (
+        <DemoBanner>
+          Pick the <span className="text-primary">2nd</span> clip — it&apos;s already analysed and
+          wired for the demo.
+        </DemoBanner>
+      )}
+
       {scraping && (
         <div className="mt-4 flex items-center gap-3 rounded-md border border-border bg-muted/40 p-3 text-sm">
           <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
@@ -215,11 +228,12 @@ export function ClipsPanel() {
 
       {videos.length > 0 && (
         <div className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
-          {videos.map((v) => (
+          {videos.map((v, i) => (
             <ClipTile
               key={v.id}
               video={v}
               selected={selectedId === v.id}
+              recommended={DEMO_MODE && i === DEMO_CLIP_INDEX}
               busy={analysingId === v.id}
               scriptHref={scriptHref(v.id)}
               onSelect={() => setSelectedId(selectedId === v.id ? null : v.id)}
@@ -248,6 +262,7 @@ export function ClipsPanel() {
 function ClipTile({
   video: v,
   selected,
+  recommended,
   busy,
   scriptHref,
   onSelect,
@@ -255,6 +270,7 @@ function ClipTile({
 }: {
   video: ReferenceVideo;
   selected: boolean;
+  recommended?: boolean;
   busy: boolean;
   scriptHref: string;
   onSelect: () => void;
@@ -267,9 +283,18 @@ function ClipTile({
     <div
       onClick={onSelect}
       className={`group relative aspect-[9/16] w-full cursor-pointer overflow-hidden rounded-md border bg-muted text-left transition ${
-        selected ? "border-primary ring-2 ring-primary" : "border-border hover:border-foreground/40"
+        selected
+          ? "border-primary ring-2 ring-primary"
+          : recommended
+            ? "border-primary ring-2 ring-primary/50"
+            : "border-border hover:border-foreground/40"
       }`}
     >
+      {recommended && !selected && (
+        <span className="absolute right-1 top-1 z-10 rounded-full bg-primary px-1.5 py-0.5 font-mono text-[8px] font-medium uppercase tracking-wider text-primary-foreground">
+          pick me
+        </span>
+      )}
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
