@@ -1,10 +1,23 @@
 import express from "express";
+import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { JobState, RenderJobInput } from "./types.js";
 import { runJob } from "./job.js";
+import { RENDER_ROOT } from "./render.js";
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
+
+// Allow the Next app (any origin) to call the render API + fetch outputs.
+app.use((_req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "content-type");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  next();
+});
+
+// Serve finished renders so the result is downloadable at /out/edited-<jobId>.mp4.
+app.use("/out", express.static(join(RENDER_ROOT, "out")));
 
 // In-memory job table. A render is 30s-2min, so we hand back a jobId and let the
 // client poll — a synchronous HTTP call would time out.

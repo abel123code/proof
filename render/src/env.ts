@@ -8,11 +8,13 @@ import { existsSync } from "node:fs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-// Try the repo-root env files in order; first one that exists wins. Harmless if none exist.
-for (const candidate of ["../../.env.local", "../../.env", "../.env.local", "../.env"]) {
+// Try env files in order; first one that exists wins. override:true means a committed-on-box
+// .env.local is the source of truth even if a stale/mangled var was exported in the shell.
+// Order prefers render/.env.local (the easiest place to drop keys on the Zo box).
+for (const candidate of ["../.env.local", "../.env", "../../.env.local", "../../.env"]) {
   const p = resolve(here, candidate);
   if (existsSync(p)) {
-    config({ path: p });
+    config({ path: p, override: true });
     break;
   }
 }
