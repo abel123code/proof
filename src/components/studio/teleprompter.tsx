@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import type { BriefDoc } from "@/lib/types";
 
 function sleep(ms: number) {
@@ -26,17 +27,24 @@ function fmt(s: number): string {
 
 export function Teleprompter({
   doc,
+  briefId,
   startScene = 0,
+  initialFootage = {},
+  onFootageChange,
   onClose,
 }: {
   doc: BriefDoc;
+  briefId: string | null;
   startScene?: number;
+  initialFootage?: Record<number, string>;
+  onFootageChange?: (sceneIndex: number, url: string | null) => void;
   onClose: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawRafRef = useRef<number | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
-  const sceneRefs = useRef<(HTMLDivElement | null)[]>([]);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
@@ -45,17 +53,85 @@ export function Teleprompter({
   const offsetRef = useRef(0);
   const playingRef = useRef(false);
 
+  const sceneCount = doc.scenes.length;
+  const [active, setActive] = useState(Math.min(Math.max(0, startScene), sceneCount - 1));
   const [camError, setCamError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [recording, setRecording] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [speed, setSpeed] = useState(5); // 1..10 -> px/sec
+  const [speed, setSpeed] = useState(5);
   const [fontScale, setFontScale] = useState(1);
   const [mirror, setMirror] = useState(false);
-  const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
+  // Persistent footage per scene index (public Storage URLs), seeded from the brief.
+  const [footage, setFootage] = useState<Record<number, string>>(initialFootage);
+  const [uploading, setUploading] = useState(false);
+  const [viewing, setViewing] = useState(false);
 
+  const scene = doc.scenes[active];
+  const currentUrl = footage[active] ?? null;
   const pxPerSec = speed * 10;
+  const busy = recording || countdown != null || uploading;
+
+  const uploadBlob = useCallback(
+    async (sceneIdx: number, blob: Blob) => {
+      if (!briefId) {
+        toast.error("No brief to attach this footage to.");
+        return;
+      }
+      setUploading(true);
+      try {
+        const ext = blob.type.includes("mp4") ? "mp4" : "webm";
+        const fd = new FormData();
+        fd.append("briefId", briefId);
+        fd.append("sceneIndex", String(sceneIdx));
+        fd.append("file", blob, `scene-${sceneIdx}.${ext}`);
+        const res = await fetch("/api/footage", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Upload failed");
+        setFootage((m) => ({ ...m, [sceneIdx]: data.url }));
+        onFootageChange?.(sceneIdx, data.url);
+        toast.success(`Scene ${sceneIdx + 1} uploaded`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Upload failed");
+      } finally {
+        setUploading(false);
+      }
+    },
+    [briefId, onFootageChange],
+  );
+
+  const deleteCurrent = useCallback(async () => {
+    if (!briefId) return;
+    const idx = active;
+    setViewing(false);
+    try {
+      const res = await fetch("/api/footage", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ briefId, sceneIndex: idx }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? "Delete failed");
+      }
+      setFootage((m) => {
+        const next = { ...m };
+        delete next[idx];
+        return next;
+      });
+      onFootageChange?.(idx, null);
+      setElapsed(0);
+      toast.success("Footage deleted");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    }
+  }, [briefId, active, onFootageChange]);
+
+  const resetScroll = useCallback(() => {
+    offsetRef.current = 0;
+    if (trackRef.current) trackRef.current.style.transform = "translateY(0px)";
+  }, []);
 
   const applyOffset = useCallback((px: number) => {
     const track = trackRef.current;
@@ -68,17 +144,7 @@ export function Teleprompter({
     return clamped >= max;
   }, []);
 
-  const jumpToScene = useCallback(
-    (i: number) => {
-      const el = sceneRefs.current[i];
-      const vp = viewportRef.current;
-      if (!el || !vp) return;
-      const eyeline = vp.clientHeight * 0.18;
-      applyOffset(el.offsetTop - eyeline);
-    },
-    [applyOffset],
-  );
-
+  // Camera + mic.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -97,9 +163,7 @@ export function Teleprompter({
           await videoRef.current.play().catch(() => {});
         }
       } catch (e) {
-        if (!cancelled) {
-          setCamError(e instanceof Error ? e.message : "Camera/mic unavailable");
-        }
+        if (!cancelled) setCamError(e instanceof Error ? e.message : "Camera/mic unavailable");
       }
     })();
     return () => {
@@ -108,11 +172,7 @@ export function Teleprompter({
     };
   }, []);
 
-  useEffect(() => {
-    const id = setTimeout(() => jumpToScene(startScene), 80);
-    return () => clearTimeout(id);
-  }, [startScene, jumpToScene]);
-
+  // Scroll loop (in case a single scene's text overflows the reading area).
   useEffect(() => {
     const tick = (ts: number) => {
       if (lastTsRef.current == null) lastTsRef.current = ts;
@@ -145,21 +205,55 @@ export function Teleprompter({
     setPlaying(v);
   }, []);
 
+  const startCanvasDraw = useCallback(() => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const target = canvas.width / canvas.height;
+    const draw = () => {
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (vw && vh) {
+        const srcA = vw / vh;
+        let sx: number, sy: number, sw: number, sh: number;
+        if (srcA > target) {
+          sh = vh;
+          sw = vh * target;
+          sx = (vw - sw) / 2;
+          sy = 0;
+        } else {
+          sw = vw;
+          sh = vw / target;
+          sx = 0;
+          sy = (vh - sh) / 2;
+        }
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      }
+      drawRafRef.current = requestAnimationFrame(draw);
+    };
+    drawRafRef.current = requestAnimationFrame(draw);
+  }, []);
+
+  const stopCanvasDraw = useCallback(() => {
+    if (drawRafRef.current) cancelAnimationFrame(drawRafRef.current);
+    drawRafRef.current = null;
+  }, []);
+
   const stopRecording = useCallback(() => {
     setPlay(false);
     const mr = recorderRef.current;
     if (mr && mr.state !== "inactive") mr.stop();
     recorderRef.current = null;
+    stopCanvasDraw();
     setRecording(false);
-  }, [setPlay]);
+  }, [setPlay, stopCanvasDraw]);
 
   const beginRecord = useCallback(async () => {
-    if (recording || countdown != null) return;
-    setRecordedUrl((u) => {
-      if (u) URL.revokeObjectURL(u);
-      return null;
-    });
-    jumpToScene(startScene);
+    if (busy) return;
+    setViewing(false);
+    resetScroll();
     setElapsed(0);
 
     for (let n = 3; n >= 1; n--) {
@@ -173,23 +267,45 @@ export function Teleprompter({
       try {
         chunksRef.current = [];
         const mimeType = pickMimeType();
-        const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        let recordStream: MediaStream = stream;
+        const canvas = canvasRef.current;
+        if (canvas && typeof canvas.captureStream === "function") {
+          startCanvasDraw();
+          const canvasStream = canvas.captureStream(30);
+          const audio = stream.getAudioTracks()[0];
+          if (audio) canvasStream.addTrack(audio);
+          recordStream = canvasStream;
+        }
+        const sceneIdx = active;
+        const mr = new MediaRecorder(recordStream, mimeType ? { mimeType } : undefined);
         mr.ondataavailable = (e) => {
           if (e.data.size > 0) chunksRef.current.push(e.data);
         };
         mr.onstop = () => {
           const blob = new Blob(chunksRef.current, { type: mimeType || "video/webm" });
-          setRecordedUrl(URL.createObjectURL(blob));
+          void uploadBlob(sceneIdx, blob);
         };
         mr.start();
         recorderRef.current = mr;
         setRecording(true);
       } catch {
-        /* fall through to reader-only */
+        stopCanvasDraw();
       }
     }
     setPlay(true);
-  }, [recording, countdown, jumpToScene, startScene, setPlay]);
+  }, [busy, active, resetScroll, startCanvasDraw, stopCanvasDraw, setPlay, uploadBlob]);
+
+  const goToScene = useCallback(
+    (i: number) => {
+      if (busy) return;
+      setActive(Math.min(Math.max(0, i), sceneCount - 1));
+      resetScroll();
+      setElapsed(0);
+      setViewing(false);
+      setPlay(false);
+    },
+    [busy, sceneCount, resetScroll, setPlay],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -203,14 +319,13 @@ export function Teleprompter({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, setPlay]);
 
-  const downloadName = `${(doc.title || "brief")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .slice(0, 40)}.webm`;
+  useEffect(() => () => stopCanvasDraw(), [stopCanvasDraw]);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 p-4">
+    <div className="fixed inset-0 z-50 flex flex-row items-center justify-center gap-8 p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+
+      <canvas ref={canvasRef} width={720} height={1280} className="hidden" />
 
       <button
         onClick={onClose}
@@ -221,42 +336,66 @@ export function Teleprompter({
       </button>
 
       {/* 9:16 phone frame */}
-      <div className="relative z-10 aspect-[9/16] h-[78vh] max-h-[78vh] overflow-hidden rounded-[2.2rem] border-[5px] border-neutral-800 bg-black shadow-2xl">
-        {!camError && (
+      <div className="relative z-10 aspect-[9/16] h-[90vh] max-h-[90vh] overflow-hidden rounded-[2.4rem] border-[6px] border-neutral-800 bg-black shadow-2xl">
+        {/* Playback of the uploaded take for this scene */}
+        {viewing && currentUrl ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption
           <video
-            ref={videoRef}
-            muted
+            src={currentUrl}
+            controls
+            autoPlay
             playsInline
-            className="absolute inset-0 h-full w-full object-cover"
-            style={{ transform: "scaleX(-1)" }}
+            className="absolute inset-0 h-full w-full bg-black object-contain"
           />
+        ) : (
+          <>
+            {!camError && (
+              // eslint-disable-next-line jsx-a11y/media-has-caption
+              <video
+                ref={videoRef}
+                muted
+                playsInline
+                className="absolute inset-0 h-full w-full object-cover"
+                style={{ transform: "scaleX(-1)" }}
+              />
+            )}
+            {camError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-neutral-900 px-6 text-center text-sm text-white/60">
+                Camera unavailable ({camError}). Reader only.
+              </div>
+            )}
+          </>
         )}
 
-        {camError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-neutral-900 px-6 text-center text-sm text-white/60">
-            Camera unavailable ({camError}). Running as a teleprompter only.
-          </div>
+        {!viewing && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-[52%] bg-gradient-to-b from-black/75 via-black/45 to-transparent" />
         )}
 
-        {/* Soft scrim only behind the reading area (top) so the camera stays visible */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-[52%] bg-gradient-to-b from-black/75 via-black/45 to-transparent" />
-
-        {/* REC indicator */}
         {recording && (
           <div className="absolute left-3 top-3 z-20 flex items-center gap-1.5 rounded-full bg-black/50 px-2 py-1 backdrop-blur">
             <span className="h-2 w-2 animate-pulse rounded-full bg-[#e0533d]" />
             <span className="font-mono text-[11px] text-white">{fmt(elapsed)}</span>
           </div>
         )}
+        {uploading && (
+          <div className="absolute left-3 top-3 z-20 flex items-center gap-1.5 rounded-full bg-black/60 px-2 py-1 backdrop-blur">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+            <span className="font-mono text-[10px] text-white">uploading…</span>
+          </div>
+        )}
+        {currentUrl && !recording && !uploading && (
+          <div className="absolute left-3 top-3 z-20 rounded-full bg-[#e0533d] px-2 py-1 font-mono text-[10px] text-white">
+            ✓ uploaded
+          </div>
+        )}
 
-        {/* Teleprompter reading area */}
+        {/* Reading area: only the active scene */}
         <div
           ref={viewportRef}
-          className="absolute inset-x-0 top-0 h-[50%] overflow-hidden"
+          className={`absolute inset-x-0 top-0 h-[50%] overflow-hidden ${viewing ? "hidden" : ""}`}
           style={{
-            maskImage: "linear-gradient(to bottom, black 70%, transparent)",
-            WebkitMaskImage: "linear-gradient(to bottom, black 70%, transparent)",
+            maskImage: "linear-gradient(to bottom, black 72%, transparent)",
+            WebkitMaskImage: "linear-gradient(to bottom, black 72%, transparent)",
           }}
         >
           <div
@@ -264,56 +403,37 @@ export function Teleprompter({
             className="px-5 will-change-transform"
             style={{ transform: "translateY(0px)", scale: mirror ? "-1 1" : undefined }}
           >
-            <div style={{ height: "9vh" }} />
-            {doc.scenes.map((s, i) => (
-              <div
-                key={i}
-                ref={(el) => {
-                  sceneRefs.current[i] = el;
-                }}
-                className="mb-7"
-              >
-                <div className="mb-1 flex items-center gap-1.5">
-                  <span className="font-mono text-[9px] uppercase tracking-widest text-[#e0533d]">
-                    {String(s.scene ?? i + 1).padStart(2, "0")}
-                  </span>
-                  <span className="font-mono text-[9px] uppercase tracking-widest text-white/40">
-                    {s.label}
-                  </span>
-                </div>
-                <p
-                  className="font-semibold leading-snug text-white drop-shadow"
-                  style={{ fontSize: `${1.35 * fontScale}rem` }}
-                >
-                  {s.spokenLine}
-                </p>
-                {(s.onScreenText || s.brollCue) && (
-                  <div className="mt-1.5 space-y-0.5 text-white/35">
-                    {s.onScreenText && (
-                      <p className="text-[11px]">
-                        <span className="font-mono uppercase tracking-widest text-white/30">
-                          text ·{" "}
-                        </span>
-                        {s.onScreenText}
-                      </p>
-                    )}
-                    {s.brollCue && (
-                      <p className="text-[11px] italic">
-                        <span className="font-mono uppercase not-italic tracking-widest text-white/30">
-                          show ·{" "}
-                        </span>
-                        {s.brollCue}
-                      </p>
-                    )}
-                  </div>
+            <div style={{ height: "7vh" }} />
+            <p
+              className="font-semibold leading-snug text-white drop-shadow"
+              style={{ fontSize: `${1.4 * fontScale}rem` }}
+            >
+              {scene?.spokenLine}
+            </p>
+            {(scene?.onScreenText || scene?.brollCue) && (
+              <div className="mt-2 space-y-0.5 text-white/35">
+                {scene?.onScreenText && (
+                  <p className="text-[11px]">
+                    <span className="font-mono uppercase tracking-widest text-white/30">
+                      text ·{" "}
+                    </span>
+                    {scene.onScreenText}
+                  </p>
+                )}
+                {scene?.brollCue && (
+                  <p className="text-[11px] italic">
+                    <span className="font-mono uppercase not-italic tracking-widest text-white/30">
+                      show ·{" "}
+                    </span>
+                    {scene.brollCue}
+                  </p>
                 )}
               </div>
-            ))}
-            <div style={{ height: "30vh" }} />
+            )}
+            <div style={{ height: "20vh" }} />
           </div>
         </div>
 
-        {/* Countdown */}
         {countdown != null && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/30">
             <span className="font-display text-8xl font-bold text-white drop-shadow-lg">
@@ -323,9 +443,27 @@ export function Teleprompter({
         )}
       </div>
 
-      {/* Controls (below the phone) */}
-      <div className="relative z-10 flex w-full max-w-md flex-col items-center gap-3">
-        <div className="flex items-center gap-3">
+      {/* Controls (side panel) */}
+      <div className="relative z-10 flex w-[280px] flex-col items-stretch gap-5">
+        {/* Scene heading */}
+        <div>
+          <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/50">
+            Scene {String(scene?.scene ?? active + 1).padStart(2, "0")} / {sceneCount}
+          </p>
+          {scene?.label && (
+            <p className="mt-1 font-display text-2xl tracking-tight text-white">{scene.label}</p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={() => goToScene(active - 1)}
+            disabled={busy || active === 0}
+            className="rounded-full border border-white/25 px-3 py-2 text-xs text-white/80 transition hover:bg-white/10 disabled:opacity-30"
+          >
+            ‹ Prev
+          </button>
+
           {recording ? (
             <button
               onClick={stopRecording}
@@ -337,39 +475,30 @@ export function Teleprompter({
           ) : (
             <button
               onClick={beginRecord}
-              disabled={countdown != null}
+              disabled={countdown != null || uploading}
               className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-white/70 transition hover:border-white disabled:opacity-50"
-              aria-label="Record"
+              aria-label="Record this scene"
             >
               <span className="h-9 w-9 rounded-full bg-[#e0533d]" />
             </button>
           )}
 
           <button
-            onClick={() => setPlay(!playing)}
-            className="rounded-full border border-white/25 px-4 py-2 text-xs text-white/80 transition hover:bg-white/10"
+            onClick={() => goToScene(active + 1)}
+            disabled={busy || active === sceneCount - 1}
+            className="rounded-full border border-white/25 px-3 py-2 text-xs text-white/80 transition hover:bg-white/10 disabled:opacity-30"
           >
-            {playing ? "Pause" : "Play"}
+            Next ›
           </button>
-          <button
-            onClick={() => jumpToScene(startScene)}
-            className="rounded-full border border-white/25 px-4 py-2 text-xs text-white/80 transition hover:bg-white/10"
-          >
-            Restart
-          </button>
-
-          {recordedUrl && (
-            <a
-              href={recordedUrl}
-              download={downloadName}
-              className="rounded-full bg-white px-4 py-2 text-xs font-medium text-black transition hover:bg-white/90"
-            >
-              ↓ Save
-            </a>
-          )}
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-white/60">
+          <button
+            onClick={() => setPlay(!playing)}
+            className="rounded-full border border-white/25 px-3 py-1 text-white/80 transition hover:bg-white/10"
+          >
+            {playing ? "Pause" : "Play"}
+          </button>
           <label className="flex items-center gap-2">
             Speed
             <input
@@ -406,17 +535,46 @@ export function Teleprompter({
           </button>
         </div>
 
-        {/* Scene jump chips */}
-        <div className="flex max-w-full flex-wrap justify-center gap-1.5">
-          {doc.scenes.map((s, i) => (
+        {currentUrl && !recording && !uploading && (
+          <div className="flex items-center gap-2">
             <button
-              key={i}
-              onClick={() => jumpToScene(i)}
-              className="rounded-full border border-white/15 px-2 py-0.5 font-mono text-[10px] text-white/55 transition hover:border-white/50 hover:text-white"
+              onClick={() => setViewing((v) => !v)}
+              className="rounded-full bg-white px-4 py-1.5 text-xs font-medium text-black transition hover:bg-white/90"
             >
-              {String(s.scene ?? i + 1).padStart(2, "0")}
+              {viewing ? "Back to camera" : "▷ View take"}
             </button>
-          ))}
+            <button
+              onClick={deleteCurrent}
+              className="rounded-full border border-white/25 px-4 py-1.5 text-xs text-white/70 transition hover:border-[#e0533d] hover:text-[#e0533d]"
+            >
+              Delete
+            </button>
+          </div>
+        )}
+
+        {/* Scene picker with recorded ticks */}
+        <div className="flex max-w-full flex-wrap justify-center gap-1.5">
+          {doc.scenes.map((s, i) => {
+            const has = !!footage[i];
+            const isActive = i === active;
+            return (
+              <button
+                key={i}
+                onClick={() => goToScene(i)}
+                disabled={busy}
+                className={`rounded-full border px-2 py-0.5 font-mono text-[10px] transition disabled:opacity-40 ${
+                  isActive
+                    ? "border-white bg-white/15 text-white"
+                    : has
+                      ? "border-[#e0533d]/70 text-[#e0533d]"
+                      : "border-white/15 text-white/55 hover:border-white/50 hover:text-white"
+                }`}
+              >
+                {has ? "✓ " : ""}
+                {String(s.scene ?? i + 1).padStart(2, "0")}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

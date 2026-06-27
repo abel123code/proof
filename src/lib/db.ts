@@ -309,6 +309,87 @@ export async function getLatestBriefForReference(
   return data ? mapBrief(data as BriefRow) : null;
 }
 
+// ---- scene footage ----
+const FOOTAGE_BUCKET = "footage";
+
+/** All footage for a brief, mapped sceneIndex -> public URL. */
+export async function listSceneFootage(briefId: string): Promise<Record<number, string>> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("scene_footage")
+    .select("scene_index, url")
+    .eq("brief_id", briefId);
+  if (error) throw new Error(`listSceneFootage failed: ${error.message}`);
+  const map: Record<number, string> = {};
+  for (const row of (data ?? []) as { scene_index: number; url: string }[]) {
+    map[row.scene_index] = row.url;
+  }
+  return map;
+}
+
+/** Upload a scene clip to storage and upsert its footage row. Returns the URL. */
+export async function uploadSceneFootage(input: {
+  briefId: string;
+  sceneIndex: number;
+  bytes: ArrayBuffer | Uint8Array | Buffer;
+  contentType: string;
+}): Promise<string> {
+  const supabase = getSupabaseAdmin();
+  const ext = input.contentType.includes("mp4") ? "mp4" : "webm";
+  const path = `${input.briefId}/scene-${input.sceneIndex}.${ext}`;
+
+  const body =
+    input.bytes instanceof Uint8Array || Buffer.isBuffer(input.bytes)
+      ? input.bytes
+      : new Uint8Array(input.bytes);
+
+  const { error: upErr } = await supabase.storage
+    .from(FOOTAGE_BUCKET)
+    .upload(path, body, { contentType: input.contentType, upsert: true });
+  if (upErr) throw new Error(`footage upload failed: ${upErr.message}`);
+
+  const { data: pub } = supabase.storage.from(FOOTAGE_BUCKET).getPublicUrl(path);
+  // Cache-bust so a re-record of the same scene shows the new take.
+  const url = `${pub.publicUrl}?v=${Date.now()}`;
+
+  const { error: rowErr } = await supabase
+    .from("scene_footage")
+    .upsert(
+      {
+        brief_id: input.briefId,
+        scene_index: input.sceneIndex,
+        url,
+        storage_path: path,
+      },
+      { onConflict: "brief_id,scene_index" },
+    );
+  if (rowErr) throw new Error(`footage row upsert failed: ${rowErr.message}`);
+
+  return url;
+}
+
+/** Delete a scene's footage (storage object + row). */
+export async function deleteSceneFootage(briefId: string, sceneIndex: number): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("scene_footage")
+    .select("storage_path")
+    .eq("brief_id", briefId)
+    .eq("scene_index", sceneIndex)
+    .maybeSingle();
+  if (error) throw new Error(`deleteSceneFootage lookup failed: ${error.message}`);
+  const path = (data as { storage_path: string | null } | null)?.storage_path;
+  if (path) {
+    await supabase.storage.from(FOOTAGE_BUCKET).remove([path]);
+  }
+  const { error: delErr } = await supabase
+    .from("scene_footage")
+    .delete()
+    .eq("brief_id", briefId)
+    .eq("scene_index", sceneIndex);
+  if (delErr) throw new Error(`deleteSceneFootage failed: ${delErr.message}`);
+}
+
 /** Persist a scene-by-scene content brief (with the gap Q&A that produced it). */
 export async function saveBriefDoc(input: {
   projectId: string;
