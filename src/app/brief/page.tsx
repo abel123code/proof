@@ -1,12 +1,15 @@
+import { Suspense } from "react";
 import { StudioHeader } from "@/components/studio/studio-header";
-import { ProjectPanel } from "@/components/studio/project-panel";
+import { BriefPanel } from "@/components/studio/brief-panel";
 
-export default function Home() {
+export default function BriefPage() {
   return (
     <div className="flex flex-1 flex-col">
       <StudioHeader />
       <main className="flex-1">
-        <ProjectPanel />
+        <Suspense>
+          <BriefPanel />
+        </Suspense>
       </main>
     </div>
   );
