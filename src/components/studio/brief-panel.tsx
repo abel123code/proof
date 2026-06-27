@@ -142,6 +142,42 @@ export function BriefPanel() {
     }
   }, [ready, projectId, trendIndex, referenceVideoId, gaps, answers]);
 
+  const exportBrief = useCallback(() => {
+    if (!doc) return;
+    const payload = {
+      title: doc.title,
+      hook: doc.hook,
+      angle: doc.angle,
+      targetFeeling: doc.targetFeeling ?? null,
+      sources: doc.sources ?? [],
+      fps: 30,
+      format: { width: 1080, height: 1920 },
+      scenes: doc.scenes.map((s, i) => ({
+        index: i,
+        scene: s.scene ?? i + 1,
+        label: s.label,
+        spokenLine: s.spokenLine,
+        onScreenText: s.onScreenText ?? "",
+        brollCue: s.brollCue ?? "",
+        durationSeconds: s.durationSeconds ?? null,
+        footageUrl: footage[i] ?? null,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(doc.title || "brief")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .slice(0, 40)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("brief.json downloaded — ready for Remotion");
+  }, [doc, footage]);
+
   const uploadFootage = useCallback(
     async (sceneIndex: number, file: File) => {
       if (!briefId) {
@@ -215,6 +251,9 @@ export function BriefPanel() {
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" onClick={() => setPhase("questions")}>
               Edit answers & regenerate
+            </Button>
+            <Button size="sm" variant="outline" onClick={exportBrief}>
+              ↓ Export for Remotion
             </Button>
             <Button size="sm" onClick={() => setRecordScene(0)}>
               ● Record
