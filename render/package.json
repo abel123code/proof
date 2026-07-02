@@ -1,0 +1,32 @@
+{
+  "name": "proof-render",
+  "private": true,
+  "type": "module",
+  "description": "Zo-hosted render service: raw teleprompter take + brief -> cut, captioned, overlaid short-form MP4.",
+  "scripts": {
+    "server": "tsx src/server.ts",
+    "verify:whisper": "tsx scripts/verify-whisper.ts",
+    "test:local": "tsx scripts/test-local.ts",
+    "render": "remotion render remotion/index.ts Main",
+    "studio": "remotion studio remotion/index.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@remotion/google-fonts": "^4.0.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "openai": "^6.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
