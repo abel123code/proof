@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Standalone Zo render service — deployed separately, not part of the Next build.
+    "render/**",
   ]),
 ]);
 
