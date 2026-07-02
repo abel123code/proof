@@ -34,7 +34,11 @@ export function BriefPanel() {
   const projectId = searchParams.get("project");
   const trendIndex = searchParams.get("trend");
   const referenceVideoId = searchParams.get("ref");
+  // Smoke-test mode: /brief?test=1 spins up a real one-scene brief so you can film
+  // a single scene and hit "Send to editor" without the full pipeline.
+  const testMode = searchParams.get("test") === "1";
   const gapsStarted = useRef(false);
+  const testStarted = useRef(false);
 
   const [project, setProject] = useState<Project | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
@@ -75,10 +79,38 @@ export function BriefPanel() {
     }
   }, [ready, projectId, trendIndex, referenceVideoId]);
 
+  // Test mode: create a real one-scene brief, then jump straight to the brief view.
+  useEffect(() => {
+    if (!testMode || testStarted.current) return;
+    testStarted.current = true;
+    let cancelled = false;
+    (async () => {
+      setPhase("loading");
+      try {
+        const res = await fetch("/api/test-brief", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Could not create test brief");
+        if (cancelled) return;
+        setDoc(data.doc);
+        setBriefId(data.briefId);
+        setFootage({});
+        setPhase("brief");
+      } catch (e) {
+        if (!cancelled) {
+          toast.error(e instanceof Error ? e.message : "Test brief failed");
+          setPhase("questions");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [testMode]);
+
   // Load project + any saved brief. If none saved, auto-run the cheap gaps step.
   useEffect(() => {
     if (!ready) {
-      setPhase("loading");
+      if (!testMode) setPhase("loading");
       return;
     }
     let cancelled = false;
@@ -345,7 +377,7 @@ export function BriefPanel() {
     ? RENDER_LABELS[renderStatus] ?? "Working…"
     : "Working…";
 
-  if (!ready) {
+  if (!ready && !testMode) {
     return (
       <div className="mx-auto w-full max-w-[920px] px-8 py-10">
         <SectionMarker n="04" title="Brief" />
