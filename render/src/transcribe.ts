@@ -16,6 +16,7 @@ export async function transcribeWords(audioPath: string): Promise<WhisperWord[]>
   const resp = await client.audio.transcriptions.create({
     file: createReadStream(audioPath),
     model: "whisper-1",
+    language: "en", // force English — Whisper otherwise mis-detects accented English (e.g. as Malay)
     response_format: "verbose_json",
     timestamp_granularities: ["word"],
   });

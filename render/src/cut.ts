@@ -27,6 +27,8 @@ export interface CutOptions {
   mergeGapMs?: number;
   /** Breathing room kept at each segment edge. */
   padMs?: number;
+  /** Cap on a single word's duration — trailing silence beyond this is treated as a gap. */
+  maxWordMs?: number;
 }
 
 /**
@@ -39,10 +41,15 @@ export interface CutOptions {
  * Script-guided retake removal (pass 3) is layered on separately as a stretch.
  */
 export function planCut(words: WhisperWord[], opts: CutOptions = {}): CutPlan {
-  const mergeGapMs = opts.mergeGapMs ?? 700;
-  const padMs = opts.padMs ?? 120;
+  const mergeGapMs = opts.mergeGapMs ?? 450;
+  const padMs = opts.padMs ?? 90;
+  const maxWordMs = opts.maxWordMs ?? 650;
 
-  const keptWords = words.filter((w) => !FILLERS.has(norm(w.word)));
+  // Whisper often absorbs trailing silence INTO a word's end time, hiding the pause from a
+  // gap test. Cap each word's duration so swallowed silence becomes a visible gap + gets cut.
+  const keptWords = words
+    .filter((w) => !FILLERS.has(norm(w.word)))
+    .map((w) => ({ ...w, end: Math.min(w.end, w.start + maxWordMs / 1000) }));
   if (keptWords.length === 0) return { segments: [], keptWords: [] };
 
   const segments: KeepSegment[] = [];

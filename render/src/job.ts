@@ -10,6 +10,7 @@ import { transcribeWords } from "./transcribe.js";
 import { planCut } from "./cut.js";
 import { remap } from "./remap.js";
 import { buildKeywordCues, buildOverlayCues } from "./cues.js";
+import { cleanTerms } from "./terms.js";
 import { renderOverlay, RENDER_ROOT } from "./render.js";
 import { getSupabaseAdmin, RENDER_BUCKET } from "./supabase.js";
 
@@ -122,8 +123,9 @@ export async function runJob(
 
     // 6. Remap word + overlay timing onto the post-cut timeline.
     const r = remap(plan.keptWords, plan.segments);
-    const keywordCues = buildKeywordCues(r.words, brief.keywordFlags);
-    const overlayCues = buildOverlayCues(r.words, brief.overlays ?? [], r.totalMs);
+    const captionWords = cleanTerms(r.words); // fix technical terms (Trigger.dev, Next.js, ...)
+    const keywordCues = buildKeywordCues(captionWords, brief.keywordFlags);
+    const overlayCues = buildOverlayCues(captionWords, brief.overlays ?? [], r.totalMs);
 
     // 7. Build props for the TRANSPARENT overlay render (baseVideoFile empty = no video
     //    mounted, so OffthreadVideo seeking can't fail).
@@ -132,7 +134,7 @@ export async function runJob(
       durationMs: probe.durationMs || r.totalMs,
       width: probe.width,
       height: probe.height,
-      words: r.words,
+      words: captionWords,
       keywordCues,
       overlayCues,
       accentColor: brief.accentColor,
