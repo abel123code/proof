@@ -1,3 +1,4 @@
+import "./env.js";
 import express from "express";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -11,13 +12,22 @@ app.use(express.json({ limit: "2mb" }));
 // Allow the Next app (any origin) to call the render API + fetch outputs.
 app.use((_req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "content-type");
+  res.setHeader("Access-Control-Allow-Headers", "content-type, x-render-token");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   next();
 });
 
 // Serve finished renders so the result is downloadable at /out/edited-<jobId>.mp4.
 app.use("/out", express.static(join(RENDER_ROOT, "out")));
+
+// Optional shared-secret auth: when RENDER_TOKEN is set, /render routes require it.
+// /health stays open (Railway healthcheck); /out is unguessable per-job UUIDs.
+const RENDER_TOKEN = process.env.RENDER_TOKEN;
+app.use("/render", (req, res, next) => {
+  if (!RENDER_TOKEN || req.method === "OPTIONS") return next();
+  if (req.headers["x-render-token"] === RENDER_TOKEN) return next();
+  res.status(401).json({ error: "unauthorized" });
+});
 
 // In-memory job table. A render is 30s-2min, so we hand back a jobId and let the
 // client poll — a synchronous HTTP call would time out.
