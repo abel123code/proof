@@ -19,8 +19,12 @@ USER node
 
 # npm ci must include devDependencies: `npm run server` is `tsx src/server.ts`
 # and tsx is a devDependency. Do NOT set NODE_ENV=production before this line.
+# --include=dev makes that invariant explicit even if NODE_ENV=production or an
+# npm `omit` config leaks into the build environment (e.g. via a base image or
+# platform default) — without it, npm silently skips devDependencies and tsx
+# would be missing at runtime.
 COPY --chown=node:node package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --include=dev
 
 # Pre-warm chrome-headless-shell so the first render doesn't cold-download it.
 RUN npx remotion browser ensure
