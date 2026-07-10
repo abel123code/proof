@@ -8,6 +8,7 @@
     "verify:whisper": "tsx scripts/verify-whisper.ts",
     "test:local": "tsx scripts/test-local.ts",
     "test:zo": "tsx scripts/test-zo.ts",
+    "test:unit": "tsx --test tests/*.test.ts",
     "render": "remotion render remotion/index.ts Main",
     "studio": "remotion studio remotion/index.ts",
     "check": "tsc --noEmit"
