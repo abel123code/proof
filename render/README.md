@@ -77,6 +77,10 @@ injects it.
 The Next app needs `RENDER_SERVICE_URL` pointed at the Railway URL above (repo-root
 `.env.local` locally, a real env var in prod).
 
+`RENDER_TOKEN` is optional shared-secret auth. If you set it on the Railway service, the
+Next app must set the **same** value (it sends it as an `x-render-token` header) or every
+render request fails with 401. Leave it unset on both sides to run without auth.
+
 ### Railway caveats
 
 - **Job state is in-memory.** A redeploy or restart mid-render loses in-flight jobs; the

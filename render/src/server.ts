@@ -1,7 +1,7 @@
 import "./env.js";
 import express from "express";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { JobState, RenderJobInput } from "./types.js";
 import { runJob } from "./job.js";
 import { RENDER_ROOT } from "./render.js";
@@ -23,9 +23,15 @@ app.use("/out", express.static(join(RENDER_ROOT, "out")));
 // Optional shared-secret auth: when RENDER_TOKEN is set, /render routes require it.
 // /health stays open (Railway healthcheck); /out is unguessable per-job UUIDs.
 const RENDER_TOKEN = process.env.RENDER_TOKEN;
+function tokenOk(sent: unknown): boolean {
+  if (typeof sent !== "string" || !RENDER_TOKEN) return false;
+  const a = Buffer.from(sent);
+  const b = Buffer.from(RENDER_TOKEN);
+  return a.length === b.length && timingSafeEqual(a, b); // constant-time; no early-exit timing leak
+}
 app.use("/render", (req, res, next) => {
   if (!RENDER_TOKEN || req.method === "OPTIONS") return next();
-  if (req.headers["x-render-token"] === RENDER_TOKEN) return next();
+  if (tokenOk(req.headers["x-render-token"])) return next();
   res.status(401).json({ error: "unauthorized" });
 });
 
