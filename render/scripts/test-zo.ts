@@ -34,11 +34,15 @@ async function main() {
   const videoUrl = await publicUpload(clip);
   console.log("public videoUrl:", videoUrl);
 
+  const RENDER_TOKEN = process.env.RENDER_TOKEN;
   const body = { videoUrl, brief: { script: "", keywordFlags: [] } };
   console.log(`\nPOST ${baseUrl}/render`);
   const res = await fetch(`${baseUrl}/render`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(RENDER_TOKEN ? { "x-render-token": RENDER_TOKEN } : {}),
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`render POST failed ${res.status}: ${await res.text()}`);
@@ -49,7 +53,9 @@ async function main() {
   const deadline = Date.now() + 8 * 60_000;
   while (Date.now() < deadline) {
     await sleep(3000);
-    const s = await fetch(`${baseUrl}/render/${jobId}`).then((r) => r.json());
+    const s = await fetch(`${baseUrl}/render/${jobId}`, {
+      headers: RENDER_TOKEN ? { "x-render-token": RENDER_TOKEN } : {},
+    }).then((r) => r.json());
     if (s.status !== last) {
       console.log(`  [${s.status}]${s.error ? " " + s.error : ""}${s.mp4Url ? " -> " + s.mp4Url : ""}`);
       last = s.status;
