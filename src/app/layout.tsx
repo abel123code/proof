@@ -22,9 +22,9 @@ const mono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Reverse-Engineer",
+  title: "Proof",
   description:
-    "Turn your shipped project into recruiter-facing UGC by reverse-engineering what already works in your niche.",
+    "Turn what you've shipped into content that gets you noticed — research-backed video angles built from your own work.",
 };
 
 export default function RootLayout({
