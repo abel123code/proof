@@ -1,5 +1,8 @@
 import type { KeepSegment, WhisperWord, Word } from "./types.js";
 
+/** Shortest caption window that survives a 30fps frame boundary (~4 frames). */
+const MIN_WORD_MS = 120;
+
 export interface RemapResult {
   /** Kept words, timestamps rewritten onto the post-cut timeline (ms). */
   words: Word[];
@@ -39,6 +42,15 @@ export function remap(keptWords: WhisperWord[], segments: KeepSegment[]): RemapR
     if (startMs === null) continue; // shouldn't happen — kept words live inside segments
     const endMs = origToCut(w.end * 1000) ?? startMs + 200;
     words.push({ text: w.word.trim(), startMs, endMs });
+  }
+
+  // whisper-1 emits zero-length words (start === end, observed on clip-final words).
+  // AutoSubtitle highlights a word while `startMs <= ms < endMs`, so a zero-length word
+  // is never highlighted. Widen it to MIN_WORD_MS, but never past the next word's start.
+  for (let i = 0; i < words.length; i++) {
+    const floor = words[i].startMs + MIN_WORD_MS;
+    const ceiling = i + 1 < words.length ? words[i + 1].startMs : totalMs;
+    words[i].endMs = Math.max(words[i].endMs, Math.min(floor, ceiling));
   }
 
   return { words, totalMs, origToCut };

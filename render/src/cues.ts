@@ -8,21 +8,26 @@ function tokenize(phrase: string): string[] {
   return phrase.split(/\s+/).map(norm).filter(Boolean);
 }
 
-/** Find the first cut-time span where `phrase` is spoken (consecutive word match). */
+/**
+ * Find the first cut-time span where `phrase` is spoken.
+ *
+ * Matching is done on the CONCATENATED normalized text, not token-by-token, because
+ * cleanTerms merges word pairs ("ai" + "seo" -> "AI SEO", "trigger" + "dev" ->
+ * "Trigger.dev"). A token-wise match breaks the moment the transcript and the flag
+ * disagree on where the word boundaries are, and the cue is then silently dropped.
+ * Comparing "aiseo" to "aiseo" makes split and merged forms both anchor.
+ */
 function findPhrase(words: Word[], phrase: string): { startMs: number; endMs: number } | null {
-  const target = tokenize(phrase);
+  const target = tokenize(phrase).join("");
   if (target.length === 0) return null;
-  const norms = words.map((w) => norm(w.text));
-  for (let i = 0; i + target.length <= norms.length; i++) {
-    let hit = true;
-    for (let j = 0; j < target.length; j++) {
-      if (norms[i + j] !== target[j]) {
-        hit = false;
-        break;
-      }
-    }
-    if (hit) {
-      return { startMs: words[i].startMs, endMs: words[i + target.length - 1].endMs };
+  for (let i = 0; i < words.length; i++) {
+    let acc = "";
+    for (let j = i; j < words.length; j++) {
+      acc += norm(words[j].text);
+      if (acc === target) return { startMs: words[i].startMs, endMs: words[j].endMs };
+      // Stop as soon as this run can no longer become the target — keeps "ai" from
+      // matching inside "aisle" and bounds the inner loop.
+      if (!target.startsWith(acc)) break;
     }
   }
   return null;

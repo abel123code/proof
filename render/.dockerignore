@@ -1,0 +1,10 @@
+node_modules
+tmp
+out
+.env
+.env.*
+*.env.local
+Dockerfile
+.dockerignore
+zo-deploy.sh
+README.md

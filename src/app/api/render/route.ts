@@ -9,6 +9,7 @@ export const maxDuration = 120;
 
 // The Zo-hosted render service. Set RENDER_SERVICE_URL in the deployed env.
 const RENDER_SERVICE_URL = process.env.RENDER_SERVICE_URL ?? "http://localhost:8080";
+const RENDER_TOKEN = process.env.RENDER_TOKEN;
 const FOOTAGE_BUCKET = "footage";
 
 /**
@@ -49,7 +50,10 @@ export async function POST(req: Request) {
     // - old box ignores `videoUrls` and renders the single `videoUrl` (first clip)
     const res = await fetch(`${RENDER_SERVICE_URL}/render`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(RENDER_TOKEN ? { "x-render-token": RENDER_TOKEN } : {}),
+      },
       body: JSON.stringify({ videoUrls, videoUrl: videoUrls[0], brief }),
     });
     const data = await res.json().catch(() => ({}));
@@ -101,7 +105,9 @@ export async function GET(req: Request) {
       }
     }
 
-    const res = await fetch(`${RENDER_SERVICE_URL}/render/${encodeURIComponent(jobId)}`);
+    const res = await fetch(`${RENDER_SERVICE_URL}/render/${encodeURIComponent(jobId)}`, {
+      headers: RENDER_TOKEN ? { "x-render-token": RENDER_TOKEN } : {},
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       return NextResponse.json(

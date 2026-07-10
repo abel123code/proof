@@ -43,7 +43,56 @@ npm run server                     # POST /render on :8080
 Env is read from the repo-root `.env.local` (`OPENAI_API_KEY`,
 `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`).
 
-## Deploy on Zo
+## Deploy on Railway
+
+Live at **https://proof-render-production.up.railway.app** (Railway project `proof-render`).
+
+Three files drive the deploy:
+
+- **`Dockerfile`** — mirrors `zo-deploy.sh setup()`'s apt list (ffmpeg + the chromium shared
+  libs `chrome-headless-shell` needs) on `node:22-bookworm-slim`. Everything after
+  `USER node` — `npm ci`, `npx remotion browser ensure`, and the runtime — runs as the
+  non-root `node` user, because Remotion's headless chromium refuses to sandbox as root.
+  `npx remotion browser ensure` pre-warms `chrome-headless-shell` at build time so the
+  first real render doesn't cold-download it.
+- **`railway.json`** — sets the Dockerfile builder, a `/health` healthcheck (300s timeout),
+  and `ON_FAILURE` restarts (max 3 retries).
+- **`.dockerignore`** — critically excludes `.env*` from the build context. `src/env.ts`
+  loads env files with `override: true`, so a baked-in `.env.local` would clobber whatever
+  Railway injects at runtime; keeping it out of the image is what makes Railway's env vars
+  authoritative.
+
+```
+# from inside render/ — this makes render/ the build context, so no
+# root-directory config is needed and there's no GitHub repo coupling
+railway up
+```
+
+Project: `proof-render`. Public URL: https://proof-render-production.up.railway.app
+
+Required Railway variables (set in the Railway dashboard, not committed anywhere):
+`OPENAI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`. Don't set `PORT` — Railway
+injects it.
+
+The Next app needs `RENDER_SERVICE_URL` pointed at the Railway URL above (repo-root
+`.env.local` locally, a real env var in prod).
+
+`RENDER_TOKEN` is optional shared-secret auth. If you set it on the Railway service, the
+Next app must set the **same** value (it sends it as an `x-render-token` header) or every
+render request fails with 401. Leave it unset on both sides to run without auth.
+
+### Railway caveats
+
+- **Job state is in-memory.** A redeploy or restart mid-render loses in-flight jobs; the
+  client just has to re-submit.
+- **`tmp/` and `out/` are ephemeral.** They don't survive redeploys/restarts. Final MP4s
+  for DB-backed jobs (`captureId` requests) are persisted to Supabase Storage — that's the
+  durable copy. `videoUrl`-only jobs are served straight from `/out` and are only as
+  durable as the current container.
+- **First build is slow.** Downloading `chrome-headless-shell` during `npx remotion browser
+  ensure` makes a from-scratch build take ~4-5 minutes.
+
+## Deploy on Zo (legacy / alternative)
 
 ```
 # on the Zo box, in render/
