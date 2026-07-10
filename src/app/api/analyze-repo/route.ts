@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { fetchRepoSnapshot, parseRepoUrl } from "@/lib/github";
 import { OPENAI_MINI_MODEL, openaiJSON } from "@/lib/openai";
 import { requireApprovedUser } from "@/lib/auth";
-import { createProject, getProjectByRepo } from "@/lib/db";
+import { createProject, getProjectByRepo, refundCredits, spendCredits } from "@/lib/db";
+import { CREDIT_COSTS } from "@/lib/pricing";
 import type { ProjectUnderstanding } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -32,6 +33,8 @@ export async function POST(req: Request) {
   const auth = await requireApprovedUser();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+  // Credits reserved up front (see below); refunded if the analysis fails.
+  let charged = 0;
   try {
     const body = await req.json().catch(() => ({}));
     // Accept `repoUrl` (preferred) or `repo` (owner/repo). Either parses to owner/repo.
@@ -52,6 +55,16 @@ export async function POST(req: Request) {
         return NextResponse.json({ project: existing, reused: true });
       }
     }
+
+    // Charge only for a real analysis (past the reuse short-circuit).
+    const spend = await spendCredits(auth.userId, CREDIT_COSTS.repoAnalysis);
+    if (!spend.ok) {
+      return NextResponse.json(
+        { error: "You're out of credits.", creditsRemaining: 0 },
+        { status: 402 },
+      );
+    }
+    charged = CREDIT_COSTS.repoAnalysis;
 
     const snapshot = await fetchRepoSnapshot(repoUrl);
 
@@ -84,6 +97,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ project });
   } catch (err) {
+    if (charged) await refundCredits(auth.userId, charged).catch(() => {});
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
   }

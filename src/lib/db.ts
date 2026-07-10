@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { STARTING_CREDITS } from "@/lib/pricing";
 import type {
   Brief,
   BriefDoc,
@@ -498,96 +499,142 @@ export async function rejectAccessRequest(id: string): Promise<void> {
   if (error) throw new Error(`rejectAccessRequest failed: ${error.message}`);
 }
 
-// ---- usage quotas ----
+// ---- credit wallet ----
+// One lifetime balance per user. Every paid action reserves credits up front
+// (atomic, burst-safe) and refunds on failure. See src/lib/pricing.ts.
 
 export interface Usage {
   userId: string;
-  researchRuns: number;
-  researchWindowStart: string;
-  editsUsed: number;
+  creditsTotal: number;
+  creditsUsed: number;
 }
 
 interface UsageRow {
   user_id: string;
-  research_runs: number;
-  research_window_start: string;
-  edits_used: number;
+  credits_total: number;
+  credits_used: number;
 }
 
-const RESEARCH_PER_DAY = Number(process.env.RESEARCH_DAILY_LIMIT ?? 10);
-const EDIT_LIFETIME_CAP = Number(process.env.EDIT_LIFETIME_CAP ?? 3);
+function mapUsage(r: UsageRow): Usage {
+  return {
+    userId: r.user_id,
+    creditsTotal: r.credits_total,
+    creditsUsed: r.credits_used,
+  };
+}
 
 async function getOrCreateUsage(userId: string): Promise<Usage> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("usage")
-    .select()
+    .select("user_id, credits_total, credits_used")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw new Error(`getUsage failed: ${error.message}`);
-  if (data) {
-    const r = data as UsageRow;
-    return {
-      userId: r.user_id,
-      researchRuns: r.research_runs,
-      researchWindowStart: r.research_window_start,
-      editsUsed: r.edits_used,
-    };
-  }
+  if (data) return mapUsage(data as UsageRow);
+  // Seed the balance from the (env-configurable) starting grant.
   const { data: created, error: insErr } = await supabase
     .from("usage")
-    .insert({ user_id: userId })
-    .select()
+    .insert({ user_id: userId, credits_total: STARTING_CREDITS })
+    .select("user_id, credits_total, credits_used")
     .single();
   if (insErr) throw new Error(`create usage failed: ${insErr.message}`);
-  const r = created as UsageRow;
+  return mapUsage(created as UsageRow);
+}
+
+export interface Wallet {
+  total: number;
+  used: number;
+  remaining: number;
+}
+
+/** Current balance. Dev / unauthenticated users are treated as unlimited. */
+export async function getWallet(userId: string): Promise<Wallet> {
+  if (!realUserId(userId)) {
+    return { total: STARTING_CREDITS, used: 0, remaining: STARTING_CREDITS };
+  }
+  const usage = await getOrCreateUsage(userId);
   return {
-    userId: r.user_id,
-    researchRuns: r.research_runs,
-    researchWindowStart: r.research_window_start,
-    editsUsed: r.edits_used,
+    total: usage.creditsTotal,
+    used: usage.creditsUsed,
+    remaining: Math.max(0, usage.creditsTotal - usage.creditsUsed),
   };
 }
 
-/** Check + consume one research run against the rolling daily window. */
-export async function consumeResearchRun(
+/** Non-mutating check used for friendly pre-flight errors. */
+export async function hasCredits(userId: string, amount: number): Promise<boolean> {
+  if (!realUserId(userId)) return true;
+  const wallet = await getWallet(userId);
+  return wallet.remaining >= amount;
+}
+
+/**
+ * Atomically reserve `amount` credits. Returns ok:false (without charging) when
+ * the balance is insufficient. Charge BEFORE doing the paid work, then refund
+ * on failure - this is burst-safe (parallel requests can't all pass a check and
+ * then run for free).
+ */
+export async function spendCredits(
   userId: string,
+  amount: number,
 ): Promise<{ ok: boolean; remaining: number }> {
-  // Dev / unauthenticated: no quota enforcement.
-  if (!realUserId(userId)) return { ok: true, remaining: RESEARCH_PER_DAY };
-  const supabase = getSupabaseAdmin();
-  const usage = await getOrCreateUsage(userId);
-  const windowAge = Date.now() - new Date(usage.researchWindowStart).getTime();
-  let runs = usage.researchRuns;
-  let windowStart = usage.researchWindowStart;
-  if (windowAge > DAY_MS) {
-    runs = 0;
-    windowStart = new Date().toISOString();
+  if (!realUserId(userId)) return { ok: true, remaining: STARTING_CREDITS };
+  if (amount <= 0) {
+    const wallet = await getWallet(userId);
+    return { ok: true, remaining: wallet.remaining };
   }
-  if (runs >= RESEARCH_PER_DAY) return { ok: false, remaining: 0 };
-  const { error } = await supabase
-    .from("usage")
-    .update({ research_runs: runs + 1, research_window_start: windowStart })
-    .eq("user_id", userId);
-  if (error) throw new Error(`consumeResearchRun failed: ${error.message}`);
-  return { ok: true, remaining: RESEARCH_PER_DAY - (runs + 1) };
-}
-
-export async function canEdit(userId: string): Promise<{ ok: boolean; used: number; cap: number }> {
-  if (!realUserId(userId)) return { ok: true, used: 0, cap: EDIT_LIFETIME_CAP };
-  const usage = await getOrCreateUsage(userId);
-  return { ok: usage.editsUsed < EDIT_LIFETIME_CAP, used: usage.editsUsed, cap: EDIT_LIFETIME_CAP };
-}
-
-export async function consumeEdit(userId: string): Promise<void> {
-  if (!realUserId(userId)) return;
+  // The RPC only deducts within-balance, but it no-ops on a missing row, so
+  // guarantee the row exists first (else a new user reads as "insufficient").
+  await getOrCreateUsage(userId);
   const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.rpc("spend_credits", {
+    p_user: userId,
+    p_amt: amount,
+  });
+  if (error) throw new Error(`spendCredits failed: ${error.message}`);
+  if (data === null || data === undefined) return { ok: false, remaining: 0 };
+  return { ok: true, remaining: Number(data) };
+}
+
+/** Give back reserved credits when the downstream work fails. Best-effort. */
+export async function refundCredits(userId: string, amount: number): Promise<void> {
+  if (!realUserId(userId) || amount <= 0) return;
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.rpc("refund_credits", {
+    p_user: userId,
+    p_amt: amount,
+  });
+  if (error) throw new Error(`refundCredits failed: ${error.message}`);
+}
+
+/** All wallets keyed by userId (read-only; does not create rows). For admin. */
+export async function listWallets(): Promise<Record<string, Wallet>> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("usage")
+    .select("user_id, credits_total, credits_used");
+  if (error) throw new Error(`listWallets failed: ${error.message}`);
+  const map: Record<string, Wallet> = {};
+  for (const r of (data ?? []) as UsageRow[]) {
+    map[r.user_id] = {
+      total: r.credits_total,
+      used: r.credits_used,
+      remaining: Math.max(0, r.credits_total - r.credits_used),
+    };
+  }
+  return map;
+}
+
+/** Admin top-up: raise the user's total balance by `amount`. */
+export async function grantCredits(userId: string, amount: number): Promise<void> {
+  if (!realUserId(userId) || amount === 0) return;
   const usage = await getOrCreateUsage(userId);
+  const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("usage")
-    .update({ edits_used: usage.editsUsed + 1 })
+    .update({ credits_total: usage.creditsTotal + amount })
     .eq("user_id", userId);
-  if (error) throw new Error(`consumeEdit failed: ${error.message}`);
+  if (error) throw new Error(`grantCredits failed: ${error.message}`);
 }
 
 // ---- scene footage ----

@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { NextStage } from "@/components/studio/next-stage";
 import { resolveHandle } from "@/components/studio/github-handle";
+import { emitCreditsChanged } from "@/components/studio/credits";
 import type { Project } from "@/lib/types";
 
 interface PublicRepo {
@@ -102,6 +103,7 @@ export function ProjectPanel() {
       toast.error(e instanceof Error ? e.message : "Analysis failed");
     } finally {
       setAnalyzingRepo(null);
+      emitCreditsChanged();
     }
   }, []);
 

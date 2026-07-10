@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Kicker, SectionMarker } from "@/components/studio/primitives";
+import { emitCreditsChanged } from "@/components/studio/credits";
 import { Teleprompter } from "@/components/studio/teleprompter";
 import { toRenderBrief } from "@/lib/render-brief";
 import type { Angle, BriefDoc, InfoGap, Project, ReferencePattern } from "@/lib/types";
@@ -219,6 +220,8 @@ export function BriefPanel() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Draft failed");
       setPhase("questions");
+    } finally {
+      emitCreditsChanged();
     }
   }, [angle, freeformPrompt, briefInput, projectId, gaps, answers]);
 
@@ -265,6 +268,8 @@ export function BriefPanel() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to send");
       setRenderStatus(null);
+    } finally {
+      emitCreditsChanged();
     }
   }, [doc, briefId, footage]);
 

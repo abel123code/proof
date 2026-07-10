@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/lib/auth";
 import {
-  consumeResearchRun,
   getCachedReferences,
   getProject,
+  refundCredits,
   saveResearch,
   setCachedReferences,
+  spendCredits,
 } from "@/lib/db";
+import { CREDIT_COSTS } from "@/lib/pricing";
 import { extractProof, researchReferences, scoreAngles } from "@/lib/research";
 import type { ResearchOutput, SavedAngleSet, TrendTopic } from "@/lib/types";
 
@@ -30,6 +32,8 @@ export async function POST(req: Request) {
   const auth = await requireApprovedUser();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+  // Credits reserved on a cache miss (the premium path); refunded on failure.
+  let charged = 0;
   try {
     const body = await req.json().catch(() => ({}));
     const projectId: string | undefined = body?.projectId;
@@ -81,13 +85,14 @@ export async function POST(req: Request) {
     }
 
     // Miss (or forced re-score): this is the metered premium path.
-    const quota = await consumeResearchRun(auth.userId);
-    if (!quota.ok) {
+    const spend = await spendCredits(auth.userId, CREDIT_COSTS.angles);
+    if (!spend.ok) {
       return NextResponse.json(
-        { error: "Daily research limit reached. Try again tomorrow." },
-        { status: 429 },
+        { error: "You're out of credits.", creditsRemaining: 0 },
+        { status: 402 },
       );
     }
+    charged = CREDIT_COSTS.angles;
 
     const understanding = project?.understanding ?? null;
     const proof =
@@ -135,8 +140,13 @@ export async function POST(req: Request) {
       await saveResearch(projectId, nextResearch).catch(() => {});
     }
 
-    return NextResponse.json({ angles, references: references ?? [], remaining: quota.remaining });
+    return NextResponse.json({
+      angles,
+      references: references ?? [],
+      creditsRemaining: spend.remaining,
+    });
   } catch (err) {
+    if (charged) await refundCredits(auth.userId, charged).catch(() => {});
     console.error("angles failed:", err);
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

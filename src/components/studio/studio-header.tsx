@@ -2,23 +2,49 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { STAGES, stageIndex } from "@/components/studio/stages";
 import { resolveHandle } from "@/components/studio/github-handle";
+import { onCreditsChanged } from "@/components/studio/credits";
 
 export function StudioHeader() {
   const pathname = usePathname();
   const current = stageIndex(pathname);
   const [handle, setHandle] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [credits, setCredits] = useState<number | null>(null);
+
+  const refreshCredits = useCallback(() => {
+    fetch("/api/profile")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setIsAdmin(Boolean(d.isAdmin));
+        setCredits(typeof d.creditsRemaining === "number" ? d.creditsRemaining : null);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     resolveHandle().then(setHandle);
-    fetch("/api/profile")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setIsAdmin(Boolean(d?.isAdmin)))
-      .catch(() => {});
   }, []);
+
+  // Keep the balance authoritative: re-fetch on route change, on an explicit
+  // credits:changed signal from a charged action, and when the tab regains focus.
+  useEffect(() => {
+    refreshCredits();
+    const unsubscribe = onCreditsChanged(refreshCredits);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshCredits();
+    };
+    window.addEventListener("focus", refreshCredits);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", refreshCredits);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [pathname, refreshCredits]);
 
   return (
     <header className="border-b border-border">
@@ -92,6 +118,16 @@ export function StudioHeader() {
         </nav>
 
         <div className="flex items-center gap-1">
+          {credits !== null && (
+            <span
+              title="Credits remaining"
+              className={`rounded-md px-2 py-1 font-mono text-[11px] ${
+                credits <= 0 ? "text-destructive" : "text-muted-foreground"
+              }`}
+            >
+              {credits} credits
+            </span>
+          )}
           {isAdmin && (
             <Link
               href="/admin"

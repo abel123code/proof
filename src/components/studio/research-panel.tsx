@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Kicker, SectionMarker } from "@/components/studio/primitives";
+import { emitCreditsChanged } from "@/components/studio/credits";
 import type {
   Angle,
   Proof,
@@ -114,6 +115,7 @@ export function ResearchPanel() {
       toast.error(e instanceof Error ? e.message : "Research failed");
     } finally {
       setResearching(false);
+      emitCreditsChanged();
     }
   }, [projectId]);
 
@@ -159,6 +161,7 @@ export function ResearchPanel() {
         toast.error(e instanceof Error ? e.message : "Could not generate angles");
       } finally {
         setScoring(false);
+        emitCreditsChanged();
       }
     },
     [projectId, topics, angleSets],
@@ -183,6 +186,7 @@ export function ResearchPanel() {
       toast.error(e instanceof Error ? e.message : "Could not generate angles");
     } finally {
       setScoring(false);
+      emitCreditsChanged();
     }
   }, [freeform, projectId]);
 

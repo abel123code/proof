@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireApprovedUser } from "@/lib/auth";
-import { canEdit, consumeEdit, getBriefById, saveBriefRender } from "@/lib/db";
+import { getBriefById, refundCredits, saveBriefRender, spendCredits } from "@/lib/db";
+import { CREDIT_COSTS } from "@/lib/pricing";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -18,31 +19,31 @@ export async function POST(req: Request) {
   const auth = await requireApprovedUser();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  // Lifetime edit cap (default 3). Check before doing any work.
-  const gate = await canEdit(auth.userId);
-  if (!gate.ok) {
+  const body = await req.json().catch(() => ({}));
+  const briefId: unknown = body?.briefId;
+  const videoUrls: unknown = body?.videoUrls;
+  const brief: unknown = body?.brief;
+
+  if (typeof briefId !== "string") {
+    return NextResponse.json({ error: "briefId is required" }, { status: 400 });
+  }
+  if (!Array.isArray(videoUrls) || videoUrls.length === 0 || !brief) {
     return NextResponse.json(
-      { error: `You've used all ${gate.cap} of your video edits.` },
-      { status: 429 },
+      { error: "videoUrls (non-empty) and brief are required" },
+      { status: 400 },
+    );
+  }
+
+  // Reserve credits before kicking off the render; refund if it never starts.
+  const spend = await spendCredits(auth.userId, CREDIT_COSTS.render);
+  if (!spend.ok) {
+    return NextResponse.json(
+      { error: "You're out of credits.", creditsRemaining: 0 },
+      { status: 402 },
     );
   }
 
   try {
-    const body = await req.json().catch(() => ({}));
-    const briefId: unknown = body?.briefId;
-    const videoUrls: unknown = body?.videoUrls;
-    const brief: unknown = body?.brief;
-
-    if (typeof briefId !== "string") {
-      return NextResponse.json({ error: "briefId is required" }, { status: 400 });
-    }
-    if (!Array.isArray(videoUrls) || videoUrls.length === 0 || !brief) {
-      return NextResponse.json(
-        { error: "videoUrls (non-empty) and brief are required" },
-        { status: 400 },
-      );
-    }
-
     // Send BOTH so it works regardless of whether the Zo box was redeployed:
     // - updated box prefers `videoUrls` and concatenates all clips
     // - old box ignores `videoUrls` and renders the single `videoUrl` (first clip)
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
       return NextResponse.json(
         { error: data?.error ?? `render service returned ${res.status}` },
         { status: res.status },
@@ -60,13 +62,15 @@ export async function POST(req: Request) {
     }
 
     const jobId: string | undefined = data?.jobId;
-    if (jobId) {
-      await saveBriefRender(briefId, { jobId, status: "queued", url: "" }).catch(() => {});
-      // Count the edit once the job is accepted by the render service.
-      await consumeEdit(auth.userId).catch(() => {});
+    if (!jobId) {
+      // Nothing was queued - don't charge for a no-op.
+      await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
+      return NextResponse.json({ jobId: null, creditsRemaining: spend.remaining + CREDIT_COSTS.render });
     }
-    return NextResponse.json({ jobId, editsRemaining: Math.max(0, gate.cap - gate.used - 1) });
+    await saveBriefRender(briefId, { jobId, status: "queued", url: "" }).catch(() => {});
+    return NextResponse.json({ jobId, creditsRemaining: spend.remaining });
   } catch (err) {
+    await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
       { error: `render service unreachable: ${message}` },

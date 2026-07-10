@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAuthConfigured, requireApprovedUser } from "@/lib/auth";
-import { getProfile, updateProfileGithub } from "@/lib/db";
+import { getProfile, getWallet, updateProfileGithub } from "@/lib/db";
 import { parseUsername } from "@/lib/github";
 
 export const runtime = "nodejs";
@@ -9,12 +9,17 @@ export async function GET() {
   const auth = await requireApprovedUser();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const profile = await getProfile(auth.userId).catch(() => null);
+  const [profile, wallet] = await Promise.all([
+    getProfile(auth.userId).catch(() => null),
+    getWallet(auth.userId).catch(() => null),
+  ]);
   // Dev (auth off) is treated as admin so the /admin tools are reachable locally.
   const isAdmin = !isAuthConfigured() || Boolean(profile?.isAdmin);
   return NextResponse.json({
     githubUsername: profile?.githubUsername ?? null,
     isAdmin,
+    creditsRemaining: wallet?.remaining ?? null,
+    creditsTotal: wallet?.total ?? null,
   });
 }
 

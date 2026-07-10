@@ -30,6 +30,11 @@ interface AccessRequest {
   status: "pending" | "approved" | "rejected";
   createdAt: string;
 }
+interface Wallet {
+  total: number;
+  used: number;
+  remaining: number;
+}
 
 function fmtDate(iso: string): string {
   try {
@@ -48,6 +53,7 @@ export default function AdminPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [allowed, setAllowed] = useState<AllowedUser[]>([]);
   const [requests, setRequests] = useState<AccessRequest[]>([]);
+  const [wallets, setWallets] = useState<Record<string, Wallet>>({});
   const [newEmail, setNewEmail] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -63,12 +69,42 @@ export default function AdminPage() {
       setProfiles(data.profiles ?? []);
       setAllowed(data.allowed ?? []);
       setRequests(data.requests ?? []);
+      setWallets(data.wallets ?? {});
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const grantCreditsTo = useCallback(
+    async (userId: string) => {
+      const raw = window.prompt("How many credits to add?", "500");
+      if (raw === null) return;
+      const amount = Number(raw);
+      if (!Number.isFinite(amount) || amount === 0) {
+        toast.error("Enter a non-zero number.");
+        return;
+      }
+      setBusy(userId);
+      try {
+        const res = await fetch("/api/admin/credits", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, amount }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Could not grant");
+        toast.success(`Added ${amount} credits`);
+        await load();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not grant");
+      } finally {
+        setBusy(null);
+      }
+    },
+    [load],
+  );
 
   useEffect(() => {
     load();
@@ -278,6 +314,21 @@ export default function AdminPage() {
                             joined {fmtDate(p.createdAt)}
                           </p>
                         </div>
+                        <span
+                          title="Credits remaining"
+                          className="font-mono text-[11px] text-muted-foreground"
+                        >
+                          {wallets[p.userId]?.remaining ?? "—"} cr
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs"
+                          disabled={busy === p.userId}
+                          onClick={() => grantCreditsTo(p.userId)}
+                        >
+                          {busy === p.userId ? "…" : "+ Credits"}
+                        </Button>
                         {p.isAdmin && (
                           <Badge className="bg-primary/15 font-mono text-[9px] uppercase text-primary">
                             admin

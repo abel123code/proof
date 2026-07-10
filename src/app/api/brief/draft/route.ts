@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/lib/auth";
 import { draftBriefDoc } from "@/lib/content-brief";
-import { createProject, getProject, saveBriefDoc } from "@/lib/db";
+import { createProject, getProject, refundCredits, saveBriefDoc, spendCredits } from "@/lib/db";
+import { CREDIT_COSTS } from "@/lib/pricing";
 import { extractProof } from "@/lib/research";
 import type { Angle, InfoGap, ReferencePattern } from "@/lib/types";
 
@@ -12,6 +13,8 @@ export async function POST(req: Request) {
   const auth = await requireApprovedUser();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+  // Credits reserved before drafting; refunded on failure.
+  let charged = 0;
   try {
     const body = await req.json().catch(() => ({}));
     let projectId: string | undefined = body?.projectId;
@@ -29,6 +32,15 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+
+    const spend = await spendCredits(auth.userId, CREDIT_COSTS.brief);
+    if (!spend.ok) {
+      return NextResponse.json(
+        { error: "You're out of credits.", creditsRemaining: 0 },
+        { status: 402 },
+      );
+    }
+    charged = CREDIT_COSTS.brief;
 
     const project = projectId ? await getProject(projectId) : null;
     const understanding = project?.understanding ?? null;
@@ -62,6 +74,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ id: saved.id, projectId, doc, gaps, answers });
   } catch (err) {
+    if (charged) await refundCredits(auth.userId, charged).catch(() => {});
     console.error("brief/draft failed:", err);
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

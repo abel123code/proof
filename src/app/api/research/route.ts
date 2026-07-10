@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/lib/auth";
-import { getProject, saveResearch } from "@/lib/db";
+import { getProject, refundCredits, saveResearch, spendCredits } from "@/lib/db";
+import { CREDIT_COSTS } from "@/lib/pricing";
 import { extractProof, researchTopics } from "@/lib/research";
 import type { ResearchOutput } from "@/lib/types";
 
@@ -16,6 +17,8 @@ export async function POST(req: Request) {
   const auth = await requireApprovedUser();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+  // Credits reserved only when we actually run web-search research; refunded on failure.
+  let charged = 0;
   try {
     const body = await req.json().catch(() => ({}));
     const projectId: string | undefined = body?.projectId;
@@ -33,21 +36,32 @@ export async function POST(req: Request) {
       );
     }
 
+    // Topics: persisted per project. Reuse unless forced or absent, so web search
+    // (the metered cost) only runs on the first run / explicit re-run.
+    const cached = project.research?.topics;
+    const willFetch = force || !(cached && cached.length > 0);
+    if (willFetch) {
+      const spend = await spendCredits(auth.userId, CREDIT_COSTS.research);
+      if (!spend.ok) {
+        return NextResponse.json(
+          { error: "You're out of credits.", creditsRemaining: 0 },
+          { status: 402 },
+        );
+      }
+      charged = CREDIT_COSTS.research;
+    }
+
     // Positioning: reuse the persisted value; only extract when missing or forced.
     const proof =
       (!force && project.research?.proof) || (await extractProof(project.understanding));
 
-    // Topics: persisted per project (seeded by positioning). Reuse unless forced
-    // or absent, so we only hit web search on the first run / explicit re-run.
-    const cached = project.research?.topics;
-    const topics =
-      !force && cached && cached.length > 0
-        ? cached
-        : await researchTopics({
-            targetUser: proof.targetUser,
-            problemSpace: proof.problemSpace,
-            topics: proof.topics,
-          });
+    const topics = willFetch
+      ? await researchTopics({
+          targetUser: proof.targetUser,
+          problemSpace: proof.problemSpace,
+          topics: proof.topics,
+        })
+      : cached!;
 
     const research: ResearchOutput = {
       proof,
@@ -61,6 +75,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(research);
   } catch (err) {
+    if (charged) await refundCredits(auth.userId, charged).catch(() => {});
     console.error("research failed:", err);
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
