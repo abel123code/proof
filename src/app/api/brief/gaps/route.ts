@@ -1,48 +1,43 @@
 import { NextResponse } from "next/server";
+import { requireApprovedUser } from "@/lib/auth";
 import { findInfoGaps } from "@/lib/content-brief";
-import { getProject, getReferenceVideo } from "@/lib/db";
+import { getProject } from "@/lib/db";
+import { extractProof } from "@/lib/research";
+import type { Angle, ReferencePattern } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
+  const auth = await requireApprovedUser();
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
   try {
     const body = await req.json().catch(() => ({}));
     const projectId: string | undefined = body?.projectId;
-    const referenceVideoId: string | undefined = body?.referenceVideoId;
-    const trendIndex: number = Number(body?.trendIndex);
+    const angle: Angle | null = body?.angle && typeof body.angle === "object" ? body.angle : null;
+    const freeformPrompt: string | null =
+      typeof body?.freeformPrompt === "string" ? body.freeformPrompt.trim() || null : null;
+    const references: ReferencePattern[] = Array.isArray(body?.references) ? body.references : [];
 
-    if (!projectId || !referenceVideoId || Number.isNaN(trendIndex)) {
+    if (!angle && !freeformPrompt) {
       return NextResponse.json(
-        { error: "projectId, trendIndex and referenceVideoId are required." },
+        { error: "An angle or a freeform prompt is required." },
         { status: 400 },
       );
     }
 
-    const [project, reference] = await Promise.all([
-      getProject(projectId),
-      getReferenceVideo(referenceVideoId),
-    ]);
-
-    if (!project?.understanding) {
-      return NextResponse.json({ error: "Project has no understanding." }, { status: 400 });
-    }
-    if (!reference?.structure) {
-      return NextResponse.json({ error: "Reference clip isn't analysed yet." }, { status: 400 });
-    }
-    const trend = project.trendResearch?.trends?.[trendIndex];
-    if (!trend) {
-      return NextResponse.json(
-        { error: "Chosen trend not found - re-run research." },
-        { status: 400 },
-      );
-    }
+    const project = projectId ? await getProject(projectId) : null;
+    const understanding = project?.understanding ?? null;
+    const proof =
+      project?.research?.proof ?? (understanding ? await extractProof(understanding) : null);
 
     const questions = await findInfoGaps({
-      understanding: project.understanding,
-      trend,
-      structure: reference.structure,
-      referenceCaption: reference.caption,
+      understanding,
+      proof,
+      angle,
+      freeformPrompt,
+      references,
     });
 
     return NextResponse.json({ questions });

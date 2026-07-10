@@ -137,3 +137,24 @@
     letter-spacing: -0.02em;
   }
 }
+
+@layer components {
+  /* Small uppercase mono eyebrow used across landing sections. */
+  .kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--primary);
+  }
+  .kicker::before {
+    content: "";
+    width: 2rem;
+    height: 1px;
+    background: var(--primary);
+    opacity: 0.6;
+  }
+}

@@ -1,22 +1,21 @@
 import { NextResponse } from "next/server";
-import { getLatestBriefForReference } from "@/lib/db";
+import { requireApprovedUser } from "@/lib/auth";
+import { getLatestBriefForProject } from "@/lib/db";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
+  const auth = await requireApprovedUser();
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
   try {
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get("projectId");
-    const referenceVideoId = searchParams.get("referenceVideoId");
-
-    if (!projectId || !referenceVideoId) {
-      return NextResponse.json(
-        { error: "projectId and referenceVideoId are required." },
-        { status: 400 },
-      );
+    if (!projectId) {
+      return NextResponse.json({ error: "projectId is required." }, { status: 400 });
     }
 
-    const brief = await getLatestBriefForReference(projectId, referenceVideoId);
+    const brief = await getLatestBriefForProject(projectId);
     if (!brief?.doc) {
       return NextResponse.json({ brief: null });
     }

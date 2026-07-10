@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { getBriefById, saveBriefRender } from "@/lib/db";
+import { requireApprovedUser } from "@/lib/auth";
+import { canEdit, consumeEdit, getBriefById, saveBriefRender } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -14,6 +15,18 @@ const FOOTAGE_BUCKET = "footage";
  * Forwards the clips + brief to the Zo service and records the job on the brief.
  */
 export async function POST(req: Request) {
+  const auth = await requireApprovedUser();
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  // Lifetime edit cap (default 3). Check before doing any work.
+  const gate = await canEdit(auth.userId);
+  if (!gate.ok) {
+    return NextResponse.json(
+      { error: `You've used all ${gate.cap} of your video edits.` },
+      { status: 429 },
+    );
+  }
+
   try {
     const body = await req.json().catch(() => ({}));
     const briefId: unknown = body?.briefId;
@@ -49,8 +62,10 @@ export async function POST(req: Request) {
     const jobId: string | undefined = data?.jobId;
     if (jobId) {
       await saveBriefRender(briefId, { jobId, status: "queued", url: "" }).catch(() => {});
+      // Count the edit once the job is accepted by the render service.
+      await consumeEdit(auth.userId).catch(() => {});
     }
-    return NextResponse.json({ jobId });
+    return NextResponse.json({ jobId, editsRemaining: Math.max(0, gate.cap - gate.used - 1) });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(

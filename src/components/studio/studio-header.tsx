@@ -2,21 +2,33 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { STAGES, stageIndex } from "@/components/studio/stages";
+import { resolveHandle } from "@/components/studio/github-handle";
 
 export function StudioHeader() {
   const pathname = usePathname();
   const current = stageIndex(pathname);
+  const [handle, setHandle] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    resolveHandle().then(setHandle);
+    fetch("/api/profile")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setIsAdmin(Boolean(d?.isAdmin)))
+      .catch(() => {});
+  }, []);
 
   return (
     <header className="border-b border-border">
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-8 py-4 sm:flex-row sm:items-center sm:justify-between">
         <Link href="/connect" className="flex items-center gap-3">
           <span className="flex size-8 items-center justify-center rounded-md bg-primary/12 font-mono text-sm font-bold text-primary">
-            RE
+            P
           </span>
           <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            Reverse-Engineer
+            Proof
           </span>
         </Link>
 
@@ -78,6 +90,26 @@ export function StudioHeader() {
             );
           })}
         </nav>
+
+        <div className="flex items-center gap-1">
+          {isAdmin && (
+            <Link
+              href="/admin"
+              title="Admin"
+              className="rounded-md px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              Admin
+            </Link>
+          )}
+          <Link
+            href="/settings"
+            title="Settings"
+            className="flex items-center gap-2 rounded-md px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <span className="hidden sm:inline">Settings</span>
+            {handle && <span className="text-foreground">@{handle}</span>}
+          </Link>
+        </div>
       </div>
     </header>
   );

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireApprovedUser } from "@/lib/auth";
 import { createProject, saveBriefDoc } from "@/lib/db";
 import type { BriefDoc } from "@/lib/types";
 
 export const runtime = "nodejs";
 
-// A single-scene brief used only to smoke-test the record -> upload -> Zo render
-// path without running the full Connect/Trends/Clips pipeline. Hit via /brief?test=1.
+// A single-scene brief used only to smoke-test the record -> upload -> render
+// path without running the full Connect/Research pipeline. Hit via /brief?test=1.
 const TEST_DOC: BriefDoc = {
   title: "Render pipeline test",
   hook: "Testing the Zo renderer end-to-end.",
@@ -26,17 +27,21 @@ const TEST_DOC: BriefDoc = {
 };
 
 export async function POST() {
+  const auth = await requireApprovedUser();
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
   try {
     const project = await createProject({
       repoUrl: "https://github.com/test/render-smoke-test",
       name: "Render Test",
+      userId: auth.userId,
     });
     const brief = await saveBriefDoc({
       projectId: project.id,
-      referenceVideoId: null,
       doc: TEST_DOC,
       gaps: [],
       answers: {},
+      userId: auth.userId,
     });
     return NextResponse.json({ briefId: brief.id, doc: TEST_DOC });
   } catch (err) {

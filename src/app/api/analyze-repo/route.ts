@@ -1,73 +1,85 @@
 import { NextResponse } from "next/server";
-import { fetchUserSnapshot } from "@/lib/github";
-import { openaiJSON } from "@/lib/openai";
-import { createProject } from "@/lib/db";
+import { fetchRepoSnapshot, parseRepoUrl } from "@/lib/github";
+import { OPENAI_MINI_MODEL, openaiJSON } from "@/lib/openai";
+import { requireApprovedUser } from "@/lib/auth";
+import { createProject, getProjectByRepo } from "@/lib/db";
 import type { ProjectUnderstanding } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// Account-level: we look at WHAT THIS PERSON SHIPS across their public repos and
-// distill a "builder profile" - the credibility base the rest of the pipeline
-// (trend research -> brief -> script) uses to prove they can actually build.
-const SYSTEM = `You analyze a developer's PUBLIC GitHub account to build a "builder profile" for short-form "I build things" content.
-You are given the user's profile and their most recently active public repos (with READMEs for the top few).
-Infer what this person actually builds, the through-line in their work, and what's genuinely impressive.
+// Repo-level: we look at ONE specific repo the user picked and distill a "builder
+// profile" for it - the credibility base the rest of the pipeline (research ->
+// brief) uses to prove they can actually build this thing.
+const SYSTEM = `You analyze a single PUBLIC GitHub repository to build a "builder profile" for short-form "I build things" content.
+You are given the repo's metadata, languages, README, and a shallow file tree.
+Infer what this project actually is, the problem it solves, and what's genuinely impressive or technically interesting about it.
 
 Return ONLY a JSON object with this exact shape:
 {
-  "oneLiner": "one sentence: what this person builds / who they are as a builder",
-  "summary": "2-3 sentences on the kind of work they ship and the through-line",
-  "problem": "the kinds of problems they tend to solve",
-  "stack": ["notable languages / frameworks / tools they actually use"],
-  "interesting": "the single most impressive or technically interesting thing across their work",
-  "audience": "who would care about their content (peers, recruiters, a niche)",
-  "talkingPoints": ["3-5 short, punchy, credible points they could make on camera"],
-  "notableRepos": [{ "name": "repo", "url": "https://github.com/...", "description": "one line on why it stands out" }]
+  "oneLiner": "one sentence: what this project is / does",
+  "summary": "2-3 sentences on what it does and the through-line of the work",
+  "problem": "the core problem this project solves",
+  "stack": ["notable languages / frameworks / tools it actually uses"],
+  "interesting": "the single most impressive or technically interesting thing about it",
+  "audience": "who would care about content on this (peers, recruiters, a niche)",
+  "talkingPoints": ["3-5 short, punchy, credible points to make on camera"],
+  "notableRepos": [{ "name": "repo", "url": "https://github.com/...", "description": "one line on what it is" }]
 }
-Pick 2-4 notableRepos from the provided repos (use their real URLs). Be concrete; avoid generic marketing fluff.`;
+Set notableRepos to a single entry for THIS repo (use its real URL). Be concrete; avoid generic marketing fluff. Do not invent numbers.`;
 
 export async function POST(req: Request) {
+  const auth = await requireApprovedUser();
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
   try {
     const body = await req.json().catch(() => ({}));
-    // Accept `username` (preferred) or legacy `repoUrl` - both are parsed for a handle.
-    const raw: unknown = body?.username ?? body?.repoUrl;
+    // Accept `repoUrl` (preferred) or `repo` (owner/repo). Either parses to owner/repo.
+    const raw: unknown = body?.repoUrl ?? body?.repo;
     if (typeof raw !== "string" || !raw.trim()) {
-      return NextResponse.json({ error: "username is required" }, { status: 400 });
+      return NextResponse.json({ error: "repoUrl is required" }, { status: 400 });
     }
 
-    const snapshot = await fetchUserSnapshot(raw);
+    const { owner, repo } = parseRepoUrl(raw);
+    const repoUrl = `https://github.com/${owner}/${repo}`;
+    const force = Boolean(body?.force);
 
-    if (snapshot.repos.length === 0) {
-      return NextResponse.json(
-        { error: `No public repos found for @${snapshot.username}.` },
-        { status: 400 },
-      );
+    // Reuse an already-analyzed repo (keeps its saved research/angles) unless the
+    // caller explicitly asks to re-analyze. Avoids a redundant model call + dupes.
+    if (!force) {
+      const existing = await getProjectByRepo(auth.userId, repoUrl);
+      if (existing?.understanding) {
+        return NextResponse.json({ project: existing, reused: true });
+      }
     }
+
+    const snapshot = await fetchRepoSnapshot(repoUrl);
 
     const understanding = await openaiJSON<ProjectUnderstanding>({
+      model: OPENAI_MINI_MODEL,
       system: SYSTEM,
       user: JSON.stringify({
-        username: snapshot.username,
         name: snapshot.name,
-        bio: snapshot.bio,
-        repos: snapshot.repos,
+        url: repoUrl,
+        description: snapshot.description,
+        languages: snapshot.languages,
+        readme: snapshot.readme,
+        fileTree: snapshot.fileTree,
       }),
     });
 
-    // Guarantee notableRepos exists even if the model omitted it.
-    if (!Array.isArray(understanding.notableRepos)) {
-      understanding.notableRepos = snapshot.repos.slice(0, 3).map((r) => ({
-        name: r.name,
-        url: r.url,
-        description: r.description ?? "",
-      }));
+    // Guarantee notableRepos points at this repo even if the model omitted it.
+    if (!Array.isArray(understanding.notableRepos) || understanding.notableRepos.length === 0) {
+      understanding.notableRepos = [
+        { name: snapshot.name, url: repoUrl, description: snapshot.description ?? "" },
+      ];
     }
 
     const project = await createProject({
-      repoUrl: `https://github.com/${snapshot.username}`,
-      name: snapshot.username,
+      repoUrl,
+      name: snapshot.name,
       understanding,
+      userId: auth.userId,
     });
 
     return NextResponse.json({ project });

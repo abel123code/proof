@@ -87,6 +87,44 @@ export async function fetchRepoSnapshot(repoUrl: string): Promise<RepoSnapshot> 
   };
 }
 
+/** A public repo shown in the repo picker (lightweight - no README fetch). */
+export interface PublicRepo {
+  name: string;
+  fullName: string;
+  url: string;
+  description: string | null;
+  language: string | null;
+  stars: number;
+  pushedAt: string | null;
+}
+
+/**
+ * List a user's public, owned (non-fork) repos, newest pushes first. Uses the
+ * server Octokit (GITHUB_TOKEN), so no user token / extra OAuth scope is needed.
+ */
+export async function listUserRepos(input: string): Promise<PublicRepo[]> {
+  const username = parseUsername(input);
+  const gh = getOctokit();
+  const { data: repos } = await gh.repos.listForUser({
+    username,
+    sort: "pushed",
+    direction: "desc",
+    per_page: 60,
+    type: "owner",
+  });
+  return repos
+    .filter((r) => !r.fork)
+    .map((r) => ({
+      name: r.name,
+      fullName: r.full_name,
+      url: r.html_url,
+      description: r.description,
+      language: r.language ?? null,
+      stars: r.stargazers_count ?? 0,
+      pushedAt: r.pushed_at ?? null,
+    }));
+}
+
 /** One repo in an account-level snapshot (the builder's portfolio). */
 export interface RepoSummary {
   name: string;

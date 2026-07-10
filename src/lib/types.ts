@@ -55,6 +55,127 @@ export interface TrendResearch {
   updatedAt?: string;
 }
 
+// ---- v2 virality engine ---------------------------------------------------
+
+/**
+ * Repo intelligence: the uniquely shareable "proof" extracted from a builder's
+ * GitHub. This is the raw material for high-performing Proof-Drop / Hot-Take hooks.
+ */
+export interface Proof {
+  /** Who feels the pain / who we want as a user (the target audience). */
+  targetUser: string;
+  /** The real-world, non-technical problem or desire the product speaks to. */
+  problemSpace: string;
+  /** The before -> after the product delivers for that user. */
+  transformation: string;
+  /** 3-6 relatable/cultural conversations the product can credibly ride. */
+  topics: string[];
+  /** Hard, screenshot-worthy proof points (numbers, demos, before/after). */
+  receipts: string[];
+  /** The single most differentiated thing about this work. */
+  uniqueAngle: string;
+  /** The build story in one or two lines. */
+  story: string;
+  /** The strongest single "screenshot this" fact - fuels a Proof-Drop hook. */
+  bestProofDrop: string;
+}
+
+/** A trending / content-gap topic surfaced by the web-search research agent. */
+export interface TrendTopic {
+  topic: string;
+  whyTrending: string;
+  whereDiscussed: string;
+  sourceUrls: string[];
+  /** True when this is a content GAP (searched a lot, few videos) - blue ocean. */
+  contentGap?: boolean;
+}
+
+/** A mined pattern from a top-performing analogous video (cited, not downloaded). */
+export interface ReferencePattern {
+  title: string;
+  url: string;
+  hookType: string;
+  format: string;
+  /** Beat skeleton / structure of the reference. */
+  structure: string;
+  whyShareable: string;
+}
+
+export type HookArchetype =
+  | "hot-take"
+  | "proof-drop"
+  | "action-start"
+  | "trend-reference"
+  | "unanswerable-question";
+
+export type EmotionalTrigger =
+  | "fear"
+  | "empathy"
+  | "outrage"
+  | "curiosity"
+  | "humor"
+  | "aspiration";
+
+/** The virality rubric breakdown (each 0-100), plus a weighted total. */
+export interface ViralityScore {
+  total: number;
+  hook: number;
+  emotion: number;
+  shareability: number;
+  saveability: number;
+  trendFit: number;
+  /** How directly this speaks to the target user's real problem (product fit). */
+  relevance: number;
+}
+
+/** A scored, rankable content angle - the core output of the research engine. */
+export interface Angle {
+  id: string;
+  title: string;
+  /** The recommended opening hook line. */
+  hook: string;
+  /** 3-5 hook variations to A/B. */
+  hookOptions: string[];
+  hookArchetype: HookArchetype;
+  emotionalTrigger: EmotionalTrigger;
+  coreIdea: string;
+  whyShareable: string;
+  /** Which piece of the builder's proof this rides. */
+  proofUsed: string;
+  format: string;
+  targetDurationSeconds: number;
+  score: ViralityScore;
+  /** One-line rationale for the predicted performance. */
+  why: string;
+  sources: string[];
+}
+
+/**
+ * Persisted research output for a project (stored in the repurposed
+ * `trend_research` JSONB column). Topics come from the shared daily cache;
+ * proof is repo-specific.
+ */
+/** Scored angles cached per chosen topic (or freeform prompt) within a project. */
+export interface SavedAngleSet {
+  /** "topic:<lower>" or "freeform:<lower>" - identifies which selection this is. */
+  key: string;
+  topic?: TrendTopic | null;
+  freeformPrompt?: string | null;
+  angles: Angle[];
+  references: ReferencePattern[];
+  updatedAt: string;
+}
+
+export interface ResearchOutput {
+  proof: Proof | null;
+  topics: TrendTopic[];
+  /** Scored angle sets, cached per topic so revisiting never re-calls the model. */
+  angleSets?: SavedAngleSet[];
+  /** The last-viewed angle-set key, used to restore the view on return. */
+  lastKey?: string;
+  updatedAt?: string;
+}
+
 /** One filmable scene in a generated script. */
 export interface Scene {
   id: string;
@@ -218,10 +339,10 @@ export interface Project {
   repoUrl: string;
   name: string;
   understanding: ProjectUnderstanding | null;
-  /** Latest on-demand Exa trend research, if any. */
-  trendResearch: TrendResearch | null;
-  /** ISO timestamp of the last trend research run. */
-  trendResearchUpdatedAt: string | null;
+  /** Latest research output (proof + topics) for this project. */
+  research: ResearchOutput | null;
+  /** ISO timestamp of the last research run. */
+  researchUpdatedAt: string | null;
   createdAt: string;
 }
 

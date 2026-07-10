@@ -6,43 +6,36 @@ import type {
   InfoGap,
   Project,
   ProjectUnderstanding,
-  ReferenceAnalysisStatus,
-  ReferenceStructure,
-  ReferenceVideo,
-  Script,
-  ScriptOutput,
-  TrendResearch,
+  ReferencePattern,
+  ResearchOutput,
+  TrendTopic,
 } from "@/lib/types";
-import type { ScrapedClip } from "@/lib/apify";
+
+// When auth is disabled (local dev), the gate hands us this placeholder id.
+// It doesn't exist in auth.users, so we must NOT write it to FK columns.
+export const DEV_USER_ID = "00000000-0000-0000-0000-000000000000";
+
+/** Null out the dev placeholder so FK columns / filters behave in local dev. */
+function realUserId(userId?: string | null): string | null {
+  return userId && userId !== DEV_USER_ID ? userId : null;
+}
 
 // ---- row shapes (snake_case as stored) ----
 interface ProjectRow {
   id: string;
+  user_id: string | null;
   repo_url: string;
   name: string;
   understanding: ProjectUnderstanding | null;
-  trend_research: TrendResearch | null;
+  // `trend_research` is repurposed in v2 to store the ResearchOutput blob.
+  trend_research: ResearchOutput | null;
   trend_research_updated_at: string | null;
-  created_at: string;
-}
-
-interface ReferenceVideoRow {
-  id: string;
-  url: string;
-  download_url: string | null;
-  thumbnail_url: string | null;
-  author: string | null;
-  caption: string | null;
-  views: number | null;
-  likes: number | null;
-  matched_query: string | null;
-  status: ReferenceAnalysisStatus;
-  structure: ReferenceStructure | null;
   created_at: string;
 }
 
 interface BriefRow {
   id: string;
+  user_id: string | null;
   project_id: string;
   reference_video_id: string | null;
   content: ContentBrief | null;
@@ -61,25 +54,8 @@ function mapProject(r: ProjectRow): Project {
     repoUrl: r.repo_url,
     name: r.name,
     understanding: r.understanding,
-    trendResearch: r.trend_research ?? null,
-    trendResearchUpdatedAt: r.trend_research_updated_at ?? null,
-    createdAt: r.created_at,
-  };
-}
-
-function mapReferenceVideo(r: ReferenceVideoRow): ReferenceVideo {
-  return {
-    id: r.id,
-    url: r.url,
-    downloadUrl: r.download_url,
-    thumbnailUrl: r.thumbnail_url,
-    author: r.author,
-    caption: r.caption,
-    views: r.views,
-    likes: r.likes,
-    matchedQuery: r.matched_query,
-    status: r.status,
-    structure: r.structure,
+    research: r.trend_research ?? null,
+    researchUpdatedAt: r.trend_research_updated_at ?? null,
     createdAt: r.created_at,
   };
 }
@@ -106,6 +82,7 @@ export async function createProject(input: {
   repoUrl: string;
   name: string;
   understanding?: ProjectUnderstanding | null;
+  userId?: string | null;
 }): Promise<Project> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -114,6 +91,7 @@ export async function createProject(input: {
       repo_url: input.repoUrl,
       name: input.name,
       understanding: input.understanding ?? null,
+      user_id: realUserId(input.userId),
     })
     .select()
     .single();
@@ -121,14 +99,38 @@ export async function createProject(input: {
   return mapProject(data as ProjectRow);
 }
 
-export async function listProjects(): Promise<Project[]> {
+export async function listProjects(userId?: string | null): Promise<Project[]> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("projects")
-    .select()
-    .order("created_at", { ascending: false });
+  let query = supabase.from("projects").select().order("created_at", { ascending: false });
+  const uid = realUserId(userId);
+  if (uid) query = query.eq("user_id", uid);
+  const { data, error } = await query;
   if (error) throw new Error(`listProjects failed: ${error.message}`);
   return (data as ProjectRow[]).map(mapProject);
+}
+
+/**
+ * Find the most recent project for a given repo owned by this user (dev user ->
+ * null owner). Lets us reuse an already-analyzed repo instead of re-running the
+ * understanding model and creating duplicates.
+ */
+export async function getProjectByRepo(
+  userId: string | null | undefined,
+  repoUrl: string,
+): Promise<Project | null> {
+  const supabase = getSupabaseAdmin();
+  let query = supabase
+    .from("projects")
+    .select()
+    .eq("repo_url", repoUrl)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const uid = realUserId(userId);
+  query = uid ? query.eq("user_id", uid) : query.is("user_id", null);
+  const { data, error } = await query;
+  if (error) throw new Error(`getProjectByRepo failed: ${error.message}`);
+  const row = (data as ProjectRow[])[0];
+  return row ? mapProject(row) : null;
 }
 
 export async function getProject(id: string): Promise<Project | null> {
@@ -142,10 +144,10 @@ export async function getProject(id: string): Promise<Project | null> {
   return data ? mapProject(data as ProjectRow) : null;
 }
 
-/** Persist the latest on-demand Exa trend research onto a project. */
-export async function saveTrendResearch(
+/** Persist the latest research output (proof + topics) onto a project. */
+export async function saveResearch(
   projectId: string,
-  research: TrendResearch,
+  research: ResearchOutput,
 ): Promise<Project> {
   const supabase = getSupabaseAdmin();
   const updatedAt = research.updatedAt ?? new Date().toISOString();
@@ -158,161 +160,434 @@ export async function saveTrendResearch(
     .eq("id", projectId)
     .select()
     .single();
-  if (error) throw new Error(`saveTrendResearch failed: ${error.message}`);
+  if (error) throw new Error(`saveResearch failed: ${error.message}`);
   return mapProject(data as ProjectRow);
 }
 
-// ---- reference videos ----
+// ---- research cache (shared, keyed) ----
+// One generic table keyed by a string. Trends are cached globally for a day
+// ("trends:<YYYY-MM-DD>"); reference patterns are cached per topic ("refs:<topic>").
 
-/** Upsert scraped clips (dedupe on url). Used by the seed script. */
-export async function upsertReferenceVideos(
-  clips: (ScrapedClip & { matchedQuery: string })[],
-): Promise<number> {
-  if (clips.length === 0) return 0;
-  const supabase = getSupabaseAdmin();
-  const rows = clips.map((c) => ({
-    url: c.url,
-    download_url: c.downloadUrl,
-    thumbnail_url: c.thumbnail,
-    author: c.author,
-    caption: c.caption,
-    views: c.views,
-    likes: c.likes,
-    matched_query: c.matchedQuery,
-    status: "pending" as ReferenceAnalysisStatus,
-  }));
-  const { data, error } = await supabase
-    .from("reference_videos")
-    .upsert(rows, { onConflict: "url", ignoreDuplicates: true })
-    .select("id");
-  if (error) throw new Error(`upsertReferenceVideos failed: ${error.message}`);
-  return data?.length ?? 0;
-}
-
-export async function listReferenceVideos(): Promise<ReferenceVideo[]> {
+async function getCache<T>(key: string, maxAgeMs?: number): Promise<T | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("reference_videos")
-    .select()
-    .order("views", { ascending: false, nullsFirst: false });
-  if (error) throw new Error(`listReferenceVideos failed: ${error.message}`);
-  return (data as ReferenceVideoRow[]).map(mapReferenceVideo);
-}
-
-/** List reference videos scraped for a specific topic (matched_query), best-performing first. */
-export async function listReferenceVideosByQuery(query: string): Promise<ReferenceVideo[]> {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("reference_videos")
-    .select()
-    .eq("matched_query", query)
-    .order("views", { ascending: false, nullsFirst: false });
-  if (error) throw new Error(`listReferenceVideosByQuery failed: ${error.message}`);
-  return (data as ReferenceVideoRow[]).map(mapReferenceVideo);
-}
-
-export async function getReferenceVideo(id: string): Promise<ReferenceVideo | null> {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("reference_videos")
-    .select()
-    .eq("id", id)
+    .from("trend_cache")
+    .select("payload, created_at")
+    .eq("cache_key", key)
     .maybeSingle();
-  if (error) throw new Error(`getReferenceVideo failed: ${error.message}`);
-  return data ? mapReferenceVideo(data as ReferenceVideoRow) : null;
+  if (error) throw new Error(`getCache failed: ${error.message}`);
+  if (!data) return null;
+  if (maxAgeMs) {
+    const age = Date.now() - new Date((data as { created_at: string }).created_at).getTime();
+    if (age > maxAgeMs) return null;
+  }
+  return (data as { payload: T }).payload;
 }
 
-export async function setReferenceStatus(
-  id: string,
-  status: ReferenceAnalysisStatus,
-): Promise<void> {
+async function setCache<T>(key: string, payload: T): Promise<void> {
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
-    .from("reference_videos")
-    .update({ status })
-    .eq("id", id);
-  if (error) throw new Error(`setReferenceStatus failed: ${error.message}`);
+    .from("trend_cache")
+    .upsert(
+      { cache_key: key, payload, created_at: new Date().toISOString() },
+      { onConflict: "cache_key" },
+    );
+  if (error) throw new Error(`setCache failed: ${error.message}`);
 }
 
-export async function deleteReferenceVideos(ids: string[]): Promise<number> {
-  if (ids.length === 0) return 0;
-  const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("reference_videos").delete().in("id", ids);
-  if (error) throw new Error(`deleteReferenceVideos failed: ${error.message}`);
-  return ids.length;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export async function getCachedTrends(): Promise<TrendTopic[] | null> {
+  const key = `trends:${new Date().toISOString().slice(0, 10)}`;
+  return getCache<TrendTopic[]>(key, DAY_MS);
 }
 
-export async function saveReferenceStructure(
-  id: string,
-  structure: ReferenceStructure,
+export async function setCachedTrends(topics: TrendTopic[]): Promise<void> {
+  const key = `trends:${new Date().toISOString().slice(0, 10)}`;
+  await setCache(key, topics);
+}
+
+export async function getCachedReferences(topic: string): Promise<ReferencePattern[] | null> {
+  return getCache<ReferencePattern[]>(`refs:${topic.toLowerCase().trim()}`, 7 * DAY_MS);
+}
+
+export async function setCachedReferences(
+  topic: string,
+  refs: ReferencePattern[],
 ): Promise<void> {
-  const supabase = getSupabaseAdmin();
-  const { error } = await supabase
-    .from("reference_videos")
-    .update({ structure, status: "analyzed" as ReferenceAnalysisStatus })
-    .eq("id", id);
-  if (error) throw new Error(`saveReferenceStructure failed: ${error.message}`);
+  await setCache(`refs:${topic.toLowerCase().trim()}`, refs);
 }
 
-// ---- briefs ----
+// ---- profiles + allowlist (gated onboarding) ----
 
-export async function createBrief(input: {
-  projectId: string;
-  referenceVideoId: string | null;
-  content: ContentBrief;
-}): Promise<Brief> {
+export interface Profile {
+  userId: string;
+  email: string | null;
+  githubUsername: string | null;
+  isAdmin: boolean;
+  createdAt: string;
+}
+
+interface ProfileRow {
+  user_id: string;
+  email: string | null;
+  github_username: string | null;
+  is_admin?: boolean;
+  created_at: string;
+}
+
+function mapProfile(r: ProfileRow): Profile {
+  return {
+    userId: r.user_id,
+    email: r.email,
+    githubUsername: r.github_username,
+    isAdmin: Boolean(r.is_admin),
+    createdAt: r.created_at,
+  };
+}
+
+export async function getProfile(userId: string): Promise<Profile | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("briefs")
-    .insert({
-      project_id: input.projectId,
-      reference_video_id: input.referenceVideoId,
-      content: input.content,
-    })
+    .from("profiles")
     .select()
-    .single();
-  if (error) throw new Error(`createBrief failed: ${error.message}`);
-  return mapBrief(data as BriefRow);
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(`getProfile failed: ${error.message}`);
+  if (!data) return null;
+  return mapProfile(data as ProfileRow);
 }
 
-export async function listBriefs(): Promise<Brief[]> {
+/** Update the saved GitHub handle on a user's profile. Dev user is a no-op. */
+export async function updateProfileGithub(
+  userId: string,
+  githubUsername: string,
+): Promise<void> {
+  if (!realUserId(userId)) return;
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ github_username: githubUsername })
+    .eq("user_id", userId);
+  if (error) throw new Error(`updateProfileGithub failed: ${error.message}`);
+}
+
+export async function countProfiles(): Promise<number> {
+  const supabase = getSupabaseAdmin();
+  const { count, error } = await supabase
+    .from("profiles")
+    .select("*", { count: "exact", head: true });
+  if (error) throw new Error(`countProfiles failed: ${error.message}`);
+  return count ?? 0;
+}
+
+/** Is this identity on the approved allowlist? Matched by email OR github handle. */
+export async function isAllowlisted(
+  email: string | null,
+  githubUsername: string | null,
+): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+  const ors: string[] = [];
+  if (email) ors.push(`email.eq.${email}`);
+  if (githubUsername) ors.push(`github_username.eq.${githubUsername}`);
+  if (ors.length === 0) return false;
+  const { data, error } = await supabase
+    .from("allowed_users")
+    .select("id")
+    .or(ors.join(","))
+    .limit(1);
+  if (error) throw new Error(`isAllowlisted failed: ${error.message}`);
+  return (data?.length ?? 0) > 0;
+}
+
+const USER_CAP = 50;
+
+/**
+ * Ensure an approved profile exists for a freshly-signed-in user. Returns a
+ * status the callback can use to route the user. Enforces the 50-user cap.
+ */
+export async function ensureProfile(input: {
+  userId: string;
+  email: string | null;
+  githubUsername: string | null;
+}): Promise<"active" | "pending" | "full"> {
+  const existing = await getProfile(input.userId);
+  if (existing) return "active";
+
+  const allowed = await isAllowlisted(input.email, input.githubUsername);
+  if (!allowed) {
+    // Log the attempt so an admin can approve/reject it from the /admin page.
+    // Best-effort, but surface failures so a broken insert isn't silent.
+    await recordAccessRequest(input.email, input.githubUsername).catch((e) => {
+      console.error("recordAccessRequest failed:", e);
+    });
+    return "pending";
+  }
+
+  const count = await countProfiles();
+  if (count >= USER_CAP) return "full";
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("profiles").insert({
+    user_id: input.userId,
+    email: input.email,
+    github_username: input.githubUsername,
+  });
+  if (error) throw new Error(`ensureProfile failed: ${error.message}`);
+  return "active";
+}
+
+// ---- admin: user management ----
+
+export interface AllowedUser {
+  id: string;
+  email: string | null;
+  githubUsername: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface AccessRequest {
+  id: string;
+  email: string | null;
+  githubUsername: string | null;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+}
+
+/** True if this user is an admin. Dev (null) user is treated as admin locally. */
+export async function isAdminUser(userId: string): Promise<boolean> {
+  if (!realUserId(userId)) return true;
+  const profile = await getProfile(userId);
+  return Boolean(profile?.isAdmin);
+}
+
+/** Record a sign-in attempt from someone not yet allowlisted (idempotent per email). */
+export async function recordAccessRequest(
+  email: string | null,
+  githubUsername: string | null,
+): Promise<void> {
+  if (!email && !githubUsername) return;
+  const supabase = getSupabaseAdmin();
+  // The unique index on email is PARTIAL (where email is not null), which Postgres
+  // cannot use for ON CONFLICT - so an upsert throws. Check-then-insert instead.
+  if (email) {
+    const { data: existing } = await supabase
+      .from("access_requests")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+    if (existing) return;
+  }
+  const { error } = await supabase
+    .from("access_requests")
+    .insert({ email, github_username: githubUsername, status: "pending" });
+  if (error) throw new Error(`recordAccessRequest failed: ${error.message}`);
+}
+
+export async function listAllProfiles(): Promise<Profile[]> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("briefs")
+    .from("profiles")
     .select()
     .order("created_at", { ascending: false });
-  if (error) throw new Error(`listBriefs failed: ${error.message}`);
-  return (data as BriefRow[]).map(mapBrief);
+  if (error) throw new Error(`listAllProfiles failed: ${error.message}`);
+  return (data as ProfileRow[]).map(mapProfile);
 }
 
-export async function getBrief(id: string): Promise<Brief | null> {
+export async function listAllowedUsers(): Promise<AllowedUser[]> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("briefs")
+    .from("allowed_users")
+    .select()
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`listAllowedUsers failed: ${error.message}`);
+  return (data as Array<{
+    id: string;
+    email: string | null;
+    github_username: string | null;
+    note: string | null;
+    created_at: string;
+  }>).map((r) => ({
+    id: r.id,
+    email: r.email,
+    githubUsername: r.github_username,
+    note: r.note,
+    createdAt: r.created_at,
+  }));
+}
+
+export async function listAccessRequests(): Promise<AccessRequest[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("access_requests")
+    .select()
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`listAccessRequests failed: ${error.message}`);
+  return (data as Array<{
+    id: string;
+    email: string | null;
+    github_username: string | null;
+    status: AccessRequest["status"];
+    created_at: string;
+  }>).map((r) => ({
+    id: r.id,
+    email: r.email,
+    githubUsername: r.github_username,
+    status: r.status,
+    createdAt: r.created_at,
+  }));
+}
+
+/** Add an email (and optional handle/note) to the approved allowlist. */
+export async function addAllowedUser(input: {
+  email?: string | null;
+  githubUsername?: string | null;
+  note?: string | null;
+}): Promise<void> {
+  const email = input.email?.trim().toLowerCase() || null;
+  const githubUsername = input.githubUsername?.trim() || null;
+  if (!email && !githubUsername) throw new Error("email or githubUsername required");
+  const supabase = getSupabaseAdmin();
+  // Partial unique index on email can't back ON CONFLICT, so check-then-insert.
+  if (email) {
+    const { data: existing } = await supabase
+      .from("allowed_users")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+    if (existing) return;
+  }
+  const { error } = await supabase
+    .from("allowed_users")
+    .insert({ email, github_username: githubUsername, note: input.note ?? null });
+  if (error) throw new Error(`addAllowedUser failed: ${error.message}`);
+}
+
+export async function removeAllowedUser(id: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("allowed_users").delete().eq("id", id);
+  if (error) throw new Error(`removeAllowedUser failed: ${error.message}`);
+}
+
+/** Approve a pending request: allowlist its email and mark it approved. */
+export async function approveAccessRequest(id: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("access_requests")
     .select()
     .eq("id", id)
     .maybeSingle();
-  if (error) throw new Error(`getBrief failed: ${error.message}`);
-  return data ? mapBrief(data as BriefRow) : null;
+  if (error) throw new Error(`approveAccessRequest failed: ${error.message}`);
+  if (!data) throw new Error("Request not found");
+  const req = data as { email: string | null; github_username: string | null };
+  await addAllowedUser({ email: req.email, githubUsername: req.github_username });
+  const { error: updErr } = await supabase
+    .from("access_requests")
+    .update({ status: "approved" })
+    .eq("id", id);
+  if (updErr) throw new Error(`approveAccessRequest failed: ${updErr.message}`);
 }
 
-/** Most recent saved brief for a (project, reference clip) pair, if any. */
-export async function getLatestBriefForReference(
-  projectId: string,
-  referenceVideoId: string,
-): Promise<Brief | null> {
+export async function rejectAccessRequest(id: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("access_requests")
+    .update({ status: "rejected" })
+    .eq("id", id);
+  if (error) throw new Error(`rejectAccessRequest failed: ${error.message}`);
+}
+
+// ---- usage quotas ----
+
+export interface Usage {
+  userId: string;
+  researchRuns: number;
+  researchWindowStart: string;
+  editsUsed: number;
+}
+
+interface UsageRow {
+  user_id: string;
+  research_runs: number;
+  research_window_start: string;
+  edits_used: number;
+}
+
+const RESEARCH_PER_DAY = Number(process.env.RESEARCH_DAILY_LIMIT ?? 10);
+const EDIT_LIFETIME_CAP = Number(process.env.EDIT_LIFETIME_CAP ?? 3);
+
+async function getOrCreateUsage(userId: string): Promise<Usage> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("briefs")
+    .from("usage")
     .select()
-    .eq("project_id", projectId)
-    .eq("reference_video_id", referenceVideoId)
-    .not("doc", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(1)
+    .eq("user_id", userId)
     .maybeSingle();
-  if (error) throw new Error(`getLatestBriefForReference failed: ${error.message}`);
-  return data ? mapBrief(data as BriefRow) : null;
+  if (error) throw new Error(`getUsage failed: ${error.message}`);
+  if (data) {
+    const r = data as UsageRow;
+    return {
+      userId: r.user_id,
+      researchRuns: r.research_runs,
+      researchWindowStart: r.research_window_start,
+      editsUsed: r.edits_used,
+    };
+  }
+  const { data: created, error: insErr } = await supabase
+    .from("usage")
+    .insert({ user_id: userId })
+    .select()
+    .single();
+  if (insErr) throw new Error(`create usage failed: ${insErr.message}`);
+  const r = created as UsageRow;
+  return {
+    userId: r.user_id,
+    researchRuns: r.research_runs,
+    researchWindowStart: r.research_window_start,
+    editsUsed: r.edits_used,
+  };
+}
+
+/** Check + consume one research run against the rolling daily window. */
+export async function consumeResearchRun(
+  userId: string,
+): Promise<{ ok: boolean; remaining: number }> {
+  // Dev / unauthenticated: no quota enforcement.
+  if (!realUserId(userId)) return { ok: true, remaining: RESEARCH_PER_DAY };
+  const supabase = getSupabaseAdmin();
+  const usage = await getOrCreateUsage(userId);
+  const windowAge = Date.now() - new Date(usage.researchWindowStart).getTime();
+  let runs = usage.researchRuns;
+  let windowStart = usage.researchWindowStart;
+  if (windowAge > DAY_MS) {
+    runs = 0;
+    windowStart = new Date().toISOString();
+  }
+  if (runs >= RESEARCH_PER_DAY) return { ok: false, remaining: 0 };
+  const { error } = await supabase
+    .from("usage")
+    .update({ research_runs: runs + 1, research_window_start: windowStart })
+    .eq("user_id", userId);
+  if (error) throw new Error(`consumeResearchRun failed: ${error.message}`);
+  return { ok: true, remaining: RESEARCH_PER_DAY - (runs + 1) };
+}
+
+export async function canEdit(userId: string): Promise<{ ok: boolean; used: number; cap: number }> {
+  if (!realUserId(userId)) return { ok: true, used: 0, cap: EDIT_LIFETIME_CAP };
+  const usage = await getOrCreateUsage(userId);
+  return { ok: usage.editsUsed < EDIT_LIFETIME_CAP, used: usage.editsUsed, cap: EDIT_LIFETIME_CAP };
+}
+
+export async function consumeEdit(userId: string): Promise<void> {
+  if (!realUserId(userId)) return;
+  const supabase = getSupabaseAdmin();
+  const usage = await getOrCreateUsage(userId);
+  const { error } = await supabase
+    .from("usage")
+    .update({ edits_used: usage.editsUsed + 1 })
+    .eq("user_id", userId);
+  if (error) throw new Error(`consumeEdit failed: ${error.message}`);
 }
 
 // ---- scene footage ----
@@ -396,28 +671,46 @@ export async function deleteSceneFootage(briefId: string, sceneIndex: number): P
   if (delErr) throw new Error(`deleteSceneFootage failed: ${delErr.message}`);
 }
 
+// ---- briefs ----
+
 /** Persist a scene-by-scene content brief (with the gap Q&A that produced it). */
 export async function saveBriefDoc(input: {
   projectId: string;
-  referenceVideoId: string | null;
   doc: BriefDoc;
   gaps: InfoGap[];
   answers: Record<string, string>;
+  userId?: string | null;
 }): Promise<Brief> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("briefs")
     .insert({
       project_id: input.projectId,
-      reference_video_id: input.referenceVideoId,
+      reference_video_id: null,
       doc: input.doc,
       gaps: input.gaps,
       answers: input.answers,
+      user_id: realUserId(input.userId),
     })
     .select()
     .single();
   if (error) throw new Error(`saveBriefDoc failed: ${error.message}`);
   return mapBrief(data as BriefRow);
+}
+
+/** Most recent saved brief (with a doc) for a project, if any. */
+export async function getLatestBriefForProject(projectId: string): Promise<Brief | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("briefs")
+    .select()
+    .eq("project_id", projectId)
+    .not("doc", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`getLatestBriefForProject failed: ${error.message}`);
+  return data ? mapBrief(data as BriefRow) : null;
 }
 
 /** Fetch a single brief by id. */
@@ -432,7 +725,7 @@ export async function getBriefById(briefId: string): Promise<Brief | null> {
   return data ? mapBrief(data as BriefRow) : null;
 }
 
-/** Persist the Zo render state (job id / status / finished MP4 URL) on a brief. */
+/** Persist the render state (job id / status / finished MP4 URL) on a brief. */
 export async function saveBriefRender(
   briefId: string,
   patch: { jobId?: string; status?: string; url?: string },
@@ -445,66 +738,4 @@ export async function saveBriefRender(
   if (Object.keys(row).length === 0) return;
   const { error } = await supabase.from("briefs").update(row).eq("id", briefId);
   if (error) throw new Error(`saveBriefRender failed: ${error.message}`);
-}
-
-// ---- scripts ----
-// The `scripts` table stores both renders of a brief: grounded in `content` and
-// the naive baseline in `generic_content`, each as stringified ScriptOutput JSON.
-interface ScriptRow {
-  id: string;
-  brief_id: string;
-  content: string | null;
-  generic_content: string | null;
-  created_at: string;
-}
-
-function parseScriptOutput(raw: string | null): ScriptOutput | null {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as ScriptOutput;
-  } catch {
-    return null;
-  }
-}
-
-function mapScript(r: ScriptRow): Script {
-  return {
-    id: r.id,
-    briefId: r.brief_id,
-    grounded: parseScriptOutput(r.content),
-    generic: parseScriptOutput(r.generic_content),
-    createdAt: r.created_at,
-  };
-}
-
-export async function createScript(input: {
-  briefId: string;
-  grounded: ScriptOutput;
-  generic: ScriptOutput;
-}): Promise<Script> {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("scripts")
-    .insert({
-      brief_id: input.briefId,
-      content: JSON.stringify(input.grounded),
-      generic_content: JSON.stringify(input.generic),
-    })
-    .select()
-    .single();
-  if (error) throw new Error(`createScript failed: ${error.message}`);
-  return mapScript(data as ScriptRow);
-}
-
-export async function getScriptByBrief(briefId: string): Promise<Script | null> {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("scripts")
-    .select()
-    .eq("brief_id", briefId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error(`getScriptByBrief failed: ${error.message}`);
-  return data ? mapScript(data as ScriptRow) : null;
 }

@@ -11,7 +11,23 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { Teleprompter } from "@/components/studio/teleprompter";
 import { toRenderBrief } from "@/lib/render-brief";
-import type { BriefDoc, InfoGap, Project } from "@/lib/types";
+import type { Angle, BriefDoc, InfoGap, Project, ReferencePattern } from "@/lib/types";
+
+// The research stage hands the chosen angle to the brief via sessionStorage
+// (too big for a query param). Brand-new-video path stores a freeform prompt.
+const ANGLE_KEY = "proof.angle";
+const REFS_KEY = "proof.references";
+const FREEFORM_KEY = "proof.freeform";
+
+function readStored<T>(key: string): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
 
 // Demo insurance: set NEXT_PUBLIC_DEMO_RENDER_URL to a public path (e.g. /demo-render.mp4)
 // to SKIP the live Zo render and reveal a pre-rendered MP4. Leave it unset/empty to use
@@ -27,18 +43,22 @@ function hostOf(url: string): string {
   }
 }
 
-type Phase = "loading" | "gaps" | "questions" | "drafting" | "brief";
+type Phase = "loading" | "gaps" | "questions" | "drafting" | "brief" | "empty";
 
 export function BriefPanel() {
   const searchParams = useSearchParams();
-  const projectId = searchParams.get("project");
-  const trendIndex = searchParams.get("trend");
-  const referenceVideoId = searchParams.get("ref");
+  const [projectId, setProjectId] = useState<string | null>(searchParams.get("project"));
   // Smoke-test mode: /brief?test=1 spins up a real one-scene brief so you can film
   // a single scene and hit "Send to editor" without the full pipeline.
   const testMode = searchParams.get("test") === "1";
   const gapsStarted = useRef(false);
   const testStarted = useRef(false);
+
+  const [angle] = useState<Angle | null>(() => readStored<Angle>(ANGLE_KEY));
+  const [references] = useState<ReferencePattern[]>(
+    () => readStored<ReferencePattern[]>(REFS_KEY) ?? [],
+  );
+  const [freeformPrompt] = useState<string | null>(() => readStored<string>(FREEFORM_KEY));
 
   const [project, setProject] = useState<Project | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
@@ -53,21 +73,28 @@ export function BriefPanel() {
   const [renderUrl, setRenderUrl] = useState<string | null>(null);
   const [showRender, setShowRender] = useState(false);
 
-  const ready = !!projectId && trendIndex != null && !!referenceVideoId;
+  // We can generate a brief if we have a plan (angle or freeform), or just view
+  // a previously-saved brief when we have a project.
+  const ready = !!angle || !!freeformPrompt || !!projectId;
 
-  const topic = useMemo(() => {
-    if (!project?.trendResearch || trendIndex == null) return null;
-    return project.trendResearch.trends[Number(trendIndex)]?.topic ?? null;
-  }, [project, trendIndex]);
+  const topic = useMemo(() => angle?.title ?? null, [angle]);
+
+  const briefInput = useMemo(
+    () => ({ projectId, angle, freeformPrompt, references }),
+    [projectId, angle, freeformPrompt, references],
+  );
 
   const findGaps = useCallback(async () => {
-    if (!ready) return;
+    if (!angle && !freeformPrompt) {
+      setPhase("questions");
+      return;
+    }
     setPhase("gaps");
     try {
       const res = await fetch("/api/brief/gaps", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, trendIndex: Number(trendIndex), referenceVideoId }),
+        body: JSON.stringify(briefInput),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not work out what's missing");
@@ -77,7 +104,7 @@ export function BriefPanel() {
       toast.error(e instanceof Error ? e.message : "Failed");
       setPhase("questions");
     }
-  }, [ready, projectId, trendIndex, referenceVideoId]);
+  }, [angle, freeformPrompt, briefInput]);
 
   // Test mode: create a real one-scene brief, then jump straight to the brief view.
   useEffect(() => {
@@ -109,8 +136,8 @@ export function BriefPanel() {
 
   // Load project + any saved brief. If none saved, auto-run the cheap gaps step.
   useEffect(() => {
-    if (!ready) {
-      if (!testMode) setPhase("loading");
+    if (testMode || !ready) {
+      if (!testMode && !ready) setPhase("empty");
       return;
     }
     let cancelled = false;
@@ -118,9 +145,9 @@ export function BriefPanel() {
       try {
         const [projRes, briefRes] = await Promise.all([
           fetch("/api/projects").then((r) => r.json()),
-          fetch(
-            `/api/brief?projectId=${projectId}&referenceVideoId=${referenceVideoId}`,
-          ).then((r) => r.json()),
+          projectId
+            ? fetch(`/api/brief?projectId=${projectId}`).then((r) => r.json())
+            : Promise.resolve({ brief: null }),
         ]);
         if (cancelled) return;
         const p: Project | undefined = projRes.projects?.find(
@@ -155,40 +182,37 @@ export function BriefPanel() {
               })
               .catch(() => {});
           }
-        } else if (!gapsStarted.current) {
+        } else if ((angle || freeformPrompt) && !gapsStarted.current) {
           gapsStarted.current = true;
           findGaps();
+        } else {
+          setPhase("empty");
         }
       } catch {
-        if (!cancelled) setPhase("questions");
+        if (!cancelled) setPhase(angle || freeformPrompt ? "questions" : "empty");
       }
     })();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, projectId, referenceVideoId]);
+  }, [ready, projectId, angle, freeformPrompt]);
 
   const draft = useCallback(async () => {
-    if (!ready) return;
+    if (!angle && !freeformPrompt) return;
     setPhase("drafting");
     toast.info("Drafting your scene-by-scene brief.");
     try {
       const res = await fetch("/api/brief/draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          trendIndex: Number(trendIndex),
-          referenceVideoId,
-          gaps,
-          answers,
-        }),
+        body: JSON.stringify({ ...briefInput, gaps, answers }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Draft failed");
       setDoc(data.doc);
       setBriefId(data.id ?? null);
+      if (data.projectId && !projectId) setProjectId(data.projectId);
       setFootage({});
       setPhase("brief");
       toast.success("Brief ready");
@@ -196,7 +220,7 @@ export function BriefPanel() {
       toast.error(e instanceof Error ? e.message : "Draft failed");
       setPhase("questions");
     }
-  }, [ready, projectId, trendIndex, referenceVideoId, gaps, answers]);
+  }, [angle, freeformPrompt, briefInput, projectId, gaps, answers]);
 
   const sendToEditor = useCallback(async () => {
     if (!doc) return;
@@ -377,16 +401,16 @@ export function BriefPanel() {
     ? RENDER_LABELS[renderStatus] ?? "Working…"
     : "Working…";
 
-  if (!ready && !testMode) {
+  if ((!ready && !testMode) || (phase === "empty" && !doc)) {
     return (
       <div className="mx-auto w-full max-w-[920px] px-8 py-10">
-        <SectionMarker n="04" title="Brief" />
+        <SectionMarker n="03" title="Brief" />
         <div className="mt-6 rounded-md border border-dashed border-border p-6 text-sm text-muted-foreground">
-          Start from a clip. Go to{" "}
-          <Link href="/clips" className="text-foreground underline underline-offset-2">
-            03 Clips
+          Pick an angle first. Go to{" "}
+          <Link href="/research" className="text-foreground underline underline-offset-2">
+            02 Research &amp; Plan
           </Link>{" "}
-          and analyse one, then hit “Use this”.
+          and choose a scored angle (or start a brand-new video), then come back here.
         </div>
       </div>
     );
@@ -395,7 +419,7 @@ export function BriefPanel() {
   return (
     <div className="mx-auto w-full max-w-[920px] px-8 py-10">
       <div className="flex items-start justify-between gap-4">
-        <SectionMarker n="04" title="Content brief" />
+        <SectionMarker n="03" title="Content brief" />
         {phase === "brief" && (
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" onClick={() => setPhase("questions")}>
@@ -435,8 +459,8 @@ export function BriefPanel() {
       </div>
       <p className="mt-3 max-w-xl text-sm text-muted-foreground">
         A filmable, scene-by-scene brief for{" "}
-        {topic ? <span className="font-medium text-foreground">{topic}</span> : "your topic"},
-        grounded in your work and the clip&apos;s proven structure.
+        {topic ? <span className="font-medium text-foreground">{topic}</span> : "your angle"},
+        grounded in your proof and a virality-scored plan.
       </p>
 
       {phase === "loading" && <LoadingBlock label="Loading…" />}

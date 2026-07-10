@@ -2,7 +2,9 @@
 
 **You build. We get you seen.**
 
-Proof turns a developer's GitHub work into a short-form video they'd actually post. Connect a repo, and Proof researches what's trending in your niche, finds proven short-form structures, writes a scene-by-scene brief grounded in your real work, runs a teleprompter so you film one take, then auto-cuts, captions, and overlays it into a finished vertical MP4.
+Proof turns a developer's GitHub work into a short-form video they'd actually post. Connect your GitHub, and Proof extracts your uniquely shareable "proof", researches what dev audiences are talking about right now (via an in-app OpenAI web-search agent), mines the patterns behind winning videos, and ranks concrete angles by **predicted virality**. Pick one, get a scene-by-scene brief grounded in your real work, film it in the browser teleprompter, then auto-cut, caption, and overlay it into a finished vertical MP4.
+
+Proof v2 is invite-only (gated onboarding, capped at 50 builders) with per-user quotas.
 
 Built for 'Sup · Build2026.
 
@@ -17,7 +19,7 @@ Shipping is easy now; getting people to *use* what you ship isn't. Traction come
 ## How it works
 
 ```
-repo → Exa → brief → script → teleprompter → cut → Zo → mp4
+github → proof + web-search research → scored angles → brief → teleprompter → cut → render → mp4
 ```
 
 The product is two halves that meet over HTTP, with Supabase as the file/data bus:
@@ -26,17 +28,16 @@ The product is two halves that meet over HTTP, with Supabase as the file/data bu
 flowchart LR
   subgraph web [Next.js app - Vercel]
     connect["01 Connect GitHub"]
-    trends["02 Trends (Exa)"]
-    clips["03 Clips (Apify + Gemini)"]
-    brief["04 Brief + Teleprompter"]
+    research["02 Research & Plan (web search)"]
+    brief["03 Brief & Film"]
   end
-  subgraph render [Render service - Zo Computer]
+  subgraph render [Render service - Zo / Railway]
     api["Express /render"]
     job["transcribe → cut → caption/overlay → composite"]
   end
-  supa[("Supabase\nDB + Storage")]
+  supa[("Supabase\nAuth + DB + Storage")]
 
-  connect --> trends --> clips --> brief
+  connect --> research --> brief
   brief -- "videoUrls + brief" --> api
   api --> job
   job -- "edited.mp4" --> supa
@@ -44,8 +45,8 @@ flowchart LR
   job -. "polls status" .-> brief
 ```
 
-- **The web app** (this repo root) owns the intelligence + capture: GitHub understanding, Exa trend research, TikTok reference mining, the content brief, and the in-browser teleprompter/recorder.
-- **The render service** (`render/`, deployed on a [Zo Computer](https://zo.computer)) owns the heavy compute: word-level transcription, script-guided cutting, and Remotion caption/overlay rendering — the full Linux + ffmpeg + headless-Chromium workload serverless can't hold.
+- **The web app** (this repo root) owns the intelligence + capture: GitHub understanding, the virality research engine (OpenAI web search), the scored content plan, the brief, and the in-browser teleprompter/recorder — behind GitHub-OAuth gated onboarding.
+- **The render service** (`render/`, deployed on a [Zo Computer](https://zo.computer) or Railway) owns the heavy compute: word-level transcription, script-guided cutting, and Remotion caption/overlay rendering — the full Linux + ffmpeg + headless-Chromium workload serverless can't hold. **The `render/` folder is intentionally untouched by v2.**
 
 ---
 
@@ -53,23 +54,33 @@ flowchart LR
 
 | Stage | Route | What happens | Powered by |
 |---|---|---|---|
-| 01 Connect GitHub | `/connect` | Scan a user's public repos + activity, build a profile of what they actually ship | Octokit + OpenAI |
-| 02 Trends | `/trends` | Research what's trending in AI/dev-tooling right now, with real sources; pick one to ride | **Exa** Agent |
-| 03 Clips | `/clips` | Scrape TikTok for that topic, LLM-filter for relevance, and reverse-engineer a chosen clip's structure (on-screen text, beats, b-roll) | Apify + OpenAI + **Gemini** |
-| 04 Brief | `/brief` | Info-gap Q&A → a scene-by-scene, filmable brief. Teleprompter records each scene (true 9:16) to Supabase Storage. "Send to editor" ships it to the render service | OpenAI + Supabase + **Zo** |
+| 01 Connect GitHub | `/connect` | Scan a user's public repos + activity, build a profile of what they actually ship | Octokit + OpenAI (mini) |
+| 02 Research & Plan | `/research` | Extract shareable **proof** → research trending/content-gap topics → mine reference **patterns** → generate and **virality-score** angles. Or start a brand-new video from a freeform prompt. | OpenAI **web search** (Responses API) |
+| 03 Brief & Film | `/brief` | Info-gap Q&A → a scene-by-scene, filmable brief grounded in the chosen angle. Teleprompter records each scene (true 9:16) to Supabase Storage. "Send to editor" ships it to the render service | OpenAI + Supabase + render service |
 
-The landing page at `/` is the pitch deck (`public/proof-deck.html`); its CTA drops into the demo at `/connect`.
+The landing page at `/` is the pitch deck (`public/proof-deck.html`); its CTA drops into the demo at `/connect`. Auth: `/login` (GitHub OAuth) → `/auth/callback` → `/pending` if not yet approved.
+
+### The virality engine (`src/lib/research.ts`)
+
+North star: engineer for **algorithmic satisfaction signals** (completion, shares, saves, rewatches), not likes. The engine runs:
+
+1. **Proof extraction** — the uniquely shareable receipts from your repos (cheap tier, cached per project).
+2. **Trend & demand research** — current dev/AI waves + content-gap (blue-ocean) topics with real sources. **Run once/day globally and shared across all users** (24h cache), so web-search spend is near-zero.
+3. **Reference pattern mining** — patterns behind top-performing analogous videos (cited, not downloaded — this replaces Apify + Gemini). Cached per topic.
+4. **Angle generation + scoring** — several angles scored on a rubric (hook archetype, emotional trigger, shareability, save-ability, trend fit, authenticity) and ranked. This is the one premium model call.
 
 ---
 
 ## Tech stack
 
 - **Web:** Next.js (App Router) · TypeScript · Tailwind CSS v4 · shadcn/ui · Fraunces / Hanken Grotesk / Geist Mono
+- **Auth:** Supabase Auth (GitHub OAuth) via `@supabase/ssr` + middleware; approved allowlist + per-user quotas
 - **Data:** Supabase (Postgres + Storage)
-- **AI / data:** OpenAI (understanding, brief, relevance, transcription) · Google Gemini (video structure analysis) · **Exa** (trend research agent) · Apify (TikTok scraping)
-- **Render:** Express · Remotion · ffmpeg · headless Chromium, hosted on **Zo Computer**
+- **AI:** OpenAI — model-tiered: `gpt-5.4-mini` for mechanical steps (understanding, proof, brief draft), `gpt-5.5` for angle generation + scoring, and the **web-search** tool (Responses API) for grounded research. Whisper (in the render service) for transcription.
+- **Render:** Express · Remotion · ffmpeg · headless Chromium, hosted on **Zo Computer** (or Railway)
 
-Sponsor tech is central, not bolted on: **Exa** is the trend intelligence, **Zo** is the render runtime.
+### Cost model
+LLM cost is controlled deliberately: **model tiering** (premium only for the one step where quality drives the outcome), **shared caching** (trends computed once/day globally; references per-topic; proof per-project), a stable system-prompt prefix for OpenAI prompt-cache discounts, and capped `max_output_tokens`. Expensive steps run only on explicit user action, behind the quota gate — never on page load.
 
 ---
 
@@ -78,16 +89,18 @@ Sponsor tech is central, not bolted on: **Exa** is the trend intelligence, **Zo*
 ```
 proof/
 ├─ src/
+│  ├─ middleware.ts               # Supabase session refresh + route gating
 │  ├─ app/
 │  │  ├─ page.tsx                 # landing (pitch deck iframe)
-│  │  ├─ connect/ trends/ clips/ brief/   # the 4 pipeline stages
-│  │  └─ api/                     # analyze-repo, research-trends, scrape-pool,
-│  │                              # reverse-engineer, brief/*, footage, render
+│  │  ├─ login/ pending/ auth/callback/   # gated onboarding (GitHub OAuth)
+│  │  ├─ connect/ research/ brief/         # the 3 pipeline stages
+│  │  └─ api/                     # analyze-repo, research, angles, brief/*, footage, render
 │  ├─ components/studio/          # stage panels, teleprompter, header/stepper
-│  └─ lib/                        # github, openai, gemini, exa, apify, db, render-brief…
-├─ supabase/migrations/           # 0001 … 0006 schema
+│  └─ lib/                        # github, openai, research, content-brief, auth,
+│  │                              # supabase/{server,client}, db, render-brief…
+├─ supabase/migrations/           # 0001 … 0009 schema (0007 auth, 0008 usage, 0009 cache)
 ├─ public/                        # hero.png, proof-deck.html, demo-render.mp4
-└─ render/                        # the Zo render service (self-contained, its own README)
+└─ render/                        # the render service (self-contained, its own README — untouched by v2)
 ```
 
 The render service has its own setup notes in [`render/README.md`](render/README.md) and a design doc in [`docs/zo-remotion-render-prd.md`](docs/zo-remotion-render-prd.md).
@@ -98,8 +111,8 @@ The render service has its own setup notes in [`render/README.md`](render/README
 
 ### Prerequisites
 - Node 18.18+ (Node 20 recommended)
-- A Supabase project
-- API keys: OpenAI, Gemini, Exa, Apify (GitHub token optional)
+- A Supabase project (with GitHub OAuth configured — see below)
+- API keys: OpenAI (GitHub token optional)
 
 ### 1. Install
 ```bash
@@ -107,29 +120,45 @@ npm install
 ```
 
 ### 2. Environment
-Create `.env` (or `.env.local`) in the repo root:
+Create `.env` (or `.env.local`) in the repo root (see `.env.example`):
 
 ```bash
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=...
-SUPABASE_SERVICE_ROLE_KEY=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...      # client auth (GitHub OAuth). If unset, auth is disabled (dev)
+SUPABASE_SERVICE_ROLE_KEY=...          # server-only
 
-# AI / data
+# AI
 OPENAI_API_KEY=...
-GEMINI_API_KEY=...
-EXA_API_KEY=...
-APIFY_API_TOKEN=...
 GITHUB_TOKEN=...                       # optional, raises GitHub rate limits
 
+# Model tiering (optional overrides; defaults shown)
+OPENAI_TEXT_MODEL=gpt-5.5              # premium: angle generation + scoring
+OPENAI_MINI_MODEL=gpt-5.4-mini         # cheap: understanding, proof, brief draft
+OPENAI_SEARCH_MODEL=gpt-5.5            # web-search research (Responses API)
+
+# Quotas (optional overrides)
+RESEARCH_DAILY_LIMIT=10                # scored-angle runs per user per day
+EDIT_LIFETIME_CAP=3                    # lifetime video edits per user
+
 # Render integration
-RENDER_SERVICE_URL=https://<your-zo-host>   # the deployed render service
+RENDER_SERVICE_URL=https://<your-render-host>
 
 # Demo insurance (optional): skip the live render and play a pre-rendered MP4
 NEXT_PUBLIC_DEMO_RENDER_URL=/demo-render.mp4
 ```
 
+> **Note:** `EXA_API_KEY`, `APIFY_API_TOKEN`, and `GEMINI_API_KEY` are no longer used in v2.
+
 ### 3. Database
-Run the SQL migrations in `supabase/migrations/` (0001 → 0006) in the Supabase SQL editor (or via the Supabase CLI). `0005` also creates the public `footage` Storage bucket used for recordings and finished renders.
+Run the SQL migrations in `supabase/migrations/` (0001 → 0009) in the Supabase SQL editor (or via the Supabase CLI). `0005` creates the public `footage` Storage bucket; `0007` adds auth profiles + allowlist + RLS; `0008` adds usage quotas; `0009` adds the shared research cache.
+
+### 3b. Auth + onboarding (GitHub OAuth)
+1. In the Supabase dashboard → **Authentication → Providers → GitHub**, enable it and paste a GitHub OAuth app's client id/secret. Set the callback to `https://<your-supabase-ref>.supabase.co/auth/v1/callback`.
+2. In your GitHub OAuth app, set the homepage/callback to your deployed web app.
+3. Approve a user by inserting a row into `allowed_users` (match by `email` or `github_username`). On first sign-in an approved user gets a `profiles` row (capped at 50); everyone else lands on `/pending`.
+
+If `NEXT_PUBLIC_SUPABASE_ANON_KEY` is unset, auth is bypassed locally with a single dev identity so the pipeline stays usable.
 
 ### 4. Run
 ```bash
@@ -173,14 +202,18 @@ When you click **Send to editor** on the brief:
 
 ## Demo mode
 
-For a reliable live pitch, set `NEXT_PUBLIC_DEMO_RENDER_URL=/demo-render.mp4` and drop a pre-rendered clip at `public/demo-render.mp4`. In this mode, **Send to editor** fakes the pipeline progress and plays that file (no Zo/Supabase round-trip), and the Trends stage steers presenters to the one prepared trend. Set the var empty to use the real pipeline.
+For a reliable live pitch, set `NEXT_PUBLIC_DEMO_RENDER_URL=/demo-render.mp4` and drop a pre-rendered clip at `public/demo-render.mp4`. In this mode, **Send to editor** fakes the pipeline progress and plays that file (no render/Supabase round-trip). Set the var empty to use the real pipeline.
+
+## Quotas
+
+Per authenticated user (see `usage` table): research (scored-angle) runs are rate-limited on a rolling daily window (`RESEARCH_DAILY_LIMIT`, default 10) and video edits are capped for life (`EDIT_LIFETIME_CAP`, default 3, enforced in `POST /api/render`).
 
 ---
 
 ## Deploy
 
-- **Web app → Vercel:** import the repo (Next.js auto-detected, root directory = repo root; `render/` is ignored). Add the env vars above. Note: long routes (Apify scrape, Exa/Gemini) can exceed serverless time limits — pre-run research/clips before a demo, and recorded-footage uploads are limited by serverless body size.
-- **Render service → Zo Computer:** see `render/`.
+- **Web app → Vercel:** import the repo (Next.js auto-detected, root directory = repo root; `render/` is ignored via `tsconfig.json` + `eslint.config.mjs`). Add the env vars above. Note: the web-search research route can be slow on a cold cache — the daily-shared trend cache means only the first user of the day pays that cost. Recorded-footage uploads are limited by serverless body size.
+- **Render service → Zo Computer / Railway:** see `render/`.
 
 ---
 

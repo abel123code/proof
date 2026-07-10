@@ -1,65 +1,85 @@
-import { openaiJSON } from "@/lib/openai";
+import { OPENAI_MINI_MODEL, openaiJSON } from "@/lib/openai";
 import { CREATOR_PERSONA } from "@/lib/persona";
 import type {
+  Angle,
   BriefDoc,
   BriefScene,
   InfoGap,
+  Proof,
   ProjectUnderstanding,
-  ReferenceStructure,
-  Trend,
+  ReferencePattern,
 } from "@/lib/types";
 
-interface BriefContext {
-  understanding: ProjectUnderstanding;
-  trend: Trend;
-  structure: ReferenceStructure;
-  referenceCaption?: string | null;
+export interface BriefContext {
+  understanding: ProjectUnderstanding | null;
+  proof: Proof | null;
+  /** The chosen scored angle (research path). */
+  angle?: Angle | null;
+  /** A freeform prompt (brand-new-video path). Used when there's no angle. */
+  freeformPrompt?: string | null;
+  references?: ReferencePattern[];
 }
 
 function contextPayload(ctx: BriefContext) {
   return {
-    BUILDER_PROFILE: {
-      oneLiner: ctx.understanding.oneLiner,
-      summary: ctx.understanding.summary,
-      problem: ctx.understanding.problem,
-      stack: ctx.understanding.stack,
-      interesting: ctx.understanding.interesting,
-      audience: ctx.understanding.audience,
-      talkingPoints: ctx.understanding.talkingPoints,
-      notableRepos: ctx.understanding.notableRepos?.map((r) => r.name),
-    },
-    TREND: {
-      topic: ctx.trend.topic,
-      whyTrending: ctx.trend.whyTrending,
-      suggestedAngle: ctx.trend.suggestedAngle,
-      sources: ctx.trend.sourceUrls,
-    },
-    REFERENCE_STRUCTURE: {
-      hook: ctx.structure.hook,
-      beats: ctx.structure.beats,
-      pacing: ctx.structure.pacing,
-      whyItWorks: ctx.structure.whyItWorks,
-      caption: ctx.referenceCaption ?? null,
-    },
+    BUILDER_PROFILE: ctx.understanding
+      ? {
+          oneLiner: ctx.understanding.oneLiner,
+          summary: ctx.understanding.summary,
+          problem: ctx.understanding.problem,
+          stack: ctx.understanding.stack,
+          interesting: ctx.understanding.interesting,
+          audience: ctx.understanding.audience,
+          talkingPoints: ctx.understanding.talkingPoints,
+        }
+      : null,
+    POSITIONING: ctx.proof,
+    CHOSEN_ANGLE: ctx.angle
+      ? {
+          title: ctx.angle.title,
+          hook: ctx.angle.hook,
+          hookOptions: ctx.angle.hookOptions,
+          hookArchetype: ctx.angle.hookArchetype,
+          emotionalTrigger: ctx.angle.emotionalTrigger,
+          coreIdea: ctx.angle.coreIdea,
+          format: ctx.angle.format,
+          targetDurationSeconds: ctx.angle.targetDurationSeconds,
+          proofUsed: ctx.angle.proofUsed,
+          sources: ctx.angle.sources,
+        }
+      : null,
+    FREEFORM_PROMPT: ctx.freeformPrompt ?? null,
+    REFERENCE_PATTERNS: (ctx.references ?? []).map((r) => ({
+      hookType: r.hookType,
+      format: r.format,
+      structure: r.structure,
+      whyShareable: r.whyShareable,
+    })),
   };
+}
+
+function sourcesFor(ctx: BriefContext): string[] {
+  return Array.from(new Set(ctx.angle?.sources ?? [])).slice(0, 6);
 }
 
 // ---- Step 1: find the info GitHub can't give us --------------------------------
 
 const GAPS_SYSTEM = `${CREATOR_PERSONA}
 
-You are about to write a concrete, personal, scene-by-scene video brief for this creator. You already have their GitHub-derived BUILDER_PROFILE, the TREND they want to ride, and the proven STRUCTURE of a reference TikTok.
+You are about to write a concrete, scene-by-scene video brief that MARKETS this product to its target user, built on the CHOSEN_ANGLE (or FREEFORM_PROMPT), the product POSITIONING, and BUILDER_PROFILE.
 
-Your job here is NOT to write the brief yet. It is to list the specific pieces of information you are MISSING - things GitHub cannot tell you but that you genuinely need to make the video personal and non-generic.
+Your job here is NOT to write the brief yet. It is to list the specific pieces of information you are MISSING - things GitHub cannot tell you but that you genuinely need to make the video relatable and convincing.
 
-Ask 3-5 questions. Focus on things like: the creator's personal motivation / origin story, concrete results or metrics (users, stars, time saved), what exactly to show on screen / demo, their honest opinion or hot-take on the trend, who they're really speaking to, and anything that would otherwise force you to guess.
+Ask 3-5 questions. Focus on: the target user's real, felt pain (a relatable moment/story), the concrete before -> after the product delivers, the single most convincing thing to SHOW as the product payoff, any real outcome/metric worth citing, and the call-to-action (where/how to try it). Frame everything around the viewer's problem, not the tech.
 
-Do NOT ask things already answered by the BUILDER_PROFILE. Keep each question short and answerable in one or two sentences.
+Do NOT ask things already answered by POSITIONING or the BUILDER_PROFILE. Keep each question short and answerable in one or two sentences.
 
 Return ONLY JSON: { "questions": [ { "id": string (short slug), "question": string, "why": string, "placeholder": string } ] }.`;
 
 export async function findInfoGaps(ctx: BriefContext): Promise<InfoGap[]> {
   const out = await openaiJSON<{ questions: InfoGap[] }>({
+    model: OPENAI_MINI_MODEL,
+    maxTokens: 3000,
     system: GAPS_SYSTEM,
     user: JSON.stringify(contextPayload(ctx)),
   });
@@ -79,17 +99,19 @@ export async function findInfoGaps(ctx: BriefContext): Promise<InfoGap[]> {
 
 const DRAFT_SYSTEM = `${CREATOR_PERSONA}
 
-Write a filmable, scene-by-scene content brief for a ~30-45 second vertical (9:16) video.
+Write a filmable, scene-by-scene content brief for a short vertical (9:16) video whose goal is PRODUCT ADOPTION - make the viewer want to try the product - optimized for algorithmic satisfaction signals (completion, shares, saves, rewatches), not likes.
+
+Shape the arc as: relatable problem/hook -> raise the stakes (why it matters to the viewer) -> reveal the product as the "oh, that fixes it" payoff (show it) -> clear try-it CTA. Topic-driven, not tech-driven; jargon-light unless the target user is technical.
 
 Use ALL of:
-- TREND: ride this. The video should feel like it's part of this conversation.
-- BUILDER_PROFILE: the creator's real work - use it as living proof, with specifics.
-- REFERENCE_STRUCTURE: mirror its pacing and beat shape (the PROVEN structure), but do NOT copy its content.
-- ANSWERS: the creator's answers to your earlier questions. Use these heavily - they make it personal.
+- CHOSEN_ANGLE: this is the strategy. Open on its hook (or one of its hookOptions), deliver its coreIdea, lean into its emotionalTrigger. If there's no angle, use FREEFORM_PROMPT.
+- POSITIONING / BUILDER_PROFILE: lead with problemSpace + transformation for the targetUser; use receipts only as supporting proof where they earn a save. Do not lead with tech or invent numbers.
+- REFERENCE_PATTERNS: mirror the proven pacing/beat shape - do NOT copy content.
+- ANSWERS: the creator's answers to your earlier questions. Use these heavily.
 
-Where an ANSWER is missing or blank, make a reasonable, specific assumption and record it in "assumptions" (so the creator can correct it). Never write vague filler.
+Where an ANSWER is missing, make a reasonable, specific assumption and record it in "assumptions". Never write vague filler. First 3 seconds must earn the watch; one idea, fast pacing.
 
-Each scene must be filmable: an exact spoken line, an on-screen text overlay (or empty string), and a concrete b-roll / screen-recording cue. 4-7 scenes total, opening on a strong hook.
+Each scene must be filmable: an exact spoken line, an on-screen text overlay (or empty string), and a concrete b-roll / screen-recording cue. 4-7 scenes, opening on a strong hook, closing on a try-it CTA.
 
 Return ONLY JSON matching:
 {
@@ -112,6 +134,8 @@ export async function draftBriefDoc(
   }));
 
   const out = await openaiJSON<BriefDoc>({
+    model: OPENAI_MINI_MODEL,
+    maxTokens: 7000,
     system: DRAFT_SYSTEM,
     user: JSON.stringify({ ...contextPayload(ctx), ANSWERS: qa }),
   });
@@ -122,17 +146,16 @@ export async function draftBriefDoc(
     spokenLine: typeof s.spokenLine === "string" ? s.spokenLine : "",
     onScreenText: typeof s.onScreenText === "string" ? s.onScreenText : "",
     brollCue: typeof s.brollCue === "string" ? s.brollCue : "",
-    durationSeconds:
-      typeof s.durationSeconds === "number" ? s.durationSeconds : undefined,
+    durationSeconds: typeof s.durationSeconds === "number" ? s.durationSeconds : undefined,
   }));
 
   return {
-    title: out.title ?? "Untitled brief",
-    hook: out.hook ?? "",
-    angle: out.angle ?? "",
+    title: out.title ?? ctx.angle?.title ?? "Untitled brief",
+    hook: out.hook ?? ctx.angle?.hook ?? "",
+    angle: out.angle ?? ctx.angle?.coreIdea ?? "",
     targetFeeling: out.targetFeeling ?? undefined,
     assumptions: Array.isArray(out.assumptions) ? out.assumptions.filter(Boolean) : [],
     scenes,
-    sources: ctx.trend.sourceUrls ?? [],
+    sources: sourcesFor(ctx),
   };
 }

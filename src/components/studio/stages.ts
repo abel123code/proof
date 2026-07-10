@@ -18,23 +18,16 @@ export const STAGES: Stage[] = [
   },
   {
     n: "02",
-    href: "/trends",
-    label: "Trends",
-    blurb: "Research what's trending right now and pick a topic to ride.",
+    href: "/research",
+    label: "Research & Plan",
+    blurb: "Find what's trending, mine winning patterns, and pick a virality-scored angle.",
     enabled: true,
   },
   {
     n: "03",
-    href: "/clips",
-    label: "Clips",
-    blurb: "See what's already winning on TikTok for that topic.",
-    enabled: true,
-  },
-  {
-    n: "04",
     href: "/brief",
-    label: "Brief",
-    blurb: "A scene-by-scene content brief, ready to film.",
+    label: "Brief & Film",
+    blurb: "A scene-by-scene brief, ready to film and send to the editor.",
     enabled: true,
   },
 ];
