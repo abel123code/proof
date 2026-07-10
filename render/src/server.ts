@@ -5,6 +5,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { JobState, RenderJobInput } from "./types.js";
 import { runJob } from "./job.js";
 import { RENDER_ROOT } from "./render.js";
+import { createSemaphore } from "./semaphore.js";
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -39,6 +40,12 @@ app.use("/render", (req, res, next) => {
 // client poll — a synchronous HTTP call would time out.
 const jobs = new Map<string, JobState>();
 
+// Cap concurrent renders. Measured on the Railway box (2026-07-10): 2 is the sweet spot
+// (faster per-job than 1 via I/O overlap), 3 OOMs the ffmpeg composite. Env-tunable so the
+// limit can be dropped to 1 from the Railway dashboard without a rebuild. See DECISIONS.md.
+const RENDER_CONCURRENCY = Math.max(1, Number(process.env.RENDER_CONCURRENCY) || 2);
+const renderGate = createSemaphore(RENDER_CONCURRENCY);
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "proof-render" });
 });
@@ -58,11 +65,16 @@ app.post("/render", (req, res) => {
   const now = Date.now();
   jobs.set(id, { id, status: "queued", startedAt: now, updatedAt: now });
 
-  // Fire and forget; progress is polled via GET /render/:id.
-  runJob(id, input, (status, extra) => {
-    const cur = jobs.get(id);
-    if (cur) jobs.set(id, { ...cur, status, ...extra, updatedAt: Date.now() });
-  })
+  // Fire and forget; progress is polled via GET /render/:id. The render gate caps how many
+  // jobs execute at once — excess jobs stay "queued" here until a slot frees, instead of all
+  // starting together and thrashing the box. runJob flips the status off "queued" once it runs.
+  renderGate
+    .run(() =>
+      runJob(id, input, (status, extra) => {
+        const cur = jobs.get(id);
+        if (cur) jobs.set(id, { ...cur, status, ...extra, updatedAt: Date.now() });
+      }),
+    )
     .then((result) => {
       const cur = jobs.get(id) ?? { id, startedAt: now };
       jobs.set(id, {
@@ -93,5 +105,5 @@ app.get("/render/:id", (req, res) => {
 
 const PORT = Number(process.env.PORT ?? 8080);
 app.listen(PORT, () => {
-  console.log(`proof render service listening on :${PORT}`);
+  console.log(`proof render service listening on :${PORT} (max ${RENDER_CONCURRENCY} concurrent renders)`);
 });
