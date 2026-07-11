@@ -39,6 +39,9 @@ export function ResearchPanel() {
   const [topics, setTopics] = useState<TrendTopic[]>([]);
   const [researching, setResearching] = useState(false);
   const [researched, setResearched] = useState(false);
+  // True while loading previously-saved research on mount, so we don't flash the
+  // "Run research" CTA (which spends credits) before cached work has loaded.
+  const [hydrating, setHydrating] = useState<boolean>(!!projectId);
 
   const [chosenTopic, setChosenTopic] = useState<number | null>(null);
   const [angles, setAngles] = useState<Angle[]>([]);
@@ -87,6 +90,8 @@ export function ResearchPanel() {
         }
       } catch {
         // ignore - user can run research manually
+      } finally {
+        if (!cancelled) setHydrating(false);
       }
     })();
     return () => {
@@ -273,7 +278,14 @@ export function ResearchPanel() {
         </div>
       )}
 
-      {projectId && !researched && (
+      {projectId && !researched && hydrating && (
+        <div className="mt-6 flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-4">
+          <Spinner />
+          <p className="text-sm text-muted-foreground">Loading your saved research…</p>
+        </div>
+      )}
+
+      {projectId && !researched && !hydrating && (
         <div className="mt-6">
           <Button onClick={runResearch} disabled={researching}>
             {researching ? "Researching the web…" : "✦ Run research"}

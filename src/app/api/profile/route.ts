@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAuthConfigured, requireApprovedUser } from "@/lib/auth";
-import { getProfile, getWallet, updateProfileGithub } from "@/lib/db";
+import { getWallet, updateProfileGithub } from "@/lib/db";
 import { parseUsername } from "@/lib/github";
 
 export const runtime = "nodejs";
@@ -9,15 +9,20 @@ export async function GET() {
   const auth = await requireApprovedUser();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const [profile, wallet] = await Promise.all([
-    getProfile(auth.userId).catch(() => null),
-    getWallet(auth.userId).catch(() => null),
-  ]);
+  // requireApprovedUser already loaded the profile - reuse it instead of a
+  // second identical query. Only the wallet still needs its own lookup.
+  const profile = auth.profile;
+  const wallet = await getWallet(auth.userId).catch(() => null);
   // Dev (auth off) is treated as admin so the /admin tools are reachable locally.
   const isAdmin = !isAuthConfigured() || Boolean(profile?.isAdmin);
+  // Only expose the admin flag to actual admins. Regular users get no `isAdmin`
+  // key at all, so the flag's existence isn't advertised in the network tab.
+  // This is purely cosmetic - admin access is always enforced server-side by
+  // requireAdmin() (DB check), never by trusting this client-visible value.
   return NextResponse.json({
     githubUsername: profile?.githubUsername ?? null,
-    isAdmin,
+    email: profile?.email ?? null,
+    ...(isAdmin ? { isAdmin: true } : {}),
     creditsRemaining: wallet?.remaining ?? null,
     creditsTotal: wallet?.total ?? null,
   });

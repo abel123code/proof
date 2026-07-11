@@ -52,7 +52,11 @@ export async function middleware(request: NextRequest) {
   // Signed in but not yet approved (no profile row) -> waitlist. Without this a
   // pending user has a valid session and could open /connect directly. The
   // "own profile" RLS policy lets the user read only their own row here.
-  if (user && !isPublic(pathname)) {
+  //
+  // Skip this DB lookup for /api/* : those routes self-gate via
+  // requireApprovedUser, and redirecting a fetch() to /pending is useless. This
+  // removes one Supabase round-trip from every API call.
+  if (user && !isPublic(pathname) && !pathname.startsWith("/api")) {
     const { data: profile, error: profileErr } = await supabase
       .from("profiles")
       .select("user_id")

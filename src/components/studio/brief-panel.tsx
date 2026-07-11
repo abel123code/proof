@@ -468,7 +468,7 @@ export function BriefPanel() {
         grounded in your proof and a virality-scored plan.
       </p>
 
-      {phase === "loading" && <LoadingBlock label="Loading…" />}
+      {phase === "loading" && <BriefSkeleton />}
       {phase === "gaps" && (
         <LoadingBlock label="Working out what I need from you that GitHub can't tell me…" />
       )}
@@ -817,11 +817,46 @@ function BriefView({
 
 function BriefSkeleton() {
   return (
-    <div className="mt-7 space-y-3">
-      <Skeleton className="h-28 w-full rounded-lg" />
-      <Skeleton className="h-24 w-full rounded-lg" />
-      <Skeleton className="h-24 w-full rounded-lg" />
-      <Skeleton className="h-24 w-full rounded-lg" />
+    <div className="mt-7" aria-busy="true" aria-label="Loading brief">
+      {/* Hero card — mirrors the title / angle / hook block of the real brief */}
+      <div className="rounded-lg border border-border bg-secondary/30 p-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <Skeleton className="h-6 w-2/3 max-w-xs" />
+          <Skeleton className="h-3 w-24" />
+        </div>
+        <Skeleton className="mt-3 h-4 w-full" />
+        <Skeleton className="mt-2 h-4 w-4/5" />
+        <div className="mt-3 rounded-md border-l-2 border-primary/40 bg-card p-3">
+          <Skeleton className="h-2.5 w-12" />
+          <Skeleton className="mt-2 h-5 w-3/4" />
+        </div>
+      </div>
+
+      <div className="mt-6 flex items-center justify-between">
+        <Skeleton className="h-2.5 w-16" />
+        <Skeleton className="h-2.5 w-20" />
+      </div>
+
+      {/* Scene cards */}
+      <div className="mt-2 space-y-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="rounded-lg border border-border bg-card p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="h-3 w-28" />
+              </div>
+              <Skeleton className="h-3 w-10" />
+            </div>
+            <Skeleton className="mt-3 h-4 w-full" />
+            <Skeleton className="mt-2 h-4 w-5/6" />
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <Skeleton className="h-12 w-full rounded-md" />
+              <Skeleton className="h-12 w-full rounded-md" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

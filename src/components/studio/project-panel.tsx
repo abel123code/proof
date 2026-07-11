@@ -11,17 +11,12 @@ import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { NextStage } from "@/components/studio/next-stage";
 import { resolveHandle } from "@/components/studio/github-handle";
 import { emitCreditsChanged } from "@/components/studio/credits";
+import {
+  getCachedRepos,
+  setCachedRepos,
+  type PublicRepo,
+} from "@/components/studio/profile-store";
 import type { Project } from "@/lib/types";
-
-interface PublicRepo {
-  name: string;
-  fullName: string;
-  url: string;
-  description: string | null;
-  language: string | null;
-  stars: number;
-  pushedAt: string | null;
-}
 
 function timeAgo(iso: string | null): string {
   if (!iso) return "";
@@ -48,12 +43,20 @@ export function ProjectPanel() {
   const [analyzedUrls, setAnalyzedUrls] = useState<Set<string>>(new Set());
 
   const loadRepos = useCallback(async (h: string) => {
+    // Serve from cache instantly on revisits; only hit GitHub on a cold handle.
+    const cached = getCachedRepos(h);
+    if (cached) {
+      setRepos(cached);
+      return;
+    }
     setLoadingRepos(true);
     try {
       const res = await fetch(`/api/github/repos?username=${encodeURIComponent(h)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to load repos");
-      setRepos(data.repos ?? []);
+      const list: PublicRepo[] = data.repos ?? [];
+      setRepos(list);
+      setCachedRepos(h, list);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load repos");
     } finally {

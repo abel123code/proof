@@ -2,49 +2,46 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { STAGES, stageIndex } from "@/components/studio/stages";
-import { resolveHandle } from "@/components/studio/github-handle";
 import { onCreditsChanged } from "@/components/studio/credits";
+import {
+  getProfileData,
+  refreshProfileDebounced,
+  subscribeProfile,
+} from "@/components/studio/profile-store";
 
 export function StudioHeader() {
   const pathname = usePathname();
   const current = stageIndex(pathname);
-  const [handle, setHandle] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
 
-  const refreshCredits = useCallback(() => {
-    fetch("/api/profile")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!d) return;
-        setIsAdmin(Boolean(d.isAdmin));
-        setCredits(typeof d.creditsRemaining === "number" ? d.creditsRemaining : null);
-      })
-      .catch(() => {});
-  }, []);
-
+  // One shared fetch drives admin and credits. Subscribe so any store refresh
+  // (e.g. after a charged action) updates them at once.
   useEffect(() => {
-    resolveHandle().then(setHandle);
-  }, []);
+    const unsubscribe = subscribeProfile((d) => {
+      setIsAdmin(Boolean(d?.isAdmin));
+      setCredits(typeof d?.creditsRemaining === "number" ? d.creditsRemaining : null);
+    });
+    void getProfileData();
 
-  // Keep the balance authoritative: re-fetch on route change, on an explicit
-  // credits:changed signal from a charged action, and when the tab regains focus.
-  useEffect(() => {
-    refreshCredits();
-    const unsubscribe = onCreditsChanged(refreshCredits);
+    // Keep the balance authoritative without spamming: a charged action, tab
+    // focus, or returning to a visible tab all trigger a debounced refresh.
     const onVisible = () => {
-      if (document.visibilityState === "visible") refreshCredits();
+      if (document.visibilityState === "visible") refreshProfileDebounced();
     };
-    window.addEventListener("focus", refreshCredits);
+    const onFocus = () => refreshProfileDebounced();
+    const unsubCredits = onCreditsChanged(() => refreshProfileDebounced(0));
+    window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       unsubscribe();
-      window.removeEventListener("focus", refreshCredits);
+      unsubCredits();
+      window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [pathname, refreshCredits]);
+  }, []);
 
   return (
     <header className="border-b border-border">
@@ -142,8 +139,7 @@ export function StudioHeader() {
             title="Settings"
             className="flex items-center gap-2 rounded-md px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
-            <span className="hidden sm:inline">Settings</span>
-            {handle && <span className="text-foreground">@{handle}</span>}
+            Settings
           </Link>
         </div>
       </div>

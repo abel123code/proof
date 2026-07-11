@@ -8,19 +8,22 @@ import { Input } from "@/components/ui/input";
 import { StudioHeader } from "@/components/studio/studio-header";
 import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { HANDLE_KEY } from "@/components/studio/github-handle";
+import { getProfileData, refreshProfile } from "@/components/studio/profile-store";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function SettingsPage() {
   const [handle, setHandle] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/profile");
-        const data = await res.json();
+        const data = await getProfileData();
+        setEmail(data?.email ?? null);
         const stored =
           data?.githubUsername ||
           (typeof window !== "undefined" ? window.localStorage.getItem(HANDLE_KEY) : null);
@@ -55,6 +58,8 @@ export default function SettingsPage() {
       } catch {
         // ignore
       }
+      // Refresh the shared store so the header/connect reflect the new handle.
+      void refreshProfile();
       toast.success(`Saved @${data.githubUsername}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not save");
@@ -64,6 +69,7 @@ export default function SettingsPage() {
   }, [handle]);
 
   const signOut = useCallback(async () => {
+    setSigningOut(true);
     try {
       const supabase = createSupabaseBrowserClient();
       await supabase.auth.signOut();
@@ -99,6 +105,9 @@ export default function SettingsPage() {
                 onKeyDown={(e) => e.key === "Enter" && save()}
                 className="font-mono text-sm"
                 disabled={loading}
+                maxLength={120}
+                autoComplete="off"
+                spellCheck={false}
               />
               <Button onClick={save} disabled={saving || loading || !handle.trim()}>
                 {saving ? "Saving…" : "Save"}
@@ -128,12 +137,18 @@ export default function SettingsPage() {
 
           <div className="mt-10 border-t border-border pt-6">
             <Kicker>Account</Kicker>
-            <div className="mt-2 flex items-center justify-between gap-4">
+            <div className="mt-2">
+              <p className="text-xs text-muted-foreground">Signed in as</p>
+              <p className="mt-1 font-mono text-sm text-foreground">
+                {loading ? "…" : email ?? "—"}
+              </p>
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-4">
               <p className="text-sm text-muted-foreground">
                 Sign out of Proof on this device.
               </p>
-              <Button variant="outline" onClick={signOut}>
-                Sign out
+              <Button variant="outline" onClick={signOut} disabled={signingOut}>
+                {signingOut ? "Signing out…" : "Sign out"}
               </Button>
             </div>
           </div>

@@ -68,6 +68,7 @@ export function Teleprompter({
   const [uploading, setUploading] = useState(false);
   const [viewing, setViewing] = useState(false);
 
+  const [camReady, setCamReady] = useState(false);
   const scene = doc.scenes[active];
   const currentUrl = footage[active] ?? null;
   const pxPerSec = speed * 10;
@@ -162,6 +163,7 @@ export function Teleprompter({
           videoRef.current.srcObject = stream;
           await videoRef.current.play().catch(() => {});
         }
+        if (!cancelled) setCamReady(true);
       } catch (e) {
         if (!cancelled) setCamError(e instanceof Error ? e.message : "Camera/mic unavailable");
       }
@@ -362,6 +364,14 @@ export function Teleprompter({
             {camError && (
               <div className="absolute inset-0 flex items-center justify-center bg-neutral-900 px-6 text-center text-sm text-white/60">
                 Camera unavailable ({camError}). Reader only.
+              </div>
+            )}
+            {!camReady && !camError && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-neutral-900/80 text-white/70">
+                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-white" />
+                <span className="font-mono text-xs uppercase tracking-[0.2em]">
+                  Starting camera…
+                </span>
               </div>
             )}
           </>
