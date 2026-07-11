@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/lib/auth";
 import {
+  assertBriefOwnedBy,
   deleteSceneFootage,
   listSceneFootage,
-  uploadSceneFootage,
+  recordSceneFootage,
 } from "@/lib/db";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
 
 export async function GET(req: Request) {
   const auth = await requireApprovedUser();
@@ -19,6 +19,9 @@ export async function GET(req: Request) {
     if (!briefId) {
       return NextResponse.json({ error: "briefId is required" }, { status: 400 });
     }
+    if (!(await assertBriefOwnedBy(briefId, auth.userId))) {
+      return NextResponse.json({ error: "Not your brief." }, { status: 403 });
+    }
     const footage = await listSceneFootage(briefId);
     return NextResponse.json({ footage });
   } catch (err) {
@@ -28,34 +31,37 @@ export async function GET(req: Request) {
   }
 }
 
+/**
+ * Confirm a direct upload. The browser has already PUT the clip to Supabase via a signed
+ * ticket (POST /api/footage/sign); this records the scene_footage row. Body:
+ * { briefId, sceneIndex, storagePath } -> { url }. No file transits this function.
+ */
 export async function POST(req: Request) {
   const auth = await requireApprovedUser();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
-    const form = await req.formData();
-    const briefId = form.get("briefId");
-    const sceneIndexRaw = form.get("sceneIndex");
-    const file = form.get("file");
+    const body = await req.json().catch(() => ({}));
+    const briefId: unknown = body?.briefId;
+    const sceneIndex = Number(body?.sceneIndex);
+    const storagePath: unknown = body?.storagePath;
 
-    if (typeof briefId !== "string" || typeof sceneIndexRaw !== "string") {
+    if (typeof briefId !== "string" || Number.isNaN(sceneIndex) || typeof storagePath !== "string") {
       return NextResponse.json(
-        { error: "briefId and sceneIndex are required" },
+        { error: "briefId, sceneIndex and storagePath are required" },
         { status: 400 },
       );
     }
-    const sceneIndex = Number(sceneIndexRaw);
-    if (Number.isNaN(sceneIndex)) {
-      return NextResponse.json({ error: "sceneIndex must be a number" }, { status: 400 });
+    if (!(await assertBriefOwnedBy(briefId, auth.userId))) {
+      return NextResponse.json({ error: "Not your brief." }, { status: 403 });
     }
-    if (!(file instanceof Blob)) {
-      return NextResponse.json({ error: "file is required" }, { status: 400 });
+    // The signed path is derived server-side as `${briefId}/...`; reject anything else so a
+    // confirm can't point a row at another brief's object.
+    if (!storagePath.startsWith(`${briefId}/`)) {
+      return NextResponse.json({ error: "invalid storagePath" }, { status: 400 });
     }
 
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const contentType = file.type || "video/webm";
-
-    const url = await uploadSceneFootage({ briefId, sceneIndex, bytes, contentType });
+    const url = await recordSceneFootage({ briefId, sceneIndex, storagePath, userId: auth.userId });
     return NextResponse.json({ sceneIndex, url });
   } catch (err) {
     console.error("footage POST failed:", err);
@@ -77,6 +83,9 @@ export async function DELETE(req: Request) {
         { error: "briefId and sceneIndex are required" },
         { status: 400 },
       );
+    }
+    if (!(await assertBriefOwnedBy(briefId, auth.userId))) {
+      return NextResponse.json({ error: "Not your brief." }, { status: 403 });
     }
     await deleteSceneFootage(briefId, sceneIndex);
     return NextResponse.json({ ok: true });

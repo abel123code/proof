@@ -696,6 +696,59 @@ export async function uploadSceneFootage(input: {
   return url;
 }
 
+function footagePath(briefId: string, sceneIndex: number, contentType: string): string {
+  const ext = contentType.includes("mp4") ? "mp4" : "webm";
+  return `${briefId}/scene-${sceneIndex}.${ext}`;
+}
+
+/**
+ * Mint a short-lived signed upload URL so the browser can PUT the clip straight to
+ * Supabase Storage, bypassing the Vercel serverless request-body limit (~4.5MB, which
+ * capped clips at ~30s). The bytes never transit our server. Pair with recordSceneFootage.
+ */
+export async function createFootageUploadTicket(input: {
+  briefId: string;
+  sceneIndex: number;
+  contentType: string;
+}): Promise<{ path: string; token: string; signedUrl: string }> {
+  const supabase = getSupabaseAdmin();
+  const path = footagePath(input.briefId, input.sceneIndex, input.contentType);
+  const { data, error } = await supabase.storage
+    .from(FOOTAGE_BUCKET)
+    .createSignedUploadUrl(path, { upsert: true });
+  if (error) throw new Error(`footage sign failed: ${error.message}`);
+  return { path, token: data.token, signedUrl: data.signedUrl };
+}
+
+/** Record a scene_footage row after a direct (signed) upload has landed. Returns the URL. */
+export async function recordSceneFootage(input: {
+  briefId: string;
+  sceneIndex: number;
+  storagePath: string;
+  userId: string;
+}): Promise<string> {
+  const supabase = getSupabaseAdmin();
+  const { data: pub } = supabase.storage.from(FOOTAGE_BUCKET).getPublicUrl(input.storagePath);
+  // Cache-bust so a re-record of the same scene shows the new take.
+  const url = `${pub.publicUrl}?v=${Date.now()}`;
+
+  const { error: rowErr } = await supabase
+    .from("scene_footage")
+    .upsert(
+      {
+        brief_id: input.briefId,
+        scene_index: input.sceneIndex,
+        url,
+        storage_path: input.storagePath,
+        user_id: input.userId === DEV_USER_ID ? null : input.userId,
+      },
+      { onConflict: "brief_id,scene_index" },
+    );
+  if (rowErr) throw new Error(`footage row upsert failed: ${rowErr.message}`);
+
+  return url;
+}
+
 /** Delete a scene's footage (storage object + row). */
 export async function deleteSceneFootage(briefId: string, sceneIndex: number): Promise<void> {
   const supabase = getSupabaseAdmin();
@@ -770,6 +823,25 @@ export async function getBriefById(briefId: string): Promise<Brief | null> {
     .maybeSingle();
   if (error) throw new Error(`getBriefById failed: ${error.message}`);
   return data ? mapBrief(data as BriefRow) : null;
+}
+
+/**
+ * Ownership guard for service-role routes. The API routes use the service-role client,
+ * which BYPASSES row-level security, so a briefId alone is not enough — we must confirm
+ * the caller owns the brief or any approved user could touch anyone's footage/renders.
+ * Dev (auth off, DEV_USER_ID) is a single identity and always passes.
+ */
+export async function assertBriefOwnedBy(briefId: string, userId: string): Promise<boolean> {
+  if (userId === DEV_USER_ID) return true;
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("briefs")
+    .select("user_id")
+    .eq("id", briefId)
+    .maybeSingle();
+  if (error) throw new Error(`ownership check failed: ${error.message}`);
+  if (!data) return false;
+  return (data as { user_id: string | null }).user_id === userId;
 }
 
 /** Persist the render state (job id / status / finished MP4 URL) on a brief. */

@@ -12,6 +12,7 @@ import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { emitCreditsChanged } from "@/components/studio/credits";
 import { Teleprompter } from "@/components/studio/teleprompter";
 import { toRenderBrief } from "@/lib/render-brief";
+import { uploadSceneFootageDirect } from "@/lib/upload";
 import type { Angle, BriefDoc, InfoGap, Project, ReferencePattern } from "@/lib/types";
 
 // The research stage hands the chosen angle to the brief via sessionStorage
@@ -345,16 +346,18 @@ export function BriefPanel() {
         toast.error("Generate the brief first.");
         return;
       }
-      const id = toast.loading(`Uploading scene ${sceneIndex + 1}…`);
+      const id = toast.loading(`Uploading scene ${sceneIndex + 1}… 0%`);
       try {
-        const fd = new FormData();
-        fd.append("briefId", briefId);
-        fd.append("sceneIndex", String(sceneIndex));
-        fd.append("file", file, file.name);
-        const res = await fetch("/api/footage", { method: "POST", body: fd });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Upload failed");
-        setFootage((m) => ({ ...m, [sceneIndex]: data.url }));
+        // Direct browser -> Supabase (signed URL); no Vercel body limit on the clip size.
+        const url = await uploadSceneFootageDirect({
+          briefId,
+          sceneIndex,
+          file,
+          contentType: file.type,
+          onProgress: (f) =>
+            toast.loading(`Uploading scene ${sceneIndex + 1}… ${Math.round(f * 100)}%`, { id }),
+        });
+        setFootage((m) => ({ ...m, [sceneIndex]: url }));
         toast.success(`Scene ${sceneIndex + 1} uploaded`, { id });
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Upload failed", { id });
