@@ -110,7 +110,12 @@ export async function GET(req: Request) {
     if (!jobId) {
       return NextResponse.json({ error: "jobId is required" }, { status: 400 });
     }
-    if (briefId && !(await assertBriefOwnedBy(briefId, auth.userId))) {
+    // Require briefId and always verify ownership: otherwise any approved user
+    // who guessed a jobId could poll status and read another user's render URL.
+    if (!briefId) {
+      return NextResponse.json({ error: "briefId is required" }, { status: 400 });
+    }
+    if (!(await assertBriefOwnedBy(briefId, auth.userId))) {
       return NextResponse.json({ error: "Not your brief." }, { status: 403 });
     }
 

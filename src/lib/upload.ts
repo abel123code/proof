@@ -35,6 +35,9 @@ export async function uploadSceneFootageDirect(input: {
     form.append("", input.file);
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", signedUrl);
+    // Generous ceiling for large clips on slow links; without it a stalled
+    // connection (no data, no error) would hang the upload UI forever.
+    xhr.timeout = 10 * 60 * 1000;
     xhr.setRequestHeader("x-upsert", "true"); // do NOT set content-type — the browser sets the multipart boundary
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) input.onProgress?.(e.loaded / e.total);
@@ -44,6 +47,8 @@ export async function uploadSceneFootageDirect(input: {
         ? resolve()
         : reject(new Error(`Upload failed (${xhr.status})`));
     xhr.onerror = () => reject(new Error("Upload failed — network error"));
+    xhr.ontimeout = () => reject(new Error("Upload timed out"));
+    xhr.onabort = () => reject(new Error("Upload aborted"));
     xhr.send(form);
   });
   input.onProgress?.(1);
