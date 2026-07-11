@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { emitCreditsChanged } from "@/components/studio/credits";
+import { setActiveProject } from "@/components/studio/active-project";
 import { Teleprompter } from "@/components/studio/teleprompter";
 import { toRenderBrief } from "@/lib/render-brief";
 import { uploadSceneFootageDirect } from "@/lib/upload";
@@ -163,6 +164,7 @@ export function BriefPanel() {
           (x: Project) => x.id === projectId,
         );
         setProject(p ?? null);
+        if (p) setActiveProject({ id: p.id, name: p.name ?? null });
 
         if (briefRes.brief?.doc) {
           setDoc(briefRes.brief.doc);

@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { STARTING_CREDITS } from "@/lib/pricing";
+import { resolveResumeStage, type ProjectProgress } from "@/lib/resume";
 import type {
   Brief,
   BriefDoc,
@@ -108,6 +109,52 @@ export async function listProjects(userId?: string | null): Promise<Project[]> {
   const { data, error } = await query;
   if (error) throw new Error(`listProjects failed: ${error.message}`);
   return (data as ProjectRow[]).map(mapProject);
+}
+
+/**
+ * Projects for a user, each annotated with which studio stage to resume into.
+ * One extra briefs query (batched over all project ids) keeps this at 2 round-trips
+ * regardless of project count. Ordered by most recent activity first.
+ */
+export async function listProjectsWithProgress(
+  userId?: string | null,
+): Promise<ProjectProgress[]> {
+  const projects = await listProjects(userId);
+  if (projects.length === 0) return [];
+
+  const supabase = getSupabaseAdmin();
+  const ids = projects.map((p) => p.id);
+  const { data, error } = await supabase
+    .from("briefs")
+    .select("project_id, doc, render_url, render_status, created_at")
+    .in("project_id", ids)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`listProjectsWithProgress failed: ${error.message}`);
+
+  // First row per project_id is the latest (query is sorted desc).
+  const latestByProject = new Map<
+    string,
+    { doc: unknown | null; renderUrl: string | null; renderStatus: string | null; createdAt: string }
+  >();
+  for (const row of (data ?? []) as Array<{
+    project_id: string;
+    doc: unknown | null;
+    render_url: string | null;
+    render_status: string | null;
+    created_at: string;
+  }>) {
+    if (latestByProject.has(row.project_id)) continue;
+    latestByProject.set(row.project_id, {
+      doc: row.doc ?? null,
+      renderUrl: row.render_url ?? null,
+      renderStatus: row.render_status ?? null,
+      createdAt: row.created_at,
+    });
+  }
+
+  return projects
+    .map((p) => resolveResumeStage(p, latestByProject.get(p.id) ?? null))
+    .sort((a, b) => b.lastActivity.localeCompare(a.lastActivity));
 }
 
 /**

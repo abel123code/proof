@@ -7,6 +7,10 @@ import { useEffect, useState } from "react";
 import { STAGES, stageIndex } from "@/components/studio/stages";
 import { onCreditsChanged } from "@/components/studio/credits";
 import {
+  getActiveProject,
+  subscribeActiveProject,
+} from "@/components/studio/active-project";
+import {
   getProfileData,
   refreshProfileDebounced,
   subscribeProfile,
@@ -17,6 +21,7 @@ export function StudioHeader() {
   const current = stageIndex(pathname);
   const [isAdmin, setIsAdmin] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
 
   // One shared fetch drives admin and credits. Subscribe so any store refresh
   // (e.g. after a charged action) updates them at once.
@@ -43,6 +48,16 @@ export function StudioHeader() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
+
+  // Keep the stepper links pointed at the project the user is working on so
+  // switching stages never drops their context.
+  useEffect(() => {
+    setProjectId(getActiveProject()?.id ?? null);
+    return subscribeActiveProject((p) => setProjectId(p?.id ?? null));
+  }, []);
+
+  const withProject = (href: string) =>
+    projectId ? `${href}?project=${projectId}` : href;
 
   return (
     <header className="border-b border-border">
@@ -93,7 +108,7 @@ export function StudioHeader() {
                 )}
                 {stage.enabled ? (
                   <Link
-                    href={stage.href}
+                    href={withProject(stage.href)}
                     title={stage.label}
                     className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-secondary"
                   >

@@ -11,6 +11,8 @@ import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { NextStage } from "@/components/studio/next-stage";
 import { resolveHandle } from "@/components/studio/github-handle";
 import { emitCreditsChanged } from "@/components/studio/credits";
+import { setActiveProject } from "@/components/studio/active-project";
+import { ResumeProjects } from "@/components/studio/resume-projects";
 import {
   getCachedRepos,
   setCachedRepos,
@@ -101,6 +103,9 @@ export function ProjectPanel() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Analysis failed");
       setProject(data.project);
+      if (data.project?.id) {
+        setActiveProject({ id: data.project.id, name: data.project.name ?? repo.name });
+      }
       toast.success(`Analysed ${repo.name}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Analysis failed");
@@ -122,6 +127,7 @@ export function ProjectPanel() {
 
   return (
     <div className="mx-auto w-full max-w-[720px] px-8 py-10">
+      <ResumeProjects />
       <SectionMarker n="01" title="Pick a repo" />
       <p className="mt-3 max-w-md text-sm text-muted-foreground">
         Choose the repo you want this video to be about. We scan its README, stack, and

@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { emitCreditsChanged } from "@/components/studio/credits";
+import { setActiveProject } from "@/components/studio/active-project";
 import type {
   Angle,
   Proof,
@@ -64,6 +65,7 @@ export function ResearchPanel() {
         const data = await res.json();
         if (cancelled || !res.ok) return;
         const p = data.projects?.find((x: { id: string }) => x.id === projectId);
+        if (p) setActiveProject({ id: p.id, name: p.name ?? null });
         if (p?.research) {
           const research = p.research;
           setProof(research.proof ?? null);
