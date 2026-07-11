@@ -88,7 +88,7 @@ export default function SettingsPage() {
     <div className="flex flex-1 flex-col">
       <StudioHeader />
       <main className="flex-1">
-        <div className="mx-auto w-full max-w-[640px] px-8 py-10">
+        <div className="mx-auto w-full max-w-[640px] px-4 py-10 sm:px-8">
           <SectionMarker n="00" title="Settings" />
           <p className="mt-3 max-w-md text-sm text-muted-foreground">
             Connect your GitHub. We use it to pull your repos so you can pick which one to
@@ -143,7 +143,7 @@ export default function SettingsPage() {
                 {loading ? "…" : email ?? "—"}
               </p>
             </div>
-            <div className="mt-4 flex items-center justify-between gap-4">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
               <p className="text-sm text-muted-foreground">
                 Sign out of Proof on this device.
               </p>

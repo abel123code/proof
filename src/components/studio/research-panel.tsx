@@ -227,12 +227,13 @@ export function ResearchPanel() {
   }, [freeform, projectId, router]);
 
   return (
-    <div className="mx-auto w-full max-w-[1040px] px-8 py-10">
-      <div className="flex items-start justify-between gap-4">
+    <div className="mx-auto w-full max-w-[1040px] px-4 py-10 sm:px-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <SectionMarker n="02" title="Research & plan" />
         <Button
           size="sm"
           variant={freeformOpen ? "default" : "outline"}
+          className="self-start"
           onClick={() => setFreeformOpen((v) => !v)}
         >
           {freeformOpen ? "× Close" : "＋ Brand-new video"}
@@ -413,7 +414,7 @@ export function ResearchPanel() {
 
       {(scoring || angles.length > 0) && (
         <div className="mt-9">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <Kicker>Angles, ranked by predicted virality</Kicker>
             {chosenTopic !== null && !scoring && angles.length > 0 && (
               <Button
@@ -509,14 +510,14 @@ function AngleCard({
       }`}
     >
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
             {rank === 0 && (
               <Badge className="bg-primary font-mono text-[9px] uppercase text-primary-foreground">
                 top pick
               </Badge>
             )}
-            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               {angle.hookArchetype} · {angle.emotionalTrigger}
             </span>
           </div>
@@ -541,7 +542,7 @@ function AngleCard({
 
       {angle.why && <p className="mt-3 text-sm text-muted-foreground">{angle.why}</p>}
 
-      <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-6">
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-6">
         {DIMENSIONS.map((d) => (
           <div key={d.key}>
             <div className="flex items-center justify-between">
@@ -560,7 +561,7 @@ function AngleCard({
         ))}
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         {angle.sources.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {angle.sources.slice(0, 3).map((u) => (

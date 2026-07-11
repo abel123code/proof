@@ -328,7 +328,7 @@ export function Teleprompter({
   useEffect(() => () => stopCanvasDraw(), [stopCanvasDraw]);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-row items-center justify-center gap-8 p-4">
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 overflow-y-auto p-4 lg:flex-row lg:gap-8">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
 
       <canvas ref={canvasRef} width={720} height={1280} className="hidden" />
@@ -342,7 +342,7 @@ export function Teleprompter({
       </button>
 
       {/* 9:16 phone frame */}
-      <div className="relative z-10 aspect-[9/16] h-[90vh] max-h-[90vh] overflow-hidden rounded-[2.4rem] border-[6px] border-neutral-800 bg-black shadow-2xl">
+      <div className="relative z-10 aspect-[9/16] max-h-[50vh] w-auto max-w-[88vw] shrink-0 overflow-hidden rounded-[2.4rem] border-[6px] border-neutral-800 bg-black shadow-2xl lg:max-h-[90vh] lg:max-w-none">
         {/* Playback of the uploaded take for this scene */}
         {viewing && currentUrl ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption
@@ -468,7 +468,7 @@ export function Teleprompter({
       </div>
 
       {/* Controls (side panel) */}
-      <div className="relative z-10 flex w-[280px] flex-col items-stretch gap-5">
+      <div className="relative z-10 flex w-full max-w-[320px] shrink-0 flex-col items-stretch gap-5 lg:w-[280px]">
         {/* Scene heading */}
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/50">

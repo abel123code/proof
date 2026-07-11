@@ -126,7 +126,7 @@ export function ProjectPanel() {
   }, [repos, query]);
 
   return (
-    <div className="mx-auto w-full max-w-[720px] px-8 py-10">
+    <div className="mx-auto w-full max-w-[720px] px-4 py-10 sm:px-8">
       <ResumeProjects />
       <SectionMarker n="01" title="Pick a repo" />
       <p className="mt-3 max-w-md text-sm text-muted-foreground">
@@ -251,7 +251,7 @@ export function ProjectPanel() {
       {project?.understanding && (
         <div className="mt-8 border-t border-border pt-8">
           <Kicker>Project understanding</Kicker>
-          <p className="mt-3 font-display text-3xl leading-tight tracking-tight">
+          <p className="mt-3 font-display text-2xl leading-tight tracking-tight sm:text-3xl">
             {project.understanding.oneLiner}
           </p>
           <p className="mt-4 leading-relaxed text-muted-foreground">

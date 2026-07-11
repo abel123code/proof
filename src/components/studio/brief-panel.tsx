@@ -436,7 +436,7 @@ export function BriefPanel() {
 
   if ((!ready && !testMode) || (phase === "empty" && !doc)) {
     return (
-      <div className="mx-auto w-full max-w-[920px] px-8 py-10">
+      <div className="mx-auto w-full max-w-[920px] px-4 py-10 sm:px-8">
         <SectionMarker n="03" title="Brief" />
         <div className="mt-6 rounded-md border border-dashed border-border p-6 text-sm text-muted-foreground">
           Pick an angle first. Go to{" "}
@@ -450,11 +450,11 @@ export function BriefPanel() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[920px] px-8 py-10">
-      <div className="flex items-start justify-between gap-4">
+    <div className="mx-auto w-full max-w-[920px] px-4 py-10 sm:px-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <SectionMarker n="03" title="Content brief" />
         {phase === "brief" && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="outline" onClick={() => setPhase("questions")}>
               Edit answers & regenerate
             </Button>
@@ -564,7 +564,7 @@ export function BriefPanel() {
             className="relative z-10 flex flex-col items-center gap-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="aspect-[9/16] h-[80vh] max-h-[80vh] overflow-hidden rounded-[2rem] border-[5px] border-neutral-800 bg-black shadow-2xl">
+            <div className="aspect-[9/16] max-h-[80vh] w-auto max-w-[92vw] overflow-hidden rounded-[2rem] border-[5px] border-neutral-800 bg-black shadow-2xl">
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video
                 src={renderUrl}
@@ -724,8 +724,8 @@ function BriefView({
               clip ? "border-primary/40" : "border-border"
             }`}
           >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-baseline gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
                 <span className="font-mono text-xs text-primary">
                   SCENE {String(s.scene ?? i + 1).padStart(2, "0")}
                 </span>
@@ -736,7 +736,7 @@ function BriefView({
                   <span className="font-mono text-[10px] text-muted-foreground/60">✗ no footage</span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {s.durationSeconds ? (
                   <span className="font-mono text-[11px] text-muted-foreground">
                     ~{s.durationSeconds}s
@@ -837,7 +837,7 @@ function BriefView({
             ✕
           </button>
           <div
-            className="relative z-10 aspect-[9/16] h-[88vh] max-h-[88vh] overflow-hidden rounded-[2rem] border-[5px] border-neutral-800 bg-black shadow-2xl"
+            className="relative z-10 aspect-[9/16] max-h-[85vh] w-auto max-w-[92vw] overflow-hidden rounded-[2rem] border-[5px] border-neutral-800 bg-black shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}

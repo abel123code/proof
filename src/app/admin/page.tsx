@@ -181,7 +181,7 @@ export default function AdminPage() {
     <div className="flex flex-1 flex-col">
       <StudioHeader />
       <main className="flex-1">
-        <div className="mx-auto w-full max-w-[820px] px-8 py-10">
+        <div className="mx-auto w-full max-w-[820px] px-4 py-10 sm:px-8">
           <SectionMarker n="99" title="Admin" />
           <p className="mt-3 max-w-md text-sm text-muted-foreground">
             Approve people who tried to sign in, manage the allowlist, and see who has
@@ -213,7 +213,7 @@ export default function AdminPage() {
                     {pending.map((r) => (
                       <div
                         key={r.id}
-                        className="flex items-center gap-3 px-4 py-3"
+                        className="flex flex-wrap items-center gap-3 gap-y-2 px-4 py-3"
                       >
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-mono text-sm">
@@ -299,7 +299,7 @@ export default function AdminPage() {
                 ) : (
                   <div className="mt-2 divide-y divide-border rounded-lg border border-border">
                     {profiles.map((p) => (
-                      <div key={p.userId} className="flex items-center gap-3 px-4 py-2.5">
+                      <div key={p.userId} className="flex flex-wrap items-center gap-3 gap-y-2 px-4 py-2.5">
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-mono text-sm">
                             {p.email ?? "—"}

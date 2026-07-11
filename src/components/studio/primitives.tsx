@@ -10,7 +10,7 @@ export function SectionMarker({ n, title }: { n: string; title: string }) {
   return (
     <div className="flex items-baseline gap-3">
       <span className="font-mono text-sm text-primary">{n}</span>
-      <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
+      <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h2>
     </div>
   );
 }
