@@ -1,12 +1,11 @@
 import Link from "next/link";
+import { ProofMark } from "@/components/proof-mark";
 
 export default function PendingPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-6 text-center">
       <div className="w-full max-w-md">
-        <span className="mx-auto flex size-10 items-center justify-center rounded-md bg-primary/12 font-mono text-sm font-bold text-primary">
-          P
-        </span>
+        <ProofMark className="mx-auto block size-10" />
         <h1 className="mt-6 font-display text-3xl leading-tight tracking-tight">
           You&apos;re on the list
         </h1>

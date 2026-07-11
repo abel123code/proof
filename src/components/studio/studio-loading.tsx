@@ -1,4 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { ProofMark } from "@/components/proof-mark";
 
 // Shared route-level loading skeleton for studio pages. Rendered instantly on
 // navigation (via loading.tsx) so the user sees structure immediately instead
@@ -9,9 +10,7 @@ export function StudioLoading({ marker = "00" }: { marker?: string }) {
       <header className="border-b border-border">
         <div className="mx-auto flex w-full max-w-[1100px] items-center justify-between px-8 py-4">
           <div className="flex items-center gap-3">
-            <span className="flex size-8 items-center justify-center rounded-md bg-primary/12 font-mono text-sm font-bold text-primary">
-              P
-            </span>
+            <ProofMark className="size-8" />
             <Skeleton className="h-3 w-14" />
           </div>
           <Skeleton className="h-6 w-64 rounded-md" />

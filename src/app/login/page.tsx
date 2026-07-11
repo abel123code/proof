@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import { ProofMark } from "@/components/proof-mark";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -25,11 +26,8 @@ function LoginInner() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm text-center">
-        <Link
-          href="/"
-          className="mx-auto flex size-10 items-center justify-center rounded-md bg-primary/12 font-mono text-sm font-bold text-primary transition-colors hover:bg-primary/20"
-        >
-          P
+        <Link href="/" className="mx-auto flex w-fit transition hover:opacity-80">
+          <ProofMark className="size-10" />
         </Link>
         <h1 className="mt-6 font-display text-3xl leading-tight tracking-tight">
           Sign in to Proof
