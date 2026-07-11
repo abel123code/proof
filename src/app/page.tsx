@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Proof — We turn boring github repos into viral tiktok videos.",
+  // Brand comes from the root layout's "%s · proof" template, so don't repeat it here.
+  title: "We turn boring github repos into viral tiktok videos.",
   description:
     "Connect a repo. Get a video you'd actually post. Proof reverse-engineers what already works in your niche and turns your shipped project into recruiter-facing UGC.",
 };
