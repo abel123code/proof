@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { BriefDoc } from "@/lib/types";
+import { uploadSceneFootageDirect } from "@/lib/upload";
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -66,6 +67,7 @@ export function Teleprompter({
   // Persistent footage per scene index (public Storage URLs), seeded from the brief.
   const [footage, setFootage] = useState<Record<number, string>>(initialFootage);
   const [uploading, setUploading] = useState(false);
+  const [uploadPct, setUploadPct] = useState(0);
   const [viewing, setViewing] = useState(false);
 
   const [camReady, setCamReady] = useState(false);
@@ -81,17 +83,19 @@ export function Teleprompter({
         return;
       }
       setUploading(true);
+      setUploadPct(0);
       try {
-        const ext = blob.type.includes("mp4") ? "mp4" : "webm";
-        const fd = new FormData();
-        fd.append("briefId", briefId);
-        fd.append("sceneIndex", String(sceneIdx));
-        fd.append("file", blob, `scene-${sceneIdx}.${ext}`);
-        const res = await fetch("/api/footage", { method: "POST", body: fd });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Upload failed");
-        setFootage((m) => ({ ...m, [sceneIdx]: data.url }));
-        onFootageChange?.(sceneIdx, data.url);
+        // Direct browser -> Supabase (signed URL) so long takes aren't capped by the
+        // Vercel serverless body limit. See src/lib/upload.ts.
+        const url = await uploadSceneFootageDirect({
+          briefId,
+          sceneIndex: sceneIdx,
+          file: blob,
+          contentType: blob.type,
+          onProgress: setUploadPct,
+        });
+        setFootage((m) => ({ ...m, [sceneIdx]: url }));
+        onFootageChange?.(sceneIdx, url);
         toast.success(`Scene ${sceneIdx + 1} uploaded`);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Upload failed");
@@ -388,9 +392,19 @@ export function Teleprompter({
           </div>
         )}
         {uploading && (
-          <div className="absolute left-3 top-3 z-20 flex items-center gap-1.5 rounded-full bg-black/60 px-2 py-1 backdrop-blur">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
-            <span className="font-mono text-[10px] text-white">uploading…</span>
+          <div className="absolute left-3 top-3 z-20 flex flex-col gap-1 rounded-lg bg-black/60 px-2.5 py-1.5 backdrop-blur">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-[#e0533d]" />
+              <span className="font-mono text-[10px] text-white">
+                uploading… {Math.round(uploadPct * 100)}%
+              </span>
+            </div>
+            <div className="h-1 w-28 overflow-hidden rounded-full bg-white/20">
+              <div
+                className="h-full rounded-full bg-[#e0533d] transition-[width] duration-150"
+                style={{ width: `${Math.max(4, uploadPct * 100)}%` }}
+              />
+            </div>
           </div>
         )}
         {currentUrl && !recording && !uploading && (

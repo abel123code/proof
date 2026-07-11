@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireApprovedUser } from "@/lib/auth";
-import { getBriefById, refundCredits, saveBriefRender, spendCredits } from "@/lib/db";
+import {
+  assertBriefOwnedBy,
+  getBriefById,
+  refundCredits,
+  saveBriefRender,
+  spendCredits,
+} from "@/lib/db";
 import { CREDIT_COSTS } from "@/lib/pricing";
 
 export const runtime = "nodejs";
@@ -33,6 +39,11 @@ export async function POST(req: Request) {
       { error: "videoUrls (non-empty) and brief are required" },
       { status: 400 },
     );
+  }
+  // Service-role bypasses RLS, so confirm the caller owns this brief before rendering
+  // it (and before spending anyone's credits).
+  if (!(await assertBriefOwnedBy(briefId, auth.userId))) {
+    return NextResponse.json({ error: "Not your brief." }, { status: 403 });
   }
 
   // Reserve credits before kicking off the render; refund if it never starts.
@@ -89,12 +100,18 @@ export async function POST(req: Request) {
  * and re-uploaded to our Storage so it persists, then saved on the brief.
  */
 export async function GET(req: Request) {
+  const auth = await requireApprovedUser();
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
   try {
     const { searchParams } = new URL(req.url);
     const jobId = searchParams.get("jobId");
     const briefId = searchParams.get("briefId");
     if (!jobId) {
       return NextResponse.json({ error: "jobId is required" }, { status: 400 });
+    }
+    if (briefId && !(await assertBriefOwnedBy(briefId, auth.userId))) {
+      return NextResponse.json({ error: "Not your brief." }, { status: 403 });
     }
 
     // If we already persisted this brief's render, short-circuit.
