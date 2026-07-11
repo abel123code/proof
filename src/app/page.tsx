@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ProofMark } from "@/components/proof-mark";
 import Link from "next/link";
 
 export const metadata: Metadata = {
@@ -28,9 +29,7 @@ export default function Landing() {
       <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
           <Link href="/" className="flex items-center gap-2.5">
-            <span className="grid size-7 place-items-center rounded-md bg-primary font-mono text-sm font-bold text-primary-foreground">
-              P
-            </span>
+            <ProofMark className="size-7" />
             <span className="font-mono text-sm font-medium tracking-wide text-foreground">
               Proof
             </span>
