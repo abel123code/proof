@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireApprovedUser } from "@/lib/auth";
 import {
   assertBriefOwnedBy,
+  clearBriefRender,
   getBriefById,
   refundCredits,
   saveBriefRender,
@@ -166,6 +167,34 @@ export async function GET(req: Request) {
       { status: 502 },
     );
   }
+}
+
+/**
+ * Delete an edited video: DELETE /api/render  body: { briefId }
+ * Removes the stored MP4 and clears the render state on the brief.
+ */
+export async function DELETE(req: Request) {
+  const auth = await requireApprovedUser();
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  const body = await req.json().catch(() => ({}));
+  const briefId: unknown = body?.briefId;
+  if (typeof briefId !== "string") {
+    return NextResponse.json({ error: "briefId is required" }, { status: 400 });
+  }
+  if (!(await assertBriefOwnedBy(briefId, auth.userId))) {
+    return NextResponse.json({ error: "Not your brief." }, { status: 403 });
+  }
+
+  // Best-effort remove the persisted file; the brief-state wipe is the source of truth.
+  try {
+    const supabase = getSupabaseAdmin();
+    await supabase.storage.from(FOOTAGE_BUCKET).remove([`renders/${briefId}.mp4`]);
+  } catch (e) {
+    console.error("failed to remove stored render (continuing):", e);
+  }
+  await clearBriefRender(briefId);
+  return NextResponse.json({ ok: true });
 }
 
 /** Download the finished MP4 from the Zo box and re-upload to our Storage. */

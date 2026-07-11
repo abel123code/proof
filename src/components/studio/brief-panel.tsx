@@ -74,12 +74,19 @@ export function BriefPanel() {
   const [renderStatus, setRenderStatus] = useState<string | null>(null);
   const [renderUrl, setRenderUrl] = useState<string | null>(null);
   const [showRender, setShowRender] = useState(false);
+  const [deletingRender, setDeletingRender] = useState(false);
+  const [downloadingRender, setDownloadingRender] = useState(false);
+  // `angle`/`freeformPrompt` are seeded from localStorage, which is empty during SSR.
+  // Gate any render that depends on them until after mount so the first client render
+  // matches the server HTML (avoids a hydration mismatch).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // We can generate a brief if we have a plan (angle or freeform), or just view
   // a previously-saved brief when we have a project.
   const ready = !!angle || !!freeformPrompt || !!projectId;
 
-  const topic = useMemo(() => angle?.title ?? null, [angle]);
+  const topic = useMemo(() => (mounted ? angle?.title ?? null : null), [mounted, angle]);
 
   const briefInput = useMemo(
     () => ({ projectId, angle, freeformPrompt, references }),
@@ -304,41 +311,57 @@ export function BriefPanel() {
     };
   }, [renderJobId, renderUrl, briefId]);
 
-  const exportBrief = useCallback(() => {
-    if (!doc) return;
-    const payload = {
-      title: doc.title,
-      hook: doc.hook,
-      angle: doc.angle,
-      targetFeeling: doc.targetFeeling ?? null,
-      sources: doc.sources ?? [],
-      fps: 30,
-      format: { width: 1080, height: 1920 },
-      scenes: doc.scenes.map((s, i) => ({
-        index: i,
-        scene: s.scene ?? i + 1,
-        label: s.label,
-        spokenLine: s.spokenLine,
-        onScreenText: s.onScreenText ?? "",
-        brollCue: s.brollCue ?? "",
-        durationSeconds: s.durationSeconds ?? null,
-        footageUrl: footage[i] ?? null,
-      })),
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${(doc.title || "brief")
+  // Cross-origin (Supabase) URLs ignore the <a download> hint and just navigate,
+  // so pull the file down as a blob and trigger a real save dialog.
+  const downloadVideo = useCallback(async () => {
+    if (!renderUrl) return;
+    const name = `${(doc?.title || "proof-video")
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
-      .slice(0, 40)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("brief.json downloaded — ready for Remotion");
-  }, [doc, footage]);
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "proof-video"}.mp4`;
+    setDownloadingRender(true);
+    try {
+      const res = await fetch(renderUrl);
+      if (!res.ok) throw new Error(`download failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Fallback: open in a new tab so the user can still save it manually.
+      window.open(renderUrl, "_blank", "noopener");
+    } finally {
+      setDownloadingRender(false);
+    }
+  }, [renderUrl, doc]);
+
+  const deleteRender = useCallback(async () => {
+    if (!briefId) return;
+    if (!window.confirm("Delete the edited video? This can't be undone.")) return;
+    setDeletingRender(true);
+    try {
+      const res = await fetch("/api/render", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ briefId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Could not delete the video");
+      setRenderUrl(null);
+      setRenderStatus(null);
+      setRenderJobId(null);
+      setShowRender(false);
+      toast.success("Edited video deleted");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeletingRender(false);
+    }
+  }, [briefId]);
 
   const uploadFootage = useCallback(
     async (sceneIndex: number, file: File) => {
@@ -433,9 +456,6 @@ export function BriefPanel() {
             <Button size="sm" variant="outline" onClick={() => setPhase("questions")}>
               Edit answers & regenerate
             </Button>
-            <Button size="sm" variant="outline" onClick={exportBrief}>
-              ↓ Export for Remotion
-            </Button>
             <Button size="sm" variant="outline" onClick={() => setRecordScene(0)}>
               ● Record
             </Button>
@@ -446,6 +466,15 @@ export function BriefPanel() {
                 </Button>
                 <Button size="sm" variant="outline" onClick={sendToEditor}>
                   Re-render
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={deleteRender}
+                  disabled={deletingRender}
+                  className="text-destructive hover:text-destructive"
+                >
+                  {deletingRender ? "Deleting…" : "Delete video"}
                 </Button>
               </>
             ) : renderActive ? (
@@ -533,9 +562,6 @@ export function BriefPanel() {
             className="relative z-10 flex flex-col items-center gap-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/60">
-              Edited by Zo
-            </p>
             <div className="aspect-[9/16] h-[80vh] max-h-[80vh] overflow-hidden rounded-[2rem] border-[5px] border-neutral-800 bg-black shadow-2xl">
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video
@@ -546,13 +572,22 @@ export function BriefPanel() {
                 className="h-full w-full bg-black object-contain"
               />
             </div>
-            <a
-              href={renderUrl}
-              download
-              className="rounded-full bg-white px-4 py-1.5 text-xs font-medium text-black transition hover:bg-white/90"
-            >
-              ↓ Download MP4
-            </a>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={downloadVideo}
+                disabled={downloadingRender}
+                className="rounded-full bg-white px-4 py-1.5 text-xs font-medium text-black transition hover:bg-white/90 disabled:opacity-60"
+              >
+                {downloadingRender ? "Downloading…" : "↓ Download MP4"}
+              </button>
+              <button
+                onClick={deleteRender}
+                disabled={deletingRender}
+                className="rounded-full bg-white/10 px-4 py-1.5 text-xs font-medium text-white/80 backdrop-blur transition hover:bg-white/20 hover:text-white disabled:opacity-60"
+              >
+                {deletingRender ? "Deleting…" : "Delete video"}
+              </button>
+            </div>
           </div>
         </div>
       )}

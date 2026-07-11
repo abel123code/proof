@@ -26,6 +26,11 @@ export async function GET(req: Request) {
         doc: brief.doc,
         gaps: brief.gaps ?? [],
         answers: brief.answers ?? {},
+        // Render state must round-trip so the panel can restore a finished/in-flight
+        // render when the user leaves and comes back (otherwise it re-shows "Send to editor").
+        renderJobId: brief.renderJobId ?? null,
+        renderStatus: brief.renderStatus ?? null,
+        renderUrl: brief.renderUrl ?? null,
       },
     });
   } catch (err) {

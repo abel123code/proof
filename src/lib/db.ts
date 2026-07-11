@@ -858,3 +858,13 @@ export async function saveBriefRender(
   const { error } = await supabase.from("briefs").update(row).eq("id", briefId);
   if (error) throw new Error(`saveBriefRender failed: ${error.message}`);
 }
+
+/** Wipe the render state on a brief (used when deleting an edited video). */
+export async function clearBriefRender(briefId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("briefs")
+    .update({ render_job_id: null, render_status: null, render_url: null })
+    .eq("id", briefId);
+  if (error) throw new Error(`clearBriefRender failed: ${error.message}`);
+}
