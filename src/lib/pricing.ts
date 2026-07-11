@@ -4,11 +4,11 @@
 //
 // Rough guide at the defaults below: a from-scratch video costs ~200 credits
 // (repo 5 + research 40 + angles 60 + brief 15 + render 80) and ~$0.32 of OpenAI,
-// so 2000 credits is ~10 videos ≈ ~$3 of OpenAI spend per user. Exploring an
+// so 1000 credits is ~5 videos ≈ ~$1.5 of OpenAI spend per user. Exploring an
 // extra angle on an already-researched repo is 60 credits.
-// (That "~10 videos" assumes repo/research are cached after the first run.)
+// (That "~5 videos" assumes repo/research are cached after the first run.)
 
-export const STARTING_CREDITS = Number(process.env.FREE_CREDITS ?? 2000);
+export const STARTING_CREDITS = Number(process.env.FREE_CREDITS ?? 1000);
 
 export const CREDIT_COSTS = {
   /** Repo understanding (cheap tier). Charged only on a real analysis. */
