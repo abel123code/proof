@@ -107,7 +107,8 @@ export async function runJob(
     // 3. Transcribe (word-level, whisper-1).
     onStatus("transcribing");
     await extractAudio(recordingPath, audioPath);
-    const words = await transcribeWords(audioPath);
+    // Bias whisper toward what the speaker actually read (fixes name/term mishears).
+    const words = await transcribeWords(audioPath, brief.script);
 
     let transcriptId: string | undefined;
     if (captureId) transcriptId = await createTranscript(captureId, words);
