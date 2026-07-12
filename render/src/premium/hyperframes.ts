@@ -53,8 +53,12 @@ function run(cmd: string, args: string[], timeoutMs: number): Promise<RunResult>
  * composites onto the base clip identically to the Remotion overlay.mov.
  *
  * HyperFrames renders a project DIRECTORY (its index.html), so we drop the authored HTML into
- * `sceneDir/index.html` and point the CLI at the dir. `--format mov` is the alpha path;
- * `--resolution portrait` = 1080x1920 (proof's short format).
+ * `sceneDir/index.html` and point the CLI at the dir. `--format mov` is the alpha path; the
+ * frame size comes from the composition's own #stage data-width/height (1080x1920).
+ *
+ * We deliberately do NOT pass `--resolution`: it is an OUTPUT-resolution upscale and HyperFrames
+ * refuses to combine it with alpha output (mov/webm/png-sequence) — passing it would make every
+ * premium scene render exit nonzero and silently degrade to the fixed-component fallback.
  *
  * NOTE (verify on Railway): HyperFrames downloads its own Chromium via @puppeteer/browsers on
  * first render. The exact flags here were read from `hyperframes render --help` (v0.7.54).
@@ -77,9 +81,8 @@ export async function renderComposition(opts: {
       cli,
       "render",
       sceneDir,
-      "--format", "mov", // MOV renders with transparency (alpha)
+      "--format", "mov", // MOV renders with transparency (alpha); size = composition #stage
       "--fps", String(fps),
-      "--resolution", "portrait", // 1080x1920
       "--output", outMovPath,
       "--quality", "high",
       "--quiet",

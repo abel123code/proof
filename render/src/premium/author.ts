@@ -17,7 +17,8 @@ HARD CONTRACT (the renderer fails if you break these):
    style="position:relative;width:1080px;height:1920px;overflow:hidden">. Put all scene content inside it.
 2. TRANSPARENT background everywhere: html, body, and #stage must have NO opaque background (background:transparent).
    The footage shows through the alpha — never paint a full-bleed opaque rectangle over the whole frame.
-3. Load GSAP: <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>.
+3. Load GSAP from the LOCAL file that is already in the scene folder: <script src="./gsap.min.js"></script>.
+   Do NOT use a CDN or any http(s):// URL.
 4. Build ONE paused GSAP timeline and register it EXACTLY like this so the renderer can seek it:
      const tl = gsap.timeline({ paused: true });
      /* ...your animation... */
@@ -25,7 +26,10 @@ HARD CONTRACT (the renderer fails if you break these):
      window.__timelines["{{ID}}"] = tl;
 5. The timeline's total duration MUST be exactly ${durSec.toFixed(2)} seconds. If your animation is shorter,
    append tl.to({}, { duration: <remaining> }) so it ends at exactly ${durSec.toFixed(2)}s.
-6. Reference provided assets ONLY as ./assets/<filename>. Do not fetch any other external URLs (GSAP CDN aside).
+6. LOCAL ONLY. Reference provided assets solely as ./assets/<filename>, and GSAP as ./gsap.min.js. Do NOT
+   reference ANY external URL (no http/https/ws/ftp, no protocol-relative //). Inline small graphics as
+   data: URIs if needed. Do NOT use fetch, XMLHttpRequest, WebSocket, EventSource, dynamic import(), eval,
+   new Function(), or navigator.sendBeacon. The scene renders with no network.
 7. Keep type large and legible on mobile (min ~40px). Leave the lower third and center clear-ish so it doesn't
    bury the speaker's face; anchor graphics to the top third or edges unless the intent says otherwise.
 

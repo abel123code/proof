@@ -1,15 +1,31 @@
 import { mkdir, copyFile, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { createRequire } from "node:module";
 import type { RenderBrief, Word, AuthoredScene, SceneSpec } from "../types.js";
 import { planScenes } from "./scenes.js";
 import { authorScene } from "./author.js";
 import { qaScene } from "./qa.js";
 import { composeScenes } from "./compose.js";
 import { renderComposition, hyperframesAvailable } from "./hyperframes.js";
+import { validateComposition } from "./sanitize.js";
 
 export { hyperframesAvailable };
 
 const MAX_QA_ITERS = Number(process.env.PREMIUM_MAX_QA_ITERS || 2);
+
+// GSAP is served LOCALLY into each scene dir (no CDN) so a compliant scene needs zero network.
+const require = createRequire(import.meta.url);
+function gsapMinPath(): string {
+  return join(dirname(require.resolve("gsap/package.json")), "dist", "gsap.min.js");
+}
+
+/** Injectable per-scene steps so produceScene is unit-testable without OpenAI/HyperFrames. */
+export interface SceneDeps {
+  author: typeof authorScene;
+  render: typeof renderComposition;
+  qa: typeof qaScene;
+}
+const DEFAULT_DEPS: SceneDeps = { author: authorScene, render: renderComposition, qa: qaScene };
 
 function safeAssetName(src: string, i: number): string {
   const raw = basename(src.split("?")[0]) || `asset-${i}`;
@@ -28,26 +44,38 @@ async function fetchAsset(src: string, destPath: string): Promise<void> {
 }
 
 /**
- * Produce one scene: author -> render -> vision-QA, re-authoring against QA feedback up to
- * MAX_QA_ITERS times. Returns the scene with a movPath once approved (or accepted on the last
- * iteration). Throws on hard failure (author/render error) so the caller can skip this beat.
+ * Produce one scene: author -> validate -> render -> vision-QA, re-authoring against feedback
+ * up to MAX_QA_ITERS times.
+ *
+ * Returns the scene WITH a movPath only when it is approved. If it can't be made safe/valid or
+ * QA keeps rejecting it through the final retry, it returns WITHOUT a movPath so composeScenes
+ * skips that beat (the base shows through) — a premium job never ships a QA-rejected or
+ * unsanitized scene as if it succeeded. Throws only on hard author/render errors, which the
+ * caller treats as a skipped beat too.
  */
-async function produceScene(args: {
-  spec: SceneSpec;
-  brief: RenderBrief;
-  assetHints: string[];
-  assetsDir: string;
-  premiumDir: string;
-  basePath: string;
-  fps: number;
-  log: (m: string) => void;
-}): Promise<AuthoredScene> {
+export async function produceScene(
+  args: {
+    spec: SceneSpec;
+    brief: RenderBrief;
+    assetHints: string[];
+    assetsDir: string;
+    premiumDir: string;
+    basePath: string;
+    fps: number;
+    log: (m: string) => void;
+  },
+  deps: SceneDeps = DEFAULT_DEPS,
+): Promise<AuthoredScene> {
   const { spec, brief, assetHints, assetsDir, premiumDir, basePath, fps, log } = args;
 
-  // Each scene renders from its own dir; assets are copied in so `./assets/<name>` resolves.
+  // Each scene renders from its own dir; assets + local GSAP are copied in so `./assets/<name>`
+  // and `./gsap.min.js` resolve with no network.
   const sceneDir = join(premiumDir, spec.id);
   const sceneAssets = join(sceneDir, "assets");
   await mkdir(sceneAssets, { recursive: true });
+  await copyFile(gsapMinPath(), join(sceneDir, "gsap.min.js")).catch((e) =>
+    log(`  ${spec.id}: could not stage local gsap (${(e as Error).message})`),
+  );
   for (const name of assetHints) {
     await copyFile(join(assetsDir, name), join(sceneAssets, name)).catch(() => {});
   }
@@ -55,18 +83,35 @@ async function produceScene(args: {
   const movPath = join(premiumDir, `${spec.id}.mov`);
   let issues: string[] | undefined;
   for (let iter = 0; iter <= MAX_QA_ITERS; iter++) {
-    const html = await authorScene({ spec, brief, assetHints, priorIssues: issues });
-    await renderComposition({ html, sceneDir, outMovPath: movPath, fps });
-    const qa = await qaScene({ spec, movPath, basePath, workDir: premiumDir });
-    if (qa.ok || iter === MAX_QA_ITERS) {
-      log(`  ${spec.id}: ${qa.ok ? "approved" : `accepted after ${iter} retr${iter === 1 ? "y" : "ies"}`}`);
+    const last = iter === MAX_QA_ITERS;
+    const html = await deps.author({ spec, brief, assetHints, priorIssues: issues });
+
+    // Trust boundary: never render model HTML that references the network or eval's.
+    const violations = validateComposition(html, assetHints);
+    if (violations.length) {
+      if (last) {
+        log(`  ${spec.id}: rejected (unsafe/invalid HTML) — skipping: ${violations.slice(0, 2).join("; ")}`);
+        return { spec, html };
+      }
+      issues = violations.map((v) => `MUST FIX (contract/security): ${v}`);
+      log(`  ${spec.id}: re-author ${iter + 1} — ${violations.slice(0, 2).join("; ")}`);
+      continue;
+    }
+
+    await deps.render({ html, sceneDir, outMovPath: movPath, fps });
+    const qa = await deps.qa({ spec, movPath, basePath, workDir: premiumDir });
+    if (qa.ok) {
+      log(`  ${spec.id}: approved${iter ? ` after ${iter} retr${iter === 1 ? "y" : "ies"}` : ""}`);
       return { spec, html, movPath };
+    }
+    if (last) {
+      log(`  ${spec.id}: QA-rejected after ${iter} retr${iter === 1 ? "y" : "ies"} — skipping: ${qa.issues.slice(0, 2).join("; ")}`);
+      return { spec, html };
     }
     issues = qa.issues;
     log(`  ${spec.id}: retry ${iter + 1} — ${qa.issues.slice(0, 2).join("; ")}`);
   }
-  // Unreachable (loop returns), but keeps the type checker happy.
-  return { spec, html: "", movPath };
+  return { spec, html: "" };
 }
 
 /**

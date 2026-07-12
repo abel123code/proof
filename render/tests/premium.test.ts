@@ -1,8 +1,29 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { scriptToVocabPrompt } from "../src/transcribe.js";
 import { normalizeScenes } from "../src/premium/scenes.js";
+import { validateComposition } from "../src/premium/sanitize.js";
+import { produceScene } from "../src/premium/index.js";
+import type { SceneSpec } from "../src/types.js";
+
+const VALID_HTML = `<!doctype html><html><head></head><body>
+<div id="stage" data-composition-id="scene-1" data-width="1080" data-height="1920" data-fps="30"></div>
+<script src="./gsap.min.js"></script>
+<script>const tl = gsap.timeline({ paused: true }); window.__timelines = { "scene-1": tl };</script>
+</body></html>`;
+
+const spec = (id: string): SceneSpec => ({
+  id,
+  anchorMs: 0,
+  durMs: 2000,
+  motif: "chip",
+  intent: "show the thing",
+  captionText: "the thing",
+});
 
 test("vocab prompt mines product names / acronyms / camelCase + keyword flags, deduped", () => {
   const v = scriptToVocabPrompt(
@@ -48,4 +69,126 @@ test("normalizeScenes rejects scenes anchored at/after the video end", () => {
     5000,
   );
   assert.equal(out.length, 0);
+});
+
+test("validateComposition accepts a local, network-free composition", () => {
+  const html = `${VALID_HTML}<img src="./assets/ui.png"><style>.x{background:url(data:image/png;base64,AAAA)}</style>`;
+  assert.deepEqual(validateComposition(html, ["ui.png"]), []);
+});
+
+test("validateComposition rejects external URLs, protocol-relative refs, and network/eval APIs", () => {
+  assert.ok(
+    validateComposition(`<div id="stage"></div><script src="https://cdn/x.js"></script>`, []).some((v) =>
+      /external URL/.test(v),
+    ),
+  );
+  assert.ok(
+    validateComposition(`<div id="stage"></div><img src="//evil/x.png">`, []).some((v) => /external URL/.test(v)),
+  );
+  assert.ok(
+    validateComposition(`<div id="stage"></div><script>fetch("/x")</script>`, []).some((v) =>
+      /network API/.test(v),
+    ),
+  );
+  assert.ok(
+    validateComposition(`<div id="stage"></div><script>eval("1")</script>`, []).some((v) => /eval/.test(v)),
+  );
+});
+
+test("validateComposition does not flag the word 'fetch'/'import' in visible copy", () => {
+  const html = `<div id="stage"><h1>fetch your repo, import it, then ship</h1></div><script src="./gsap.min.js"></script>`;
+  assert.deepEqual(validateComposition(html, []), []);
+});
+
+test("validateComposition flags a missing #stage and unknown asset references", () => {
+  const v = validateComposition(`<div><img src="./assets/unknown.png"></div>`, ["known.png"]);
+  assert.ok(v.some((x) => /#stage/.test(x)));
+  assert.ok(v.some((x) => /unknown asset/.test(x)));
+});
+
+test("produceScene skips (no movPath) when QA rejects through the final retry", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "premium-"));
+  try {
+    let authored = 0;
+    let rendered = 0;
+    const out = await produceScene(
+      {
+        spec: spec("scene-1"),
+        brief: { script: "", keywordFlags: [] },
+        assetHints: [],
+        assetsDir: dir,
+        premiumDir: dir,
+        basePath: "base.mp4",
+        fps: 30,
+        log: () => {},
+      },
+      {
+        author: async () => {
+          authored++;
+          return VALID_HTML;
+        },
+        render: async () => {
+          rendered++;
+        },
+        qa: async () => ({ ok: false, issues: ["unreadable text"] }),
+      },
+    );
+    assert.equal(out.movPath, undefined, "a QA-rejected scene must not carry a movPath");
+    assert.equal(authored, 3, "author runs for the initial attempt + 2 retries");
+    assert.equal(rendered, 3);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("produceScene returns a movPath when QA approves", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "premium-"));
+  try {
+    const out = await produceScene(
+      {
+        spec: spec("scene-2"),
+        brief: { script: "", keywordFlags: [] },
+        assetHints: [],
+        assetsDir: dir,
+        premiumDir: dir,
+        basePath: "base.mp4",
+        fps: 30,
+        log: () => {},
+      },
+      { author: async () => VALID_HTML, render: async () => {}, qa: async () => ({ ok: true, issues: [] }) },
+    );
+    assert.equal(out.movPath, join(dir, "scene-2.mov"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("produceScene never renders unsafe model HTML (external script) and skips it", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "premium-"));
+  try {
+    let rendered = 0;
+    const out = await produceScene(
+      {
+        spec: spec("scene-3"),
+        brief: { script: "", keywordFlags: [] },
+        assetHints: [],
+        assetsDir: dir,
+        premiumDir: dir,
+        basePath: "base.mp4",
+        fps: 30,
+        log: () => {},
+      },
+      {
+        author: async () => `<div id="stage"></div><script src="https://evil.example/x.js"></script>`,
+        render: async () => {
+          rendered++;
+        },
+        qa: async () => ({ ok: true, issues: [] }),
+      },
+    );
+    assert.equal(out.movPath, undefined, "unsafe HTML must never get a movPath");
+    assert.equal(rendered, 0, "unsafe HTML must never reach the renderer");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
