@@ -8,6 +8,7 @@ import { scriptToVocabPrompt } from "../src/transcribe.js";
 import { normalizeScenes } from "../src/premium/scenes.js";
 import { validateComposition } from "../src/premium/sanitize.js";
 import { produceScene } from "../src/premium/index.js";
+import { parseQaVerdict } from "../src/premium/qa.js";
 import type { SceneSpec } from "../src/types.js";
 
 const VALID_HTML = `<!doctype html><html><head></head><body>
@@ -104,6 +105,38 @@ test("validateComposition flags a missing #stage and unknown asset references", 
   const v = validateComposition(`<div><img src="./assets/unknown.png"></div>`, ["known.png"]);
   assert.ok(v.some((x) => /#stage/.test(x)));
   assert.ok(v.some((x) => /unknown asset/.test(x)));
+});
+
+test("validateComposition catches parser-level bypasses (unquoted, srcset, srcdoc, meta, @import, iframe, traversal)", () => {
+  const cases: [string, RegExp][] = [
+    [`<div id="stage"></div><script src=https://evil/x.js></script>`, /external URL/], // unquoted attr
+    [`<div id="stage"></div><img srcset="//cdn/a.png 1x">`, /external URL/], // protocol-relative in srcset
+    [`<div id="stage"></div><div srcdoc="<b>x"></div>`, /srcdoc/],
+    [`<div id="stage"></div><meta http-equiv="refresh" content="0;url=https://e/">`, /meta refresh/],
+    [`<div id="stage"></div><style>@import "https://f/c.css";</style>`, /external URL/],
+    [`<div id="stage"></div><iframe></iframe>`, /forbidden <iframe>/],
+    [`<div id="stage"></div><link rel="stylesheet" href="https://f/c.css">`, /forbidden <link>/],
+    [`<div id="stage"></div><img src="./assets/../../etc/passwd">`, /traversal/],
+    [`<div id="stage"></div><a href="javascript:alert(1)">x</a>`, /external URL/],
+  ];
+  for (const [html, re] of cases) {
+    const v = validateComposition(html, []);
+    assert.ok(v.some((x) => re.test(x)), `expected ${re} for: ${html}\n got: ${JSON.stringify(v)}`);
+  }
+});
+
+test("parseQaVerdict fails CLOSED on empty or unparseable responses", () => {
+  assert.equal(parseQaVerdict(undefined).ok, false);
+  assert.equal(parseQaVerdict("").ok, false);
+  assert.equal(parseQaVerdict("not json {").ok, false);
+  // valid but rejecting
+  const rejected = parseQaVerdict(JSON.stringify({ ok: false, issues: ["clipped title"] }));
+  assert.equal(rejected.ok, false);
+  assert.deepEqual(rejected.issues, ["clipped title"]);
+  // ok:true but with issues -> still not approved
+  assert.equal(parseQaVerdict(JSON.stringify({ ok: true, issues: ["tiny text"] })).ok, false);
+  // clean approval
+  assert.equal(parseQaVerdict(JSON.stringify({ ok: true, issues: [] })).ok, true);
 });
 
 test("produceScene skips (no movPath) when QA rejects through the final retry", async () => {

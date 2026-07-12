@@ -74,13 +74,22 @@ export async function qaScene(args: {
     ],
   });
 
-  const content = resp.choices[0]?.message?.content;
-  if (!content) return { ok: true, issues: [] }; // never block the pipeline on a QA hiccup
+  return parseQaVerdict(resp.choices[0]?.message?.content);
+}
+
+/**
+ * Parse the vision model's JSON verdict. FAILS CLOSED: an empty or unparseable response returns
+ * ok:false, so a transient OpenAI/JSON hiccup makes produceScene retry and then SKIP the scene
+ * rather than shipping an un-reviewed scene as if it were approved. Approval requires an explicit
+ * ok:true with no issues.
+ */
+export function parseQaVerdict(content: string | null | undefined): SceneQA {
+  if (!content) return { ok: false, issues: ["QA returned an empty response"] };
   try {
     const parsed = JSON.parse(content) as { ok?: boolean; issues?: unknown };
     const issues = Array.isArray(parsed.issues) ? parsed.issues.map(String).filter(Boolean) : [];
-    return { ok: parsed.ok !== false && issues.length === 0, issues };
+    return { ok: parsed.ok === true && issues.length === 0, issues };
   } catch {
-    return { ok: true, issues: [] };
+    return { ok: false, issues: ["QA returned unparseable JSON"] };
   }
 }

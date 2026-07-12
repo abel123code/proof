@@ -34,7 +34,8 @@ HARD CONTRACT (the renderer fails if you break these):
    bury the speaker's face; anchor graphics to the top third or edges unless the intent says otherwise.
 
 DESIGN: premium, intentional, on-brand. Honor the recurring motif. Animate with purpose (staggered reveals,
-one hero move) — not everything at once. Use the brand color as the accent.`;
+one hero move) — not everything at once. Use the brand color as the accent. Use a system/web-safe font stack
+(e.g. -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif) — no web-font CDNs or <link>.`;
 }
 
 function stripFences(s: string): string {
