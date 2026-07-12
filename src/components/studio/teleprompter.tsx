@@ -9,14 +9,22 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function isAppleWebKit(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  // iOS (any browser is WebKit) or desktop Safari. Exclude Chrome/Edge on other platforms.
+  const iOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes("Macintosh") && "ontouchend" in document);
+  const safari = /^((?!chrome|android|crios|fxios|edg).)*safari/i.test(ua);
+  return iOS || safari;
+}
+
 function pickMimeType(): string {
   if (typeof MediaRecorder === "undefined") return "";
-  const types = [
-    "video/webm;codecs=vp9,opus",
-    "video/webm;codecs=vp8,opus",
-    "video/webm",
-    "video/mp4",
-  ];
+  // Safari/iOS only encodes mp4; Chromium/Firefox prefer webm. Order by platform,
+  // then fall back to the browser default ("") so start() never throws on the type.
+  const webm = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
+  const mp4 = ["video/mp4;codecs=h264,aac", "video/mp4"];
+  const types = isAppleWebKit() ? [...mp4, ...webm] : [...webm, ...mp4];
   return types.find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
 }
 
@@ -274,10 +282,15 @@ export function Teleprompter({
         chunksRef.current = [];
         const mimeType = pickMimeType();
         let recordStream: MediaStream = stream;
+        // Canvas capture gives a clean 9:16 crop, but Safari/iOS records a
+        // canvas.captureStream unreliably (often 0-byte). There, record the raw
+        // camera stream instead so a take is always produced.
         const canvas = canvasRef.current;
-        if (canvas && typeof canvas.captureStream === "function") {
+        const canCropReliably =
+          !isAppleWebKit() && canvas && typeof canvas.captureStream === "function";
+        if (canCropReliably) {
           startCanvasDraw();
-          const canvasStream = canvas.captureStream(30);
+          const canvasStream = canvas!.captureStream(30);
           const audio = stream.getAudioTracks()[0];
           if (audio) canvasStream.addTrack(audio);
           recordStream = canvasStream;
@@ -287,15 +300,27 @@ export function Teleprompter({
         mr.ondataavailable = (e) => {
           if (e.data.size > 0) chunksRef.current.push(e.data);
         };
+        mr.onerror = () => {
+          stopCanvasDraw();
+          setRecording(false);
+          toast.error("Recording failed on this device. Try again or use Upload.");
+        };
         mr.onstop = () => {
+          if (chunksRef.current.length === 0) {
+            toast.error("No video was captured. Try again or use Upload instead.");
+            return;
+          }
           const blob = new Blob(chunksRef.current, { type: mimeType || "video/webm" });
           void uploadBlob(sceneIdx, blob);
         };
-        mr.start();
+        // Timeslice so data flushes progressively (more robust on Safari/iOS than
+        // a single flush at stop, which can drop the whole take).
+        mr.start(1000);
         recorderRef.current = mr;
         setRecording(true);
       } catch {
         stopCanvasDraw();
+        toast.error("Couldn't start recording on this device. Try Upload instead.");
       }
     }
     setPlay(true);
@@ -328,7 +353,7 @@ export function Teleprompter({
   useEffect(() => () => stopCanvasDraw(), [stopCanvasDraw]);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 overflow-y-auto p-4 lg:flex-row lg:gap-8">
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-start gap-4 overflow-y-auto p-4 py-8 lg:flex-row lg:justify-center lg:gap-8 lg:py-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
 
       <canvas ref={canvasRef} width={720} height={1280} className="hidden" />
@@ -342,7 +367,7 @@ export function Teleprompter({
       </button>
 
       {/* 9:16 phone frame */}
-      <div className="relative z-10 aspect-[9/16] max-h-[50vh] w-auto max-w-[88vw] shrink-0 overflow-hidden rounded-[2.4rem] border-[6px] border-neutral-800 bg-black shadow-2xl lg:max-h-[90vh] lg:max-w-none">
+      <div className="relative z-10 aspect-[9/16] h-[50vh] max-w-[92vw] shrink-0 overflow-hidden rounded-[2.4rem] border-[6px] border-neutral-800 bg-black shadow-2xl lg:h-[85vh]">
         {/* Playback of the uploaded take for this scene */}
         {viewing && currentUrl ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption
