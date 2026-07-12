@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/lib/auth";
-import { getLatestBriefForProject } from "@/lib/db";
+import { assertProjectOwnedBy, getLatestBriefForProject } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -13,6 +13,9 @@ export async function GET(req: Request) {
     const projectId = searchParams.get("projectId");
     if (!projectId) {
       return NextResponse.json({ error: "projectId is required." }, { status: 400 });
+    }
+    if (!(await assertProjectOwnedBy(projectId, auth.userId))) {
+      return NextResponse.json({ error: "Not your project." }, { status: 403 });
     }
 
     const brief = await getLatestBriefForProject(projectId);

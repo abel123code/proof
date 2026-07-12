@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/lib/auth";
 import {
+  assertProjectOwnedBy,
   getCachedReferences,
   getProject,
   refundCredits,
@@ -60,6 +61,9 @@ export async function POST(req: Request) {
         { error: "Provide a topic or a freeform prompt." },
         { status: 400 },
       );
+    }
+    if (projectId && !(await assertProjectOwnedBy(projectId, auth.userId))) {
+      return NextResponse.json({ error: "Not your project." }, { status: 403 });
     }
 
     const project = projectId ? await getProject(projectId) : null;

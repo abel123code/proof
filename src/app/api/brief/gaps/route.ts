@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/lib/auth";
 import { findInfoGaps } from "@/lib/content-brief";
-import { getProject } from "@/lib/db";
+import { assertProjectOwnedBy, getProject } from "@/lib/db";
 import { extractProof } from "@/lib/research";
 import type { Angle, ReferencePattern } from "@/lib/types";
 
@@ -25,6 +25,9 @@ export async function POST(req: Request) {
         { error: "An angle or a freeform prompt is required." },
         { status: 400 },
       );
+    }
+    if (projectId && !(await assertProjectOwnedBy(projectId, auth.userId))) {
+      return NextResponse.json({ error: "Not your project." }, { status: 403 });
     }
 
     const project = projectId ? await getProject(projectId) : null;

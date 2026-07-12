@@ -891,6 +891,26 @@ export async function assertBriefOwnedBy(briefId: string, userId: string): Promi
   return (data as { user_id: string | null }).user_id === userId;
 }
 
+/**
+ * Ownership guard for project-scoped service-role routes. Like assertBriefOwnedBy,
+ * this exists because the API uses the service-role client (which BYPASSES RLS), so a
+ * projectId from the request is not proof of ownership — without this any approved user
+ * could read/overwrite another user's project by supplying its id.
+ * Dev (auth off, DEV_USER_ID) is a single identity and always passes.
+ */
+export async function assertProjectOwnedBy(projectId: string, userId: string): Promise<boolean> {
+  if (userId === DEV_USER_ID) return true;
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("projects")
+    .select("user_id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (error) throw new Error(`project ownership check failed: ${error.message}`);
+  if (!data) return false;
+  return (data as { user_id: string | null }).user_id === userId;
+}
+
 /** Persist the render state (job id / status / finished MP4 URL) on a brief. */
 export async function saveBriefRender(
   briefId: string,

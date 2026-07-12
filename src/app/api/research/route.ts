@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/lib/auth";
-import { getProject, refundCredits, saveResearch, spendCredits } from "@/lib/db";
+import { assertProjectOwnedBy, getProject, refundCredits, saveResearch, spendCredits } from "@/lib/db";
 import { CREDIT_COSTS } from "@/lib/pricing";
 import { extractProof, researchTopics } from "@/lib/research";
 import type { ResearchOutput } from "@/lib/types";
@@ -25,6 +25,9 @@ export async function POST(req: Request) {
     const force = Boolean(body?.force);
     if (!projectId) {
       return NextResponse.json({ error: "projectId is required." }, { status: 400 });
+    }
+    if (!(await assertProjectOwnedBy(projectId, auth.userId))) {
+      return NextResponse.json({ error: "Not your project." }, { status: 403 });
     }
 
     const project = await getProject(projectId);

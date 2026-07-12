@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/lib/auth";
 import { draftBriefDoc } from "@/lib/content-brief";
-import { createProject, getProject, refundCredits, saveBriefDoc, spendCredits } from "@/lib/db";
+import {
+  assertProjectOwnedBy,
+  createProject,
+  getProject,
+  refundCredits,
+  saveBriefDoc,
+  spendCredits,
+} from "@/lib/db";
 import { CREDIT_COSTS } from "@/lib/pricing";
 import { extractProof } from "@/lib/research";
 import type { Angle, InfoGap, ReferencePattern } from "@/lib/types";
@@ -31,6 +38,9 @@ export async function POST(req: Request) {
         { error: "An angle or a freeform prompt is required." },
         { status: 400 },
       );
+    }
+    if (projectId && !(await assertProjectOwnedBy(projectId, auth.userId))) {
+      return NextResponse.json({ error: "Not your project." }, { status: 403 });
     }
 
     const spend = await spendCredits(auth.userId, CREDIT_COSTS.brief);
