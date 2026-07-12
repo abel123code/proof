@@ -6,12 +6,13 @@ import { dirname } from "node:path";
 import type { JobState, RenderBrief, RenderJobInput, RenderProps } from "./types.js";
 import { getCaptureWithScript, createTranscript, createRender, updateRender } from "./db.js";
 import { extractAudio, buildCutVideo, compositeOverlay, probeVideo, concatClips } from "./ffmpeg.js";
-import { transcribeWords } from "./transcribe.js";
+import { transcribeWords, scriptToVocabPrompt } from "./transcribe.js";
 import { planCut } from "./cut.js";
 import { remap } from "./remap.js";
 import { buildKeywordCues, buildOverlayCues } from "./cues.js";
 import { cleanTerms } from "./terms.js";
 import { renderOverlay, RENDER_ROOT } from "./render.js";
+import { runPremium } from "./premium/index.js";
 import { getSupabaseAdmin, RENDER_BUCKET } from "./supabase.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -107,8 +108,14 @@ export async function runJob(
     // 3. Transcribe (word-level, whisper-1).
     onStatus("transcribing");
     await extractAudio(recordingPath, audioPath);
-    // Bias whisper toward what the speaker actually read (fixes name/term mishears).
-    const words = await transcribeWords(audioPath, brief.script);
+    // Bias whisper with a compact VOCABULARY hint (product names, acronyms, keyword flags)
+    // mined from the whole script — not a raw prefix, which would miss late terms and bias
+    // decoding toward early lines the speaker may have skipped/reworded.
+    const vocab = scriptToVocabPrompt(
+      brief.script,
+      brief.keywordFlags.map((f) => f.phrase),
+    );
+    const words = await transcribeWords(audioPath, vocab);
 
     let transcriptId: string | undefined;
     if (captureId) transcriptId = await createTranscript(captureId, words);
@@ -143,12 +150,38 @@ export async function runJob(
     await writeFile(propsAbs, JSON.stringify(props));
 
     // 8. Render the caption/overlay layer (ProRes 4444, alpha), then ffmpeg-burn it onto
-    //    the cut base clip -> edited.mp4.
+    //    the cut base clip -> captioned.mp4 (the fixed-component output = the premium fallback).
     onStatus("rendering");
     let renderId: string | undefined;
     if (transcriptId) renderId = await createRender(transcriptId);
     await renderOverlay(propsRel, overlayRel);
-    await compositeOverlay(baseTmpPath, overlayAbs, outAbs);
+    const captionedAbs = join(workDir, "captioned.mp4");
+    await compositeOverlay(baseTmpPath, overlayAbs, captionedAbs);
+
+    // 8b. Premium tier: layer bespoke GPT-authored scenes (storyboard -> HyperFrames HTML ->
+    //     vision-QA loop) on top of the captioned base. Any failure or timeout falls back to
+    //     the fixed-component output, so the user always gets a video.
+    if (input.premium) {
+      try {
+        const pr = await runPremium({
+          basePath: captionedAbs,
+          outPath: outAbs,
+          brief,
+          words: captionWords,
+          durationMs: props.durationMs,
+          workDir,
+          log: (m) => console.log(`[premium ${jobId}] ${m}`),
+        });
+        console.log(`[premium ${jobId}] composited ${pr.sceneCount} bespoke scene(s)`);
+      } catch (e) {
+        console.warn(
+          `[premium ${jobId}] failed, using fixed-component render: ${(e as Error).message}`,
+        );
+        await copyFile(captionedAbs, outAbs);
+      }
+    } else {
+      await copyFile(captionedAbs, outAbs);
+    }
 
     // 9. Upload (when DB-backed) + always keep the local file.
     onStatus("uploading");

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { join } from "node:path";
 import type { KeepSegment } from "./types.js";
 
 const FFMPEG = process.env.FFMPEG_PATH || "ffmpeg";
@@ -154,6 +155,76 @@ export async function compositeOverlay(
     "-i", basePath,
     "-i", overlayPath,
     "-filter_complex", "[0:v][1:v]overlay=format=auto[v]",
+    "-map", "[v]",
+    "-map", "0:a?",
+    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+    "-r", "30", "-fps_mode", "cfr",
+    "-c:a", "aac",
+    "-movflags", "+faststart",
+    outPath,
+  ]);
+}
+
+/**
+ * Extract still PNG frames at the given timestamps (seconds). Used by the premium vision-QA
+ * pass — a handful of frames per scene is enough for GPT-4o to judge it. One ffmpeg call per
+ * frame keeps seeking exact (accurate `-ss` before `-i`).
+ */
+export async function extractFrames(
+  videoPath: string,
+  timesSec: number[],
+  outDir: string,
+  prefix: string,
+): Promise<string[]> {
+  const paths: string[] = [];
+  for (let i = 0; i < timesSec.length; i++) {
+    const out = join(outDir, `${prefix}-${i}.png`);
+    await run(FFMPEG, [
+      "-y",
+      "-ss", Math.max(0, timesSec[i]).toFixed(3),
+      "-i", videoPath,
+      "-frames:v", "1", "-q:v", "2",
+      out,
+    ]);
+    paths.push(out);
+  }
+  return paths;
+}
+
+/**
+ * Composite N transparent scene MOVs onto the base clip, each starting at its own offset and
+ * visible only for its window. Every scene input is time-shifted (setpts +start/TB) so its
+ * frame 0 lands at `startMs`, then overlaid with enable=between(t,start,end). This is the
+ * premium analogue of compositeOverlay (which burns a single full-length overlay).
+ */
+export async function overlayScenesAtOffsets(
+  basePath: string,
+  scenes: { movPath: string; startMs: number; endMs: number }[],
+  outPath: string,
+): Promise<void> {
+  if (scenes.length === 0) throw new Error("overlayScenesAtOffsets: no scenes");
+
+  const inputs: string[] = ["-i", basePath];
+  scenes.forEach((s) => inputs.push("-i", s.movPath));
+
+  const parts: string[] = [];
+  let prev = "[0:v]";
+  scenes.forEach((s, i) => {
+    const startS = (s.startMs / 1000).toFixed(3);
+    const endS = (s.endMs / 1000).toFixed(3);
+    const inIdx = i + 1;
+    parts.push(`[${inIdx}:v]setpts=PTS-STARTPTS+${startS}/TB[m${i}]`);
+    const outLbl = i === scenes.length - 1 ? "[v]" : `[v${i}]`;
+    parts.push(
+      `${prev}[m${i}]overlay=format=auto:eof_action=pass:enable='between(t,${startS},${endS})'${outLbl}`,
+    );
+    prev = `[v${i}]`;
+  });
+
+  await run(FFMPEG, [
+    "-y",
+    ...inputs,
+    "-filter_complex", parts.join(";"),
     "-map", "[v]",
     "-map", "0:a?",
     "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
