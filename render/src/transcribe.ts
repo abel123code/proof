@@ -17,9 +17,12 @@ export function scriptToVocabPrompt(script?: string, keywordPhrases: string[] = 
     if (t) terms.add(t);
   }
   if (script) {
+    // Cap length first: the alternation below can backtrack ~O(n^2) on pathological input,
+    // and a script realistically fits well under this anyway.
+    const src = script.slice(0, 12000);
     // dotted product names, ALLCAPS acronyms (2+), internal-caps names (eDimension, iOS)
     const re = /\b([A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9.]*|[A-Z]{2,}|[a-z][A-Za-z]*[A-Z][A-Za-z]*|[A-Z][a-z]+[A-Z][A-Za-z]*)\b/g;
-    for (const m of script.matchAll(re)) terms.add(m[1]);
+    for (const m of src.matchAll(re)) terms.add(m[1]);
   }
   if (terms.size === 0) return undefined;
   // Cap the joined list (whisper reads ~224 tokens ~= 900 chars).
