@@ -36,6 +36,22 @@ export interface OverlaySpec {
   durationMs?: number;
 }
 
+/**
+ * A per-project assets folder (the "connect repo -> extract brand/UI" idea). Optional; the
+ * premium scene generator embeds these so bespoke scenes can show the real product UI, logos
+ * and brand palette instead of generic overlays.
+ */
+export interface RenderAssets {
+  /** URLs (or local paths) of screenshots / logos / UI captures to fetch into the workdir. */
+  images?: string[];
+  /** Brand accent, e.g. "#d9ff45". Falls back to RenderBrief.accentColor. */
+  brandColor?: string;
+  /** A sentence or two of brand voice/tone (mined from README / site) to steer copy. */
+  brandVoice?: string;
+  /** A recurring visual motif to carry across scenes (the "continuity" lever). */
+  motif?: string;
+}
+
 /** The brief the render consumes (produced by the Exa/OpenAI half, or seeded for tests). */
 export interface RenderBrief {
   script: string;
@@ -43,6 +59,38 @@ export interface RenderBrief {
   overlays?: OverlaySpec[];
   /** Optional brand accent for captions/overlays. Omit for the neutral default. */
   accentColor?: string;
+  /** Optional assets folder for the premium (bespoke-scene) path. */
+  assets?: RenderAssets;
+}
+
+/** One bespoke scene the premium path storyboards, anchored to the cut timeline. */
+export interface SceneSpec {
+  /** Stable id, e.g. "scene-1"; used as the HyperFrames composition id + output filename. */
+  id: string;
+  /** When this scene starts on the CUT timeline, in ms (anchored to a real word boundary). */
+  anchorMs: number;
+  /** How long the scene plays, in ms. */
+  durMs: number;
+  /** The recurring motif to honor (shared across scenes for continuity). */
+  motif: string;
+  /** What this beat should visually convey — the authoring prompt for this scene. */
+  intent: string;
+  /** The words spoken during this scene (context for the author + QA models). */
+  captionText: string;
+}
+
+/** A scene after authoring — HTML composition + (once rendered) its alpha MOV path. */
+export interface AuthoredScene {
+  spec: SceneSpec;
+  html: string;
+  movPath?: string;
+}
+
+/** Result of the vision-QA pass on one rendered scene. */
+export interface SceneQA {
+  ok: boolean;
+  /** Concrete, fixable issues to feed back to the author on a re-render (empty when ok). */
+  issues: string[];
 }
 
 /** A keyword overlay placed on the cut timeline. */
@@ -81,6 +129,12 @@ export interface RenderJobInput {
   /** Multiple per-scene clips to concatenate (in order) into one take before rendering. */
   videoUrls?: string[];
   brief?: RenderBrief;
+  /**
+   * Premium tier: generate bespoke per-beat scenes (GPT storyboard -> HyperFrames HTML ->
+   * vision-QA loop) instead of the 3 fixed Remotion overlays. Costs more credits + minutes.
+   * Falls back to the fixed-component render if premium generation fails.
+   */
+  premium?: boolean;
 }
 
 export type JobStatus =
