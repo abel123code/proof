@@ -4,8 +4,21 @@ import assert from "node:assert/strict";
 import {
   allowedAssetHosts,
   isPrivateAddress,
+  parseMaxAssetBytes,
+  readCapped,
   validateAssetSource,
 } from "../src/premium/asset-source.js";
+
+/** A body that streams `chunks` of `size` bytes — like a host ignoring content-length. */
+function streamOf(chunkSize: number, chunks: number): ReadableStream<Uint8Array> {
+  let sent = 0;
+  return new ReadableStream<Uint8Array>({
+    pull(c) {
+      if (sent++ >= chunks) return c.close();
+      c.enqueue(new Uint8Array(chunkSize));
+    },
+  });
+}
 
 const HOSTS = ["cdn.example.com"];
 
@@ -65,6 +78,26 @@ test("isPrivateAddress catches loopback, private, link-local and metadata ranges
   for (const ip of ["8.8.8.8", "1.1.1.1", "172.32.0.1", "2606:4700::1111"]) {
     assert.equal(isPrivateAddress(ip), false, `should be public: ${ip}`);
   }
+});
+
+test("parseMaxAssetBytes never returns NaN (a bad env value must not disable the cap)", () => {
+  // Number("15MB") is NaN, and `bytes > NaN` is false -> the limit would silently switch off.
+  assert.equal(parseMaxAssetBytes({ PREMIUM_MAX_ASSET_BYTES: "15MB" } as NodeJS.ProcessEnv), 15_000_000);
+  assert.equal(parseMaxAssetBytes({ PREMIUM_MAX_ASSET_BYTES: "" } as NodeJS.ProcessEnv), 15_000_000);
+  assert.equal(parseMaxAssetBytes({ PREMIUM_MAX_ASSET_BYTES: "0" } as NodeJS.ProcessEnv), 15_000_000);
+  assert.equal(parseMaxAssetBytes({ PREMIUM_MAX_ASSET_BYTES: "-5" } as NodeJS.ProcessEnv), 15_000_000);
+  assert.equal(parseMaxAssetBytes({} as NodeJS.ProcessEnv), 15_000_000);
+  assert.equal(parseMaxAssetBytes({ PREMIUM_MAX_ASSET_BYTES: "500" } as NodeJS.ProcessEnv), 500);
+});
+
+test("readCapped returns bodies under the cap", async () => {
+  const buf = await readCapped(streamOf(100, 5), 1000); // 500 bytes
+  assert.equal(buf.byteLength, 500);
+});
+
+test("readCapped aborts a body that streams past the cap (memory-exhaustion DoS)", async () => {
+  // A hostile host that ignores content-length and just keeps sending.
+  await assert.rejects(() => readCapped(streamOf(1000, 1000), 5000), /asset too large/);
 });
 
 test("allowedAssetHosts falls back to the Supabase host, and PREMIUM_ASSET_HOSTS overrides", () => {

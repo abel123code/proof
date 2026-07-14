@@ -14,7 +14,45 @@ import { isIP } from "node:net";
  * link-local address, no redirects, must be an image, and bounded in size.
  */
 
-export const MAX_ASSET_BYTES = Number(process.env.PREMIUM_MAX_ASSET_BYTES || 15_000_000);
+const DEFAULT_MAX_ASSET_BYTES = 15_000_000;
+
+/**
+ * Parse the size cap defensively. `Number("15MB")` is NaN, and every `x > NaN` is false — so a
+ * fat-fingered env value would silently DISABLE the limit rather than tighten it. Fail back to
+ * the default on anything non-finite or non-positive.
+ */
+export function parseMaxAssetBytes(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.PREMIUM_MAX_ASSET_BYTES;
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_ASSET_BYTES;
+}
+
+export const MAX_ASSET_BYTES = parseMaxAssetBytes();
+
+/**
+ * Read a response body with a hard byte ceiling, aborting mid-stream.
+ *
+ * Buffering first (`res.arrayBuffer()`) and checking the size after is useless as a defence: a
+ * hostile host can chunked-stream gigabytes with no content-length and OOM the worker before the
+ * check is ever reached. So cap as we read and cancel the stream the moment we cross the line.
+ */
+export async function readCapped(body: ReadableStream<Uint8Array>, max: number): Promise<Buffer> {
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => {});
+      throw new Error(`asset too large (exceeds ${max} bytes)`);
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
 
 /**
  * Hosts assets may be fetched from. Defaults to the Supabase project host (where the app
@@ -95,13 +133,12 @@ export async function fetchAssetBytes(src: string): Promise<Buffer> {
   const type = res.headers.get("content-type") || "";
   if (!/^image\//i.test(type)) throw new Error(`asset is not an image (content-type: "${type}")`);
 
+  // A declared content-length lets us bail before reading a byte — but it's optional and can
+  // lie, so it's only a fast path. readCapped() is what actually enforces the ceiling.
   const declared = Number(res.headers.get("content-length") || 0);
-  if (declared && declared > MAX_ASSET_BYTES) {
+  if (Number.isFinite(declared) && declared > MAX_ASSET_BYTES) {
     throw new Error(`asset too large (${declared} > ${MAX_ASSET_BYTES} bytes)`);
   }
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.byteLength > MAX_ASSET_BYTES) {
-    throw new Error(`asset too large (${buf.byteLength} > ${MAX_ASSET_BYTES} bytes)`);
-  }
-  return buf;
+  if (!res.body) throw new Error("asset response had no body");
+  return readCapped(res.body, MAX_ASSET_BYTES);
 }
