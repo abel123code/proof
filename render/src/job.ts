@@ -11,9 +11,15 @@ import { planCut } from "./cut.js";
 import { remap } from "./remap.js";
 import { buildKeywordCues, buildOverlayCues } from "./cues.js";
 import { cleanTerms } from "./terms.js";
+import {
+  anchorVisualCuesToTranscript,
+  applyCaptionCopyAndEmphasis,
+  buildSceneWindows,
+} from "./brief-editor.js";
+import { planBriefVisuals } from "./visual-planner.js";
 import { renderOverlay, RENDER_ROOT } from "./render.js";
 import { runPremium } from "./premium/index.js";
-import { getSupabaseAdmin, RENDER_BUCKET } from "./supabase.js";
+import { FOOTAGE_BUCKET, getSupabaseAdmin, RENDER_BUCKET } from "./supabase.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = resolve(here, "../remotion/public");
@@ -55,6 +61,7 @@ export async function runJob(
   let videoUrls: string[] | undefined;
   let brief: RenderBrief;
   let captureId: string | undefined;
+  const sourceDurationsMs: number[] = [];
 
   if (input.captureId) {
     const c = await getCaptureWithScript(input.captureId);
@@ -97,12 +104,17 @@ export async function runJob(
       for (let i = 0; i < videoUrls.length; i++) {
         const clipPath = join(workDir, `clip-${i}.input`);
         await fetchToFile(videoUrls[i], clipPath);
+        sourceDurationsMs.push((await probeVideo(clipPath)).durationMs);
         clipPaths.push(clipPath);
       }
       recordingPath = join(workDir, "recording.mp4");
       await concatClips(clipPaths, recordingPath);
     } else {
       await fetchToFile(videoSrc as string, recordingPath);
+      sourceDurationsMs.push((await probeVideo(recordingPath)).durationMs);
+      const normalizedPath = join(workDir, "recording.mp4");
+      await concatClips([recordingPath], normalizedPath);
+      recordingPath = normalizedPath;
     }
 
     // 3. Transcribe (word-level, whisper-1).
@@ -129,11 +141,35 @@ export async function runJob(
     await buildCutVideo(recordingPath, plan.segments, baseTmpPath);
     const probe = await probeVideo(baseTmpPath);
 
-    // 6. Remap word + overlay timing onto the post-cut timeline.
+    // 6. Remap words and build the brief-driven visual plan on the post-cut timeline.
+    onStatus("planning");
     const r = remap(plan.keptWords, plan.segments);
-    const captionWords = cleanTerms(r.words); // fix technical terms (Trigger.dev, Next.js, ...)
+    const editMode = input.editMode ?? (input.premium ? "generated-experimental" : "brief-driven");
+    const cleanedWords = cleanTerms(r.words); // fix technical terms (Trigger.dev, Next.js, ...)
+    const captionWords =
+      editMode === "brief-driven"
+        ? applyCaptionCopyAndEmphasis(cleanedWords, brief)
+        : cleanedWords;
     const keywordCues = buildKeywordCues(captionWords, brief.keywordFlags);
-    const overlayCues = buildOverlayCues(captionWords, brief.overlays ?? [], r.totalMs);
+    const overlayCues =
+      editMode === "brief-driven"
+        ? []
+        : buildOverlayCues(captionWords, brief.overlays ?? [], r.totalMs);
+    const sceneWindows = buildSceneWindows(
+      brief.scenes ?? [],
+      sourceDurationsMs,
+      plan.segments,
+      r.totalMs,
+    );
+    const plannedVisualCues =
+      editMode === "brief-driven"
+        ? await planBriefVisuals({
+            brief,
+            windows: sceneWindows,
+            log: (message) => console.warn(`[brief ${jobId}] ${message}`),
+          })
+        : [];
+    const visualCues = anchorVisualCuesToTranscript(plannedVisualCues, sceneWindows, captionWords);
 
     // 7. Build props for the TRANSPARENT overlay render (baseVideoFile empty = no video
     //    mounted, so OffthreadVideo seeking can't fail).
@@ -145,6 +181,7 @@ export async function runJob(
       words: captionWords,
       keywordCues,
       overlayCues,
+      visualCues,
       accentColor: brief.accentColor,
     };
     await writeFile(propsAbs, JSON.stringify(props));
@@ -161,7 +198,7 @@ export async function runJob(
     // 8b. Premium tier: layer bespoke GPT-authored scenes (storyboard -> HyperFrames HTML ->
     //     vision-QA loop) on top of the captioned base. Any failure or timeout falls back to
     //     the fixed-component output, so the user always gets a video.
-    if (input.premium) {
+    if (editMode === "generated-experimental") {
       try {
         const pr = await runPremium({
           basePath: captionedAbs,
@@ -183,10 +220,32 @@ export async function runJob(
       await copyFile(captionedAbs, outAbs);
     }
 
+    onStatus("quality-checking");
+    const finalProbe = await probeVideo(outAbs);
+    if (finalProbe.width !== 1080 || finalProbe.height !== 1920 || finalProbe.durationMs < 500) {
+      throw new Error(
+        `final output failed validation (${finalProbe.width}x${finalProbe.height}, ${finalProbe.durationMs}ms)`,
+      );
+    }
+
     // 9. Upload (when DB-backed) + always keep the local file.
     onStatus("uploading");
     let mp4Url = outAbs;
-    if (renderId) {
+    if (input.briefId) {
+      const supabase = getSupabaseAdmin();
+      const fileBuf = await readFile(outAbs);
+      const storagePath = `renders/${input.briefId}.mp4`;
+      const up = await supabase.storage
+        .from(FOOTAGE_BUCKET)
+        .upload(storagePath, fileBuf, { contentType: "video/mp4", upsert: true });
+      if (up.error) throw new Error(`upload failed: ${up.error.message}`);
+      const publicUrl = supabase.storage.from(FOOTAGE_BUCKET).getPublicUrl(storagePath).data.publicUrl;
+      mp4Url = `${publicUrl}?v=${Date.now()}`;
+      await supabase
+        .from("briefs")
+        .update({ render_status: "done", render_url: mp4Url })
+        .eq("id", input.briefId);
+    } else if (renderId) {
       try {
         const supabase = getSupabaseAdmin();
         const fileBuf = await readFile(outAbs);

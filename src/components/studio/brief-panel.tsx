@@ -242,7 +242,7 @@ export function BriefPanel() {
     if (DEMO_RENDER_URL) {
       setRenderUrl(null);
       setShowRender(false);
-      const steps = ["queued", "transcribing", "cutting", "rendering", "uploading"];
+      const steps = ["queued", "transcribing", "cutting", "planning", "rendering", "uploading"];
       for (const s of steps) {
         setRenderStatus(s);
         await new Promise((r) => setTimeout(r, 900));
@@ -261,7 +261,13 @@ export function BriefPanel() {
       return;
     }
     const filmedScenes = doc.scenes.filter((_, i) => footage[i]);
-    const brief = toRenderBrief(filmedScenes);
+    const brief = toRenderBrief(filmedScenes, {
+      hook: doc.hook,
+      targetFeeling: doc.targetFeeling,
+    });
+    // Clear the previous job id first so the poll can't briefly hit the old job
+    // (whose persisted URL would short-circuit us back to the stale video).
+    setRenderJobId(null);
     setRenderUrl(null);
     setShowRender(false);
     setRenderStatus("queued");
@@ -269,7 +275,7 @@ export function BriefPanel() {
       const res = await fetch("/api/render", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ briefId, videoUrls, brief }),
+        body: JSON.stringify({ briefId, videoUrls, brief, editMode: "brief-driven" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not start the render");
@@ -284,8 +290,11 @@ export function BriefPanel() {
   }, [doc, briefId, footage]);
 
   // Poll the render job until it finishes, then persist + reveal the edited video.
+  // Gated on the render STATUS (not renderUrl): a re-render leaves the old URL in
+  // state briefly, and gating on it would stop us from ever polling the new job.
   useEffect(() => {
-    if (!renderJobId || renderUrl || !briefId) return;
+    if (!renderJobId || !briefId) return;
+    if (renderStatus === "done" || renderStatus === "error") return;
     let cancelled = false;
     const poll = async () => {
       try {
@@ -311,7 +320,7 @@ export function BriefPanel() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [renderJobId, renderUrl, briefId]);
+  }, [renderJobId, briefId, renderStatus]);
 
   // Cross-origin (Supabase) URLs ignore the <a download> hint and just navigate,
   // so pull the file down as a blob and trigger a real save dialog.
@@ -418,8 +427,9 @@ export function BriefPanel() {
   );
 
   const filmedCount = doc ? doc.scenes.filter((_, i) => footage[i]).length : 0;
+  // An in-progress render should win over a stale renderUrl left from a prior render,
+  // so this does NOT require renderUrl to be empty (a re-render clears it a beat later).
   const renderActive =
-    !renderUrl &&
     !!renderStatus &&
     renderStatus !== "done" &&
     renderStatus !== "error";
@@ -427,7 +437,9 @@ export function BriefPanel() {
     queued: "Queued…",
     transcribing: "Transcribing…",
     cutting: "Cutting…",
+    planning: "Planning visuals…",
     rendering: "Rendering…",
+    "quality-checking": "Checking quality…",
     uploading: "Uploading…",
   };
   const renderStatusLabel = renderStatus
@@ -461,7 +473,16 @@ export function BriefPanel() {
             <Button size="sm" variant="outline" onClick={() => setRecordScene(0)}>
               ● Record
             </Button>
-            {renderUrl ? (
+            {renderActive ? (
+              <Button
+                size="sm"
+                disabled
+                title="Editing your video — the premium edit can take a few minutes. You can leave this page and come back."
+              >
+                <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />
+                {renderStatusLabel}
+              </Button>
+            ) : renderUrl ? (
               <>
                 <Button size="sm" onClick={() => setShowRender(true)}>
                   ▶ View edited video
@@ -479,11 +500,6 @@ export function BriefPanel() {
                   {deletingRender ? "Deleting…" : "Delete video"}
                 </Button>
               </>
-            ) : renderActive ? (
-              <Button size="sm" disabled>
-                <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />
-                {renderStatusLabel}
-              </Button>
             ) : (
               <Button
                 size="sm"
@@ -501,6 +517,14 @@ export function BriefPanel() {
         {topic ? <span className="font-medium text-foreground">{topic}</span> : "your angle"},
         grounded in your proof and a virality-scored plan.
       </p>
+
+      {renderActive && (
+        <p className="mt-2 max-w-xl text-xs text-muted-foreground">
+          <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary align-middle" />
+          Editing your video — this can take a few minutes. You can leave this page and
+          come back; it&apos;ll keep going.
+        </p>
+      )}
 
       {phase === "loading" && <BriefSkeleton />}
       {phase === "gaps" && (

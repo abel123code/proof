@@ -14,3 +14,4 @@ export function getSupabaseAdmin(): SupabaseClient {
 
 /** Storage bucket the render service reads recordings from / writes edited MP4s to. */
 export const RENDER_BUCKET = "renders";
+export const FOOTAGE_BUCKET = "footage";

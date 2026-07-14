@@ -52,4 +52,28 @@ describe("toRenderBrief", () => {
     // Single scene: midpoint = 2.5 / 5 = 0.5, well within bounds.
     expect(out.overlays![0].anchor).toEqual({ kind: "ratio", at: 0.5 });
   });
+
+  it("preserves scene creative direction for the brief-driven editor", () => {
+    const out = toRenderBrief(
+      [
+        scene({
+          label: "Proof",
+          spokenLine: "It reached twelve thousand developers.",
+          onScreenText: "12,000 developers",
+          brollCue: "Show the number growing",
+          durationSeconds: 4,
+        }),
+      ],
+      { hook: "Nobody sees your posts", targetFeeling: "confident" },
+    );
+    expect(out.hook).toBe("Nobody sees your posts");
+    expect(out.targetFeeling).toBe("confident");
+    expect(out.scenes[0]).toEqual({
+      label: "Proof",
+      spokenLine: "It reached twelve thousand developers.",
+      onScreenText: "12,000 developers",
+      brollCue: "Show the number growing",
+      durationSeconds: 4,
+    });
+  });
 });

@@ -926,6 +926,74 @@ export async function saveBriefRender(
   if (error) throw new Error(`saveBriefRender failed: ${error.message}`);
 }
 
+export interface DurableRenderJob {
+  id: string;
+  status: string;
+  phase: string;
+  progress: number;
+  outputUrl: string | null;
+  error: string | null;
+}
+
+export async function createRenderJob(args: {
+  id: string;
+  briefId: string;
+  userId: string;
+  input: Record<string, unknown>;
+}): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("render_jobs").insert({
+    id: args.id,
+    brief_id: args.briefId,
+    user_id: args.userId,
+    status: "queued",
+    phase: "queued",
+    progress: 0,
+    input: args.input,
+  });
+  if (error) throw new Error(`createRenderJob failed: ${error.message}`);
+}
+
+export async function getRenderJob(args: {
+  id: string;
+  briefId: string;
+  userId: string;
+}): Promise<DurableRenderJob | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("render_jobs")
+    .select("id, status, phase, progress, output_url, error")
+    .eq("id", args.id)
+    .eq("brief_id", args.briefId)
+    .eq("user_id", args.userId)
+    .maybeSingle();
+  if (error) throw new Error(`getRenderJob failed: ${error.message}`);
+  if (!data) return null;
+  return {
+    id: data.id as string,
+    status: data.status as string,
+    phase: data.phase as string,
+    progress: Number(data.progress ?? 0),
+    outputUrl: (data.output_url as string | null) ?? null,
+    error: (data.error as string | null) ?? null,
+  };
+}
+
+export async function failRenderJob(id: string, errorMessage: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("render_jobs")
+    .update({
+      status: "error",
+      phase: "error",
+      error: errorMessage,
+      finished_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw new Error(`failRenderJob failed: ${error.message}`);
+}
+
 /** Wipe the render state on a brief (used when deleting an edited video). */
 export async function clearBriefRender(briefId: string): Promise<void> {
   const supabase = getSupabaseAdmin();

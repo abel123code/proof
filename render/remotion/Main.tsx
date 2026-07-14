@@ -3,6 +3,7 @@ import { AbsoluteFill, OffthreadVideo, staticFile } from "remotion";
 import { AutoSubtitle } from "./AutoSubtitle";
 import { KeywordOverlay } from "./KeywordOverlay";
 import { DiagramOverlay } from "./DiagramOverlay";
+import { BriefVisualOverlay } from "./BriefVisualOverlay";
 import { DEFAULT_ACCENT } from "./tokens";
 import type { RenderProps } from "./types";
 
@@ -21,6 +22,7 @@ export const Main: React.FC<RenderProps> = ({
   words,
   keywordCues,
   overlayCues,
+  visualCues = [],
   accentColor,
 }) => {
   const accent = accentColor || DEFAULT_ACCENT;
@@ -28,6 +30,7 @@ export const Main: React.FC<RenderProps> = ({
     <AbsoluteFill style={baseVideoFile ? { backgroundColor: "#000000" } : undefined}>
       {baseVideoFile ? <OffthreadVideo src={staticFile(baseVideoFile)} /> : null}
       <DiagramOverlay cues={overlayCues} accent={accent} />
+      <BriefVisualOverlay cues={visualCues} accent={accent} />
       <KeywordOverlay cues={keywordCues} accent={accent} />
       <AutoSubtitle words={words} accent={accent} />
     </AbsoluteFill>

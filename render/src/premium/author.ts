@@ -30,8 +30,13 @@ HARD CONTRACT (the renderer fails if you break these):
    reference ANY external URL (no http/https/ws/ftp, no protocol-relative //). Inline small graphics as
    data: URIs if needed. Do NOT use fetch, XMLHttpRequest, WebSocket, EventSource, dynamic import(), eval,
    new Function(), or navigator.sendBeacon. The scene renders with no network.
-7. Keep type large and legible on mobile (min ~40px). Leave the lower third and center clear-ish so it doesn't
-   bury the speaker's face; anchor graphics to the top third or edges unless the intent says otherwise.
+7. Keep type large and legible on mobile (min ~40px). The footage ALREADY has burned-in captions across the
+   BOTTOM ~22% of the frame — keep that band completely clear, and keep the center clear so you never cover the
+   speaker's face. Anchor graphics to the TOP third or the side edges.
+8. YOU ARE NOT A SUBTITLE TRACK. The spoken words are already captioned along the bottom, so do NOT transcribe
+   speech or reproduce the spoken sentence. Show only a SHORT punchy headline — a keyword, metric, label, or the
+   motif — ideally 2-5 words. "spokenContext" is given ONLY so you know what the beat is about; never paste it
+   on screen verbatim.
 
 DESIGN: premium, intentional, on-brand. Honor the recurring motif. Animate with purpose (staggered reveals,
 one hero move) — not everything at once. Use the brand color as the accent. Use a system/web-safe font stack
@@ -61,7 +66,8 @@ export async function authorScene(args: {
     id: spec.id,
     durationSec: spec.durMs / 1000,
     intent: spec.intent,
-    spokenWords: spec.captionText,
+    // Context only — the beat's spoken words (already captioned on-screen). MUST NOT be displayed verbatim.
+    spokenContext: spec.captionText,
     motif: spec.motif,
     brandColor: brief.assets?.brandColor || brief.accentColor || "#d9ff45",
     brandVoice: brief.assets?.brandVoice || null,

@@ -24,9 +24,12 @@ Rules:
 - Scenes must NOT overlap. Each is ${MIN_SCENE_MS}-${MAX_SCENE_MS} ms long and ends before totalMs.
 - Carry the given recurring MOTIF through every scene (one object/shape that transforms) — this is what makes
   it read as "designed" rather than random overlays.
-- "intent" is a precise brief for the scene author: what to show, the exact on-screen text, the key visual,
-  how the motif appears, and which asset (if any) to feature. Reference assets by filename.
-- "captionText" is the words spoken during the scene's window (copy them from the timeline).
+- The footage ALREADY has burned-in captions along the bottom, so scenes are NOT subtitles. "intent" is a precise
+  brief for the scene author: what to show, a SHORT on-screen HEADLINE (a keyword/metric/label, ~2-5 words — NOT
+  the full spoken sentence), the key visual, how the motif appears, and which asset (if any) to feature. Reference
+  assets by filename.
+- "captionText" is the words spoken during the scene's window (copy them from the timeline). This is CONTEXT for
+  the author/reviewer only — it must NOT be pasted on screen as a subtitle.
 
 Respond with JSON: { "scenes": [ { "anchorMs": number, "durMs": number, "intent": string, "captionText": string } ] }`;
 

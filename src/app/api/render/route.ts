@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireApprovedUser } from "@/lib/auth";
 import {
   assertBriefOwnedBy,
   clearBriefRender,
+  createRenderJob,
+  failRenderJob,
   getBriefById,
+  getRenderJob,
   refundCredits,
   saveBriefRender,
   spendCredits,
@@ -19,6 +23,13 @@ const RENDER_SERVICE_URL = process.env.RENDER_SERVICE_URL ?? "http://localhost:8
 const RENDER_TOKEN = process.env.RENDER_TOKEN;
 const FOOTAGE_BUCKET = "footage";
 
+// Premium render tier (bespoke GPT-authored scenes + vision QA on the render box).
+// Default on; set PREMIUM_RENDER=false to fall back to the fixed-component render
+// without a code change. The render service always degrades to the captioned output
+// on any premium failure, so this is safe to leave on.
+const PREMIUM_RENDER = (process.env.PREMIUM_RENDER ?? "true").toLowerCase() !== "false";
+const DEFAULT_EDIT_MODE = process.env.RENDER_EDIT_MODE ?? "brief-driven";
+
 /**
  * Kick off a render. Body: { briefId, videoUrls: string[], brief }.
  * Forwards the clips + brief to the Zo service and records the job on the brief.
@@ -31,6 +42,7 @@ export async function POST(req: Request) {
   const briefId: unknown = body?.briefId;
   const videoUrls: unknown = body?.videoUrls;
   const brief: unknown = body?.brief;
+  const requestedEditMode: unknown = body?.editMode;
 
   if (typeof briefId !== "string") {
     return NextResponse.json({ error: "briefId is required" }, { status: 400 });
@@ -56,7 +68,20 @@ export async function POST(req: Request) {
     );
   }
 
+  let durableJobId: string | null = null;
   try {
+    const jobId = randomUUID();
+    durableJobId = jobId;
+    const editMode =
+      typeof requestedEditMode === "string" ? requestedEditMode : DEFAULT_EDIT_MODE;
+    const durableInput = { videoUrls, videoUrl: videoUrls[0], brief, editMode };
+    await createRenderJob({
+      id: jobId,
+      briefId,
+      userId: auth.userId,
+      input: durableInput as Record<string, unknown>,
+    });
+
     // Send BOTH so it works regardless of whether the Zo box was redeployed:
     // - updated box prefers `videoUrls` and concatenates all clips
     // - old box ignores `videoUrls` and renders the single `videoUrl` (first clip)
@@ -66,10 +91,19 @@ export async function POST(req: Request) {
         "content-type": "application/json",
         ...(RENDER_TOKEN ? { "x-render-token": RENDER_TOKEN } : {}),
       },
-      body: JSON.stringify({ videoUrls, videoUrl: videoUrls[0], brief }),
+      body: JSON.stringify({
+        jobId,
+        briefId,
+        videoUrls,
+        videoUrl: videoUrls[0],
+        brief,
+        editMode,
+        premium: PREMIUM_RENDER,
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      await failRenderJob(jobId, data?.error ?? `render service returned ${res.status}`).catch(() => {});
       await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
       return NextResponse.json(
         { error: data?.error ?? `render service returned ${res.status}` },
@@ -77,9 +111,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const jobId: string | undefined = data?.jobId;
-    if (!jobId) {
+    const queuedJobId: string | undefined = data?.jobId;
+    if (!queuedJobId || queuedJobId !== jobId) {
       // Nothing was queued - don't charge for a no-op.
+      await failRenderJob(jobId, "Render service did not accept the durable job id.").catch(() => {});
       await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
       return NextResponse.json({ jobId: null, creditsRemaining: spend.remaining + CREDIT_COSTS.render });
     }
@@ -88,6 +123,7 @@ export async function POST(req: Request) {
   } catch (err) {
     await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
     const message = err instanceof Error ? err.message : "Unknown error";
+    if (durableJobId) await failRenderJob(durableJobId, message).catch(() => {});
     return NextResponse.json(
       { error: `render service unreachable: ${message}` },
       { status: 502 },
@@ -126,6 +162,22 @@ export async function GET(req: Request) {
       if (existing?.renderUrl) {
         return NextResponse.json({ status: "done", url: existing.renderUrl });
       }
+    }
+
+    const durable = await getRenderJob({ id: jobId, briefId, userId: auth.userId }).catch(() => null);
+    if (durable) {
+      if (durable.status === "done" && durable.outputUrl) {
+        await saveBriefRender(briefId, { status: "done", url: durable.outputUrl }).catch(() => {});
+        return NextResponse.json({ status: "done", url: durable.outputUrl, progress: 100 });
+      }
+      if (durable.status === "error") {
+        await saveBriefRender(briefId, { status: "error" }).catch(() => {});
+        return NextResponse.json({ status: "error", error: durable.error, progress: durable.progress });
+      }
+      return NextResponse.json({
+        status: durable.phase || durable.status,
+        progress: durable.progress,
+      });
     }
 
     const res = await fetch(`${RENDER_SERVICE_URL}/render/${encodeURIComponent(jobId)}`, {

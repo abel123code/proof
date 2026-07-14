@@ -27,7 +27,7 @@ export interface CutOptions {
   mergeGapMs?: number;
   /** Breathing room kept at each segment edge. */
   padMs?: number;
-  /** Cap on a single word's duration — trailing silence beyond this is treated as a gap. */
+  /** Optional defensive cap for known-bad timestamp providers. Disabled by default. */
   maxWordMs?: number;
 }
 
@@ -43,13 +43,15 @@ export interface CutOptions {
 export function planCut(words: WhisperWord[], opts: CutOptions = {}): CutPlan {
   const mergeGapMs = opts.mergeGapMs ?? 450;
   const padMs = opts.padMs ?? 90;
-  const maxWordMs = opts.maxWordMs ?? 650;
+  const maxWordMs = opts.maxWordMs;
 
-  // Whisper often absorbs trailing silence INTO a word's end time, hiding the pause from a
-  // gap test. Cap each word's duration so swallowed silence becomes a visible gap + gets cut.
   const keptWords = words
     .filter((w) => !FILLERS.has(norm(w.word)))
-    .map((w) => ({ ...w, end: Math.min(w.end, w.start + maxWordMs / 1000) }));
+    .map((w) =>
+      maxWordMs
+        ? { ...w, end: Math.min(w.end, w.start + maxWordMs / 1000) }
+        : { ...w },
+    );
   if (keptWords.length === 0) return { segments: [], keptWords: [] };
 
   const segments: KeepSegment[] = [];

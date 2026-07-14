@@ -45,8 +45,10 @@ export async function extractAudio(videoPath: string, outPath: string): Promise<
 export async function transcodeToMp4(inputPath: string, outPath: string): Promise<void> {
   await run(FFMPEG, [
     "-y", "-i", inputPath,
-    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-    "-c:a", "aac",
+    "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30",
+    "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "192k",
+    "-r", "30", "-fps_mode", "cfr", "-movflags", "+faststart",
     outPath,
   ]);
 }
@@ -92,9 +94,9 @@ export async function concatClips(inputPaths: string[], outPath: string): Promis
     ...inputArgs,
     "-filter_complex", filter,
     "-map", "[outv]", "-map", "[outa]",
-    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+    "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
     "-r", "30", "-fps_mode", "cfr",
-    "-c:a", "aac", "-ar", "48000",
+    "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
     "-movflags", "+faststart",
     outPath,
   ]);
@@ -129,13 +131,11 @@ export async function buildCutVideo(
     "-y", "-i", inputPath,
     "-filter_complex", filter,
     "-map", "[outv]", "-map", "[outa]",
-    // Constant 30fps + ALL keyframes (-bf 0 -g 1) + faststart. Every frame being a
-    // keyframe makes any timestamp directly seekable, which is what Remotion's
-    // OffthreadVideo needs — sparse keyframes trigger "No frame found at position".
-    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+    // Remotion only renders a transparent graphics layer, so this intermediate no longer
+    // needs every frame to be a keyframe for OffthreadVideo seeking.
+    "-c:v", "libx264", "-preset", "fast", "-crf", "16", "-pix_fmt", "yuv420p",
     "-r", "30", "-fps_mode", "cfr",
-    "-bf", "0", "-g", "1", "-keyint_min", "1",
-    "-c:a", "aac",
+    "-c:a", "aac", "-b:a", "192k",
     "-movflags", "+faststart",
     outPath,
   ]);
@@ -157,9 +157,10 @@ export async function compositeOverlay(
     "-filter_complex", "[0:v][1:v]overlay=format=auto[v]",
     "-map", "[v]",
     "-map", "0:a?",
-    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+    "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
     "-r", "30", "-fps_mode", "cfr",
-    "-c:a", "aac",
+    "-af", "highpass=f=80,afftdn=nf=-25,acompressor=threshold=-18dB:ratio=3:attack=15:release=180,loudnorm=I=-14:LRA=7:TP=-1.5",
+    "-c:a", "aac", "-b:a", "192k",
     "-movflags", "+faststart",
     outPath,
   ]);
@@ -227,9 +228,10 @@ export async function overlayScenesAtOffsets(
     "-filter_complex", parts.join(";"),
     "-map", "[v]",
     "-map", "0:a?",
-    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+    "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
     "-r", "30", "-fps_mode", "cfr",
-    "-c:a", "aac",
+    "-af", "highpass=f=80,afftdn=nf=-25,acompressor=threshold=-18dB:ratio=3:attack=15:release=180,loudnorm=I=-14:LRA=7:TP=-1.5",
+    "-c:a", "aac", "-b:a", "192k",
     "-movflags", "+faststart",
     outPath,
   ]);

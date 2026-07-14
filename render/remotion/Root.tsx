@@ -13,6 +13,7 @@ const defaultProps: RenderProps = {
   words: [],
   keywordCues: [],
   overlayCues: [],
+  visualCues: [],
 };
 
 export const RemotionRoot: React.FC = () => {

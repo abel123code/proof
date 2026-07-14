@@ -7,13 +7,19 @@ import type { SceneSpec, SceneQA } from "../types.js";
 const QA_MODEL = process.env.PREMIUM_QA_MODEL || "gpt-4o";
 
 const QA_SYSTEM = `You are a ruthless art director reviewing frames of a bespoke motion-graphic scene composited over
-talking-head footage in a vertical (1080x1920) marketing video. Judge ONLY what you can see. Fail the scene for:
-- misspelled or garbled on-screen text, or text that doesn't match the intent
+talking-head footage in a vertical (1080x1920) marketing video. The footage ALREADY has burned-in captions along
+the bottom of the frame — the scene is a short HEADLINE graphic, NOT a subtitle track. Judge ONLY what you can see.
+Fail the scene for:
+- reproducing the spoken sentence as on-screen subtitles, or any text that duplicates/echoes the bottom captions
+- on-screen text longer than a short headline (it should be a keyword/metric/label, not a transcript)
+- misspelled or garbled on-screen text
 - text/graphics clipped at an edge, overlapping badly, or unreadable (too small / low contrast)
-- graphics burying the speaker's face in the center third
+- graphics covering the bottom caption band or burying the speaker's face in the center third
 - empty/broken render (nothing meaningful on screen) or obvious AI-slop layout
+Do NOT require the on-screen text to match the spoken words — the scene should paraphrase into a punchy headline.
 Respond with JSON: { "ok": boolean, "issues": string[] }. Each issue is a SHORT concrete fix ("move the title
-out of the center", "fix 'Triger.dev' -> 'Trigger.dev'"). Return an empty issues array when the scene is good.`;
+out of the center", "shorten to a 3-word headline", "fix 'Triger.dev' -> 'Trigger.dev'"). Return an empty issues
+array when the scene is good.`;
 
 /**
  * Render→look→re-render QA for one scene. Composites the scene MOV onto just its window of the
@@ -66,7 +72,7 @@ export async function qaScene(args: {
         content: [
           {
             type: "text",
-            text: `Scene intent: ${spec.intent}\nSpoken words during the scene: ${spec.captionText}\nReview the ${frames.length} frames.`,
+            text: `Scene intent: ${spec.intent}\nThe footage already shows these spoken words as bottom captions (the scene must NOT repeat them as subtitles): ${spec.captionText}\nReview the ${frames.length} frames.`,
           },
           ...images,
         ],

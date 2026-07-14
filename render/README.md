@@ -1,19 +1,22 @@
 # proof — render service (Zo + Remotion)
 
-Turns a raw teleprompter take into a finished short-form clip: word-level transcribe,
-cut the dead space and fillers, then burn karaoke captions and keyword/diagram overlays
-onto the cut footage. Built to run as a small HTTP service on a Zo Computer.
+Turns scene-by-scene teleprompter footage plus its content brief into a finished vertical
+creator reel. The default `brief-driven` editor uses scene labels, on-screen copy, B-roll
+cues, the hook, and word timings to drive concise motion graphics and phrase captions.
 
 ## Pipeline (one job)
 
 ```
-recording.mp4  ->  extract audio (ffmpeg)
+scene clips    ->  normalize to 1080x1920 CFR30 + concatenate
+               ->  extract audio (ffmpeg)
                ->  transcribe word-level (OpenAI whisper-1)
                ->  cut: filler + dead-space removal -> kept segments
                ->  ffmpeg: concat kept segments -> clean base clip (all-keyframe, CFR 30)
                ->  remap word + cue timings onto the cut timeline
-               ->  Remotion: render the caption/overlay layer (transparent ProRes 4444)
+               ->  brief-driven edit plan: scene windows, emphasis, visual templates
+               ->  Remotion: render captions + deterministic visual templates (alpha)
                ->  ffmpeg: burn the overlay onto the base clip -> edited.mp4
+               ->  validate dimensions/duration + normalize speech loudness
                ->  upload to Supabase Storage
 ```
 
@@ -22,12 +25,21 @@ fail. ffmpeg owns the video, Remotion owns the motion graphics.
 
 ## HTTP API
 
-- `POST /render` body `{ captureId }` **or** `{ videoUrl, brief }` -> `202 { jobId }`
+- `POST /render` body `{ captureId }` or `{ videoUrl, brief }` or
+  `{ jobId, briefId, videoUrls, brief, editMode }` -> `202 { jobId }`
 - `GET /render/:jobId` -> `{ status, mp4Url?, error? }`
   status: `queued | transcribing | cutting | rendering | uploading | done | error`
 - `GET /health` -> `{ ok: true }`
 
 `brief` shape: `{ script, keywordFlags: [{phrase, emphasis?}], overlays?: [...] }`.
+The brief-driven path additionally accepts `{ hook, targetFeeling, scenes }`, where each
+scene carries `{ label, spokenLine, onScreenText, brollCue, durationSeconds? }`.
+
+`editMode` values:
+- `brief-driven` (default): reusable creator-reel templates selected by one structured AI
+  planning call, with deterministic scene-label selection as the fallback.
+- `classic`: legacy caption + fixed overlay components.
+- `generated-experimental`: GPT/HyperFrames scene authoring with vision QA.
 With `captureId`, the service loads the recording + script straight from Supabase
 (`captures` -> `scripts`) and writes back `transcripts` + `renders`.
 
@@ -81,10 +93,15 @@ The Next app needs `RENDER_SERVICE_URL` pointed at the Railway URL above (repo-r
 Next app must set the **same** value (it sends it as an `x-render-token` header) or every
 render request fails with 401. Leave it unset on both sides to run without auth.
 
+### Durable jobs
+
+Apply `supabase/migrations/0013_render_jobs.sql` before deploying this version. Vercel
+creates the durable job row; Railway updates progress and uploads the final video directly
+to Supabase. On restart, Railway reclaims queued jobs and processing jobs whose lock is
+older than 15 minutes. The in-memory table and `/out` route remain as local/legacy fallbacks.
+
 ### Railway caveats
 
-- **Job state is in-memory.** A redeploy or restart mid-render loses in-flight jobs; the
-  client just has to re-submit.
 - **`tmp/` and `out/` are ephemeral.** They don't survive redeploys/restarts. Final MP4s
   for DB-backed jobs (`captureId` requests) are persisted to Supabase Storage — that's the
   durable copy. `videoUrl`-only jobs are served straight from `/out` and are only as

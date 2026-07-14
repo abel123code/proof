@@ -18,7 +18,7 @@ export const SUBTITLE = {
 
 // Caption page grouping (verbatim from Yoda).
 export const CAPTION = {
-  maxWords: 7,
-  maxChars: 34,
+  maxWords: 5,
+  maxChars: 30,
   gapFlushMs: 360,
 } as const;

@@ -17,6 +17,18 @@ export interface RenderBrief {
     durationMs?: number;
   }[];
   accentColor?: string;
+  /** Full creative context used by the brief-driven editor. */
+  hook?: string;
+  targetFeeling?: string;
+  scenes: RenderBriefScene[];
+}
+
+export interface RenderBriefScene {
+  label: string;
+  spokenLine: string;
+  onScreenText: string;
+  brollCue: string;
+  durationSeconds?: number;
 }
 
 const FALLBACK_SCENE_SECONDS = 5;
@@ -28,7 +40,10 @@ const FALLBACK_SCENE_SECONDS = 5;
  * clips are concatenated on the render side, so `script` + overlay anchors line up
  * with the combined video timeline.
  */
-export function toRenderBrief(scenes: BriefScene[]): RenderBrief {
+export function toRenderBrief(
+  scenes: BriefScene[],
+  context: { hook?: string; targetFeeling?: string } = {},
+): RenderBrief {
   const script = scenes
     .map((s) => s.spokenLine?.trim())
     .filter(Boolean)
@@ -61,5 +76,14 @@ export function toRenderBrief(scenes: BriefScene[]): RenderBrief {
     script,
     keywordFlags: [],
     overlays,
+    hook: context.hook,
+    targetFeeling: context.targetFeeling,
+    scenes: scenes.map((scene) => ({
+      label: scene.label,
+      spokenLine: scene.spokenLine,
+      onScreenText: scene.onScreenText,
+      brollCue: scene.brollCue,
+      durationSeconds: scene.durationSeconds,
+    })),
   };
 }

@@ -5,6 +5,17 @@ export interface Word {
   text: string;
   startMs: number;
   endMs: number;
+  emphasis?: boolean;
+}
+
+export type VisualTemplate = "hook" | "keyword" | "metric" | "comparison" | "steps" | "quote" | "payoff";
+
+export interface VisualCue {
+  template: VisualTemplate;
+  headline: string;
+  startMs: number;
+  endMs: number;
+  sceneIndex: number;
 }
 
 export interface KeywordCue {
@@ -32,6 +43,7 @@ export type RenderProps = {
   words: Word[];
   keywordCues: KeywordCue[];
   overlayCues: OverlayCue[];
+  visualCues: VisualCue[];
   /** Caption/overlay accent. Omit for the neutral default; set per project to brand it. */
   accentColor?: string;
 };

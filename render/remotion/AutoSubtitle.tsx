@@ -6,7 +6,7 @@ import type { Word } from "./types";
 
 type Page = { startMs: number; endMs: number; words: Word[] };
 
-// Page grouping: <=7 words / <=34 chars / 360ms gap flush. (Verbatim from Yoda.)
+// Short phrase grouping keeps every spoken word while matching modern reel pacing.
 const groupWords = (words: Word[]): Page[] => {
   const pages: Page[] = [];
   let cur: Word[] = [];
@@ -21,7 +21,11 @@ const groupWords = (words: Word[]): Page[] => {
     const prev = cur[cur.length - 1];
     const gap = prev ? w.startMs - prev.endMs : 0;
     const chars = cur.reduce((n, x) => n + x.text.length + 1, 0);
-    if (cur.length && (gap > CAPTION.gapFlushMs || chars > CAPTION.maxChars || cur.length >= CAPTION.maxWords)) {
+    const punctuationBreak = prev ? /[.!?,:;]$/.test(prev.text.trim()) : false;
+    if (
+      cur.length &&
+      (gap > CAPTION.gapFlushMs || punctuationBreak || chars > CAPTION.maxChars || cur.length >= CAPTION.maxWords)
+    ) {
       flush();
     }
     cur.push(w);
@@ -62,7 +66,7 @@ export const AutoSubtitle: React.FC<{ words: Word[]; accent: string }> = ({ word
           borderRadius: SUBTITLE.radius,
           fontFamily,
           fontSize: SUBTITLE.fontSize,
-          fontWeight: 600,
+          fontWeight: 700,
           lineHeight: 1.3,
           textAlign: "center",
           maxWidth: "90%",
@@ -72,9 +76,20 @@ export const AutoSubtitle: React.FC<{ words: Word[]; accent: string }> = ({ word
         {page.words.map((w, i) => {
           const active = ms >= w.startMs && ms < w.endMs;
           return (
-            <span key={i} style={{ color: active ? accent : SUBTITLE.text }}>
+            <span
+              key={i}
+              style={{
+                color: active ? "#11151c" : w.emphasis ? accent : SUBTITLE.text,
+                background: active ? accent : "transparent",
+                borderRadius: active ? 8 : 0,
+                padding: active ? "2px 7px 3px" : "2px 0 3px",
+                marginRight: i < page.words.length - 1 ? 10 : 0,
+                display: "inline-block",
+                transform: `scale(${active ? (w.emphasis ? 1.12 : 1.06) : 1})`,
+                transformOrigin: "center bottom",
+              }}
+            >
               {w.text.trim()}
-              {i < page.words.length - 1 ? " " : ""}
             </span>
           );
         })}

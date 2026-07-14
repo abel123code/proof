@@ -154,6 +154,7 @@ test("produceScene skips (no movPath) when QA rejects through the final retry", 
         basePath: "base.mp4",
         fps: 30,
         log: () => {},
+        skipQa: false, // force QA on regardless of ambient PREMIUM_SKIP_QA
       },
       {
         author: async () => {

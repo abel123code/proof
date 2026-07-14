@@ -12,6 +12,24 @@ export interface Word {
   text: string;
   startMs: number;
   endMs: number;
+  emphasis?: boolean;
+}
+
+export type VisualTemplate =
+  | "hook"
+  | "keyword"
+  | "metric"
+  | "comparison"
+  | "steps"
+  | "quote"
+  | "payoff";
+
+export interface VisualCue {
+  template: VisualTemplate;
+  headline: string;
+  startMs: number;
+  endMs: number;
+  sceneIndex: number;
 }
 
 /** A span of the ORIGINAL recording timeline to keep, in ms. */
@@ -52,6 +70,14 @@ export interface RenderAssets {
   motif?: string;
 }
 
+export interface RenderBriefScene {
+  label: string;
+  spokenLine: string;
+  onScreenText: string;
+  brollCue: string;
+  durationSeconds?: number;
+}
+
 /** The brief the render consumes (produced by the Exa/OpenAI half, or seeded for tests). */
 export interface RenderBrief {
   script: string;
@@ -61,7 +87,12 @@ export interface RenderBrief {
   accentColor?: string;
   /** Optional assets folder for the premium (bespoke-scene) path. */
   assets?: RenderAssets;
+  hook?: string;
+  targetFeeling?: string;
+  scenes?: RenderBriefScene[];
 }
+
+export type EditMode = "brief-driven" | "classic" | "generated-experimental";
 
 /** One bespoke scene the premium path storyboards, anchored to the cut timeline. */
 export interface SceneSpec {
@@ -119,11 +150,14 @@ export interface RenderProps {
   words: Word[];
   keywordCues: KeywordCue[];
   overlayCues: OverlayCue[];
+  visualCues: VisualCue[];
   accentColor?: string;
 }
 
 /** One render request. Either a captureId (load from DB) or a direct videoUrl + brief (tests). */
 export interface RenderJobInput {
+  jobId?: string;
+  briefId?: string;
   captureId?: string;
   videoUrl?: string;
   /** Multiple per-scene clips to concatenate (in order) into one take before rendering. */
@@ -135,13 +169,17 @@ export interface RenderJobInput {
    * Falls back to the fixed-component render if premium generation fails.
    */
   premium?: boolean;
+  /** Explicit editor mode. `premium` remains as a backwards-compatible alias. */
+  editMode?: EditMode;
 }
 
 export type JobStatus =
   | "queued"
   | "transcribing"
   | "cutting"
+  | "planning"
   | "rendering"
+  | "quality-checking"
   | "uploading"
   | "done"
   | "error";
