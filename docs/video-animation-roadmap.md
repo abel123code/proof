@@ -204,3 +204,27 @@ substitutes with specific feedback, no rubber-stamping.
 5. Model default: keep **gpt-5.4** (5.5 not worth 2x for +1 scene) UNLESS 1–3 are done first.
 
 PR #8 plumbing is correct + mergeable; the pass-rate levers above are follow-ups, not blockers.
+
+### Run D (2026-07-15) — levers implemented, re-tested on the SAME cheap tier
+
+Implemented the 3 levers (asset-inclusion gate keyed off `assets/<file>` path refs; PNG-rasterize
+SVG logos via `sharp`; `placeBriefScenes` preserves all brief scenes). Re-ran on gpt-5.4 @ low (the
+cheap tier — isolates the levers, not a model bump):
+
+| Run | Model | Fixes | Scenes rendered |
+|---|---|---|---|
+| A | gpt-5.4 | none | 1 / 4 (25%) |
+| B | gpt-5.5 | none | 2 / 4 |
+| **D** | **gpt-5.4** | **all 3 levers** | **3 / 6 (50%)** |
+
+- ✅ **Anchor fix works** — 6 scenes planned (was 4); all brief scenes survive.
+- ✅ **Pass rate doubled on the cheap model** (1/4 → 3/6) and 3 real scenes shipped (was 1) — WITHOUT a
+  model upgrade. The gate + PNG earned scene-3/4/5 (some on the 2nd retry off QA feedback).
+- ❌ **Still failing:** the 2 hardest logo-in-metaphor scenes (puppet-strings, split-silos) + a near-miss
+  CTA (crowded the speaker's head, used a generic Chrome logo not the badge). Even the gate + PNG can't
+  make gpt-5.4 embed logos into a complex composition in 2 retries.
+
+**Next levers if we want >50% on these hard scenes (not yet done):** (a) per-scene asset MATCHING so the
+intent names 1–2 specific assets (not "available: all 7"), tightening what the author must feature;
+(b) try gpt-5.5 author WITH the gate+PNG (only A/B'd the model WITHOUT the levers so far); (c) soften the
+logo scenes' brollCues (logo-in-metaphor is the hardest ask). PR #8 stands as-is; these are follow-ups.
