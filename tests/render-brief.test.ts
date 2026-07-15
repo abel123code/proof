@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toRenderBrief } from "@/lib/render-brief";
+import { toRenderBrief, normalizeAssets } from "@/lib/render-brief";
 import type { BriefScene } from "@/lib/types";
 
 function scene(partial: Partial<BriefScene>): BriefScene {
@@ -75,5 +75,33 @@ describe("toRenderBrief", () => {
       brollCue: "Show the number growing",
       durationSeconds: 4,
     });
+  });
+});
+
+describe("normalizeAssets", () => {
+  it("returns undefined when nothing meaningful is set", () => {
+    expect(normalizeAssets(undefined)).toBeUndefined();
+    expect(normalizeAssets({})).toBeUndefined();
+    expect(normalizeAssets({ images: [], brandColor: "  ", motif: "" })).toBeUndefined();
+  });
+
+  it("trims and drops blank fields, keeping only real values", () => {
+    expect(
+      normalizeAssets({ images: [" https://x/a.png ", "", "  "], brandColor: " #d9ff45 ", motif: "  " }),
+    ).toEqual({ images: ["https://x/a.png"], brandColor: "#d9ff45" });
+  });
+});
+
+describe("toRenderBrief assets", () => {
+  it("omits assets when none are provided", () => {
+    const out = toRenderBrief([scene({ spokenLine: "a" })]);
+    expect(out.assets).toBeUndefined();
+  });
+
+  it("carries a normalized assets block onto the render brief", () => {
+    const out = toRenderBrief([scene({ spokenLine: "a" })], {
+      assets: { images: ["https://x/a.png"], brandColor: "#d9ff45", motif: " logos ", brandVoice: "" },
+    });
+    expect(out.assets).toEqual({ images: ["https://x/a.png"], brandColor: "#d9ff45", motif: "logos" });
   });
 });

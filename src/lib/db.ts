@@ -9,6 +9,7 @@ import type {
   Project,
   ProjectUnderstanding,
   ReferencePattern,
+  RenderAssets,
   ResearchOutput,
   TrendTopic,
 } from "@/lib/types";
@@ -47,6 +48,7 @@ interface BriefRow {
   render_job_id: string | null;
   render_status: string | null;
   render_url: string | null;
+  assets: RenderAssets | null;
   created_at: string;
 }
 
@@ -74,6 +76,7 @@ function mapBrief(r: BriefRow): Brief {
     renderJobId: r.render_job_id ?? null,
     renderStatus: r.render_status ?? null,
     renderUrl: r.render_url ?? null,
+    assets: r.assets ?? null,
     createdAt: r.created_at,
   };
 }
@@ -821,6 +824,34 @@ export async function deleteSceneFootage(briefId: string, sceneIndex: number): P
   if (delErr) throw new Error(`deleteSceneFootage failed: ${delErr.message}`);
 }
 
+// ---- brief assets (premium bespoke-scene inputs) ----
+// Brand images live in the same public `footage` bucket under an `assets/<briefId>/` prefix.
+
+function safeAssetFilename(name: string): string {
+  const base = name.split(/[\\/]/).pop() || "asset";
+  const clean = base.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-80) || "asset";
+  return /\.(png|jpe?g|webp|gif|svg)$/i.test(clean) ? clean : `${clean}.png`;
+}
+
+/**
+ * Mint a signed upload URL for one brand-asset image plus the public URL it will have once
+ * uploaded. Path: `assets/<briefId>/<ts>-<name>`. Bytes go straight to Supabase (no Vercel limit);
+ * pair with saveBriefAssets to persist the resulting URLs onto the brief.
+ */
+export async function createAssetUploadTicket(input: {
+  briefId: string;
+  filename: string;
+}): Promise<{ path: string; token: string; signedUrl: string; publicUrl: string }> {
+  const supabase = getSupabaseAdmin();
+  const path = `assets/${input.briefId}/${Date.now()}-${safeAssetFilename(input.filename)}`;
+  const { data, error } = await supabase.storage
+    .from(FOOTAGE_BUCKET)
+    .createSignedUploadUrl(path, { upsert: true });
+  if (error) throw new Error(`asset sign failed: ${error.message}`);
+  const { data: pub } = supabase.storage.from(FOOTAGE_BUCKET).getPublicUrl(path);
+  return { path, token: data.token, signedUrl: data.signedUrl, publicUrl: pub.publicUrl };
+}
+
 // ---- briefs ----
 
 /** Persist a scene-by-scene content brief (with the gap Q&A that produced it). */
@@ -927,6 +958,13 @@ export async function saveBriefRender(
   if (Object.keys(row).length === 0) return;
   const { error } = await supabase.from("briefs").update(row).eq("id", briefId);
   if (error) throw new Error(`saveBriefRender failed: ${error.message}`);
+}
+
+/** Persist the per-brief assets folder (images/brandColor/motif) for the premium render path. */
+export async function saveBriefAssets(briefId: string, assets: RenderAssets): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("briefs").update({ assets }).eq("id", briefId);
+  if (error) throw new Error(`saveBriefAssets failed: ${error.message}`);
 }
 
 export interface DurableRenderJob {

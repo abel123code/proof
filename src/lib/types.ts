@@ -318,6 +318,23 @@ export interface BriefDoc {
   sources?: string[];
 }
 
+/**
+ * A per-brief assets folder for the premium (bespoke-scene) render path: real product
+ * screenshots + logo(s) + brand color + motif, so scenes embed the actual UI instead of
+ * generic text cards. Images are public URLs (stored in the `footage` bucket under an
+ * `assets/<briefId>/` prefix). Shape mirrors the render service's RenderAssets.
+ */
+export interface RenderAssets {
+  /** Public URLs of screenshots / logos / UI captures to feature in scenes. */
+  images?: string[];
+  /** Brand accent hex, e.g. "#d9ff45". */
+  brandColor?: string;
+  /** A sentence or two of brand voice/tone to steer scene copy. */
+  brandVoice?: string;
+  /** A recurring visual motif to carry across scenes. */
+  motif?: string;
+}
+
 /** Keyword flagged in a script to receive an on-screen overlay (Phase 5). */
 export interface KeywordFlag {
   phrase: string;
@@ -364,6 +381,8 @@ export interface Brief {
   renderStatus: string | null;
   /** Public URL of the finished edited MP4 (persisted to our Storage). */
   renderUrl: string | null;
+  /** Per-brief assets folder (screenshots/logo/brand color) for the premium render path. */
+  assets: RenderAssets | null;
   createdAt: string;
 }
 

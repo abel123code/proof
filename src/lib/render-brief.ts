@@ -1,4 +1,4 @@
-import type { BriefScene } from "@/lib/types";
+import type { BriefScene, RenderAssets } from "@/lib/types";
 
 /**
  * The brief shape the Zo render service consumes (see render/src/types.ts on the
@@ -21,6 +21,8 @@ export interface RenderBrief {
   hook?: string;
   targetFeeling?: string;
   scenes: RenderBriefScene[];
+  /** Per-brief assets folder (screenshots/logo/brand color) for the premium bespoke-scene path. */
+  assets?: RenderAssets;
 }
 
 export interface RenderBriefScene {
@@ -34,6 +36,25 @@ export interface RenderBriefScene {
 const FALLBACK_SCENE_SECONDS = 5;
 
 /**
+ * Drop empty/blank asset fields; return undefined when nothing meaningful is set, so the render
+ * brief carries an `assets` block only when the user actually provided screenshots/logo/brand.
+ */
+export function normalizeAssets(assets?: RenderAssets): RenderAssets | undefined {
+  if (!assets) return undefined;
+  const images = (assets.images ?? []).map((s) => s.trim()).filter(Boolean);
+  const brandColor = assets.brandColor?.trim() || undefined;
+  const brandVoice = assets.brandVoice?.trim() || undefined;
+  const motif = assets.motif?.trim() || undefined;
+  if (images.length === 0 && !brandColor && !brandVoice && !motif) return undefined;
+  return {
+    ...(images.length ? { images } : {}),
+    ...(brandColor ? { brandColor } : {}),
+    ...(brandVoice ? { brandVoice } : {}),
+    ...(motif ? { motif } : {}),
+  };
+}
+
+/**
  * Map our scene-by-scene brief to the render service's RenderBrief.
  *
  * IMPORTANT: pass ONLY the scenes that actually have footage, in the same order the
@@ -42,7 +63,7 @@ const FALLBACK_SCENE_SECONDS = 5;
  */
 export function toRenderBrief(
   scenes: BriefScene[],
-  context: { hook?: string; targetFeeling?: string } = {},
+  context: { hook?: string; targetFeeling?: string; assets?: RenderAssets } = {},
 ): RenderBrief {
   const script = scenes
     .map((s) => s.spokenLine?.trim())
@@ -72,6 +93,8 @@ export function toRenderBrief(
     elapsed += dur;
   }
 
+  const assets = normalizeAssets(context.assets);
+
   return {
     script,
     keywordFlags: [],
@@ -85,5 +108,6 @@ export function toRenderBrief(
       brollCue: scene.brollCue,
       durationSeconds: scene.durationSeconds,
     })),
+    ...(assets ? { assets } : {}),
   };
 }
