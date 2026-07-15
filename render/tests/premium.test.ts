@@ -327,6 +327,9 @@ test("assetsNamedInIntent returns only the asset filenames the intent actually r
   assert.deepEqual(assetsNamedInIntent(intent, hints).sort(), ["edimension.svg", "gradescope.svg"]);
   // a pure-motion beat that names no asset requires none
   assert.deepEqual(assetsNamedInIntent("A red MISSED card punches up. No product asset needed.", hints), []);
+  // a bare "available assets" list (buildSceneIntent appends one) must NOT trigger the gate —
+  // only path-form (assets/<file>) references count, else the gate demands every asset in every scene.
+  assert.deepEqual(assetsNamedInIntent("Available: main-view.png, calendar-export.png, edimension.svg.", hints), []);
 });
 
 test("missingAssets flags required assets absent from the HTML (case-insensitive)", () => {
