@@ -32,10 +32,13 @@ const PREMIUM_CONCURRENCY = Number.isFinite(PREMIUM_CONCURRENCY_RAW)
   ? Math.min(4, Math.max(1, Math.floor(PREMIUM_CONCURRENCY_RAW)))
   : 2;
 
-// Escape hatch: skip the vision-QA gate so every rendered scene ships (useful for
-// eyeballing raw premium output while QA is being tuned). SECURITY validation
-// (validateComposition) still runs — we only bypass the aesthetic/accuracy check.
-const SKIP_QA = /^(1|true|on|yes)$/i.test(process.env.PREMIUM_SKIP_QA ?? "");
+// The vision-QA re-render loop (author -> render -> vision judge -> re-author, up to MAX_QA_ITERS)
+// roughly TRIPLES render wall-clock and drops any scene it can't perfect in the retry budget —
+// unacceptable UX for a user waiting on their render (e2e 2026-07-15: ~12 min, 3/6 scenes shipped).
+// So the vision gate is OFF by default (the user path). The cheap DETERMINISTIC gates still run on
+// every scene: validateComposition (security) + the asset-inclusion gate (must embed named assets).
+// Turn the vision loop back on for internal eval / pressure-testing with PREMIUM_QA=1.
+const RUN_QA = /^(1|true|on|yes)$/i.test(process.env.PREMIUM_QA ?? "");
 
 // GSAP is served LOCALLY into each scene dir (no CDN) so a compliant scene needs zero network.
 const require = createRequire(import.meta.url);
@@ -99,13 +102,13 @@ export async function produceScene(
     basePath: string;
     fps: number;
     log: (m: string) => void;
-    /** Override the PREMIUM_SKIP_QA env default (mainly for deterministic tests). */
+    /** Override the vision-QA default (off unless PREMIUM_QA=1). Mainly for deterministic tests. */
     skipQa?: boolean;
   },
   deps: SceneDeps = DEFAULT_DEPS,
 ): Promise<AuthoredScene> {
   const { spec, brief, assetHints, assetsDir, premiumDir, basePath, fps, log } = args;
-  const skipQa = args.skipQa ?? SKIP_QA;
+  const skipQa = args.skipQa ?? !RUN_QA;
 
   // Each scene renders from its own dir; assets + local GSAP are copied in so `./assets/<name>`
   // and `./gsap.min.js` resolve with no network.

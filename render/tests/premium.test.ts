@@ -196,6 +196,7 @@ test("produceScene returns a movPath when QA approves", async () => {
         basePath: "base.mp4",
         fps: 30,
         log: () => {},
+        skipQa: false, // exercise the QA-approves path regardless of the vision-off default
       },
       { author: async () => VALID_HTML, render: async () => {}, qa: async () => ({ ok: true, issues: [] }) },
     );
