@@ -767,6 +767,9 @@ function FootagePreview({
   onOpen: () => void;
 }) {
   const label = name ?? "Uploaded clip";
+  // Browsers only decode web codecs (H.264/VP8/VP9/AV1). An uploaded .mov/HEVC fails to paint
+  // the poster here even though it renders fine (the render box re-encodes with ffmpeg).
+  const [failed, setFailed] = useState(false);
   return (
     <button
       type="button"
@@ -775,20 +778,27 @@ function FootagePreview({
       className="group mt-3 flex w-full items-center gap-3 rounded-md border border-border bg-muted/50 p-2 text-left transition hover:border-primary/50 hover:bg-muted"
     >
       <span className="relative block aspect-[9/16] h-16 shrink-0 overflow-hidden rounded bg-black">
-        {/* Metadata-only poster frame; #t=0.1 nudges browsers to paint the first frame. */}
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-        <video
-          src={`${url}#t=0.1`}
-          muted
-          playsInline
-          preload="metadata"
-          tabIndex={-1}
-          aria-hidden
-          className="h-full w-full object-cover"
-        />
-        <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-sm text-white/90 transition group-hover:bg-black/35">
-          ▶
-        </span>
+        {failed ? (
+          <span className="flex h-full w-full items-center justify-center text-lg text-white/40">🎞</span>
+        ) : (
+          <>
+            {/* Metadata-only poster frame; #t=0.1 nudges browsers to paint the first frame. */}
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video
+              src={`${url}#t=0.1`}
+              muted
+              playsInline
+              preload="metadata"
+              tabIndex={-1}
+              aria-hidden
+              onError={() => setFailed(true)}
+              className="h-full w-full object-cover"
+            />
+            <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-sm text-white/90 transition group-hover:bg-black/35">
+              ▶
+            </span>
+          </>
+        )}
       </span>
       <span className="min-w-0 flex-1">
         <Kicker>Your footage</Kicker>
@@ -796,10 +806,58 @@ function FootagePreview({
           {label}
         </span>
         <span className="mt-0.5 block text-[11px] text-muted-foreground">
-          Tap to play — confirm it&apos;s the right clip
+          {failed
+            ? "Format can't preview here — it'll still render fine"
+            : "Tap to play — confirm it's the right clip"}
         </span>
       </span>
     </button>
+  );
+}
+
+// Full-size playback for an attached clip. Same codec caveat as the poster: an uploaded .mov/HEVC
+// won't play here (the render box re-encodes it), so on a decode error we show a clear note
+// instead of a black box.
+function FootageModal({ url, onClose }: { url: string; onClose: () => void }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+      <button
+        onClick={onClose}
+        aria-label="Close"
+        className="absolute right-5 top-5 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-lg text-white/80 backdrop-blur transition hover:bg-white/20 hover:text-white"
+      >
+        ✕
+      </button>
+      <div
+        className="relative z-10 aspect-[9/16] max-h-[85vh] w-auto max-w-[92vw] overflow-hidden rounded-[2rem] border-[5px] border-neutral-800 bg-black shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {failed ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center">
+            <span className="text-4xl">🎞</span>
+            <p className="font-mono text-sm text-white/90">Can&apos;t preview this format in the browser.</p>
+            <p className="font-mono text-[11px] text-white/50">
+              It&apos;ll still render fine — proof re-encodes it during editing.
+            </p>
+          </div>
+        ) : (
+          /* eslint-disable-next-line jsx-a11y/media-has-caption */
+          <video
+            src={url}
+            controls
+            autoPlay
+            playsInline
+            onError={() => setFailed(true)}
+            className="absolute inset-0 h-full w-full bg-black object-contain"
+          />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -967,34 +1025,7 @@ function BriefView({
         </div>
       )}
 
-      {viewUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          onClick={() => setViewUrl(null)}
-        >
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-          <button
-            onClick={() => setViewUrl(null)}
-            aria-label="Close"
-            className="absolute right-5 top-5 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-lg text-white/80 backdrop-blur transition hover:bg-white/20 hover:text-white"
-          >
-            ✕
-          </button>
-          <div
-            className="relative z-10 aspect-[9/16] max-h-[85vh] w-auto max-w-[92vw] overflow-hidden rounded-[2rem] border-[5px] border-neutral-800 bg-black shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <video
-              src={viewUrl}
-              controls
-              autoPlay
-              playsInline
-              className="absolute inset-0 h-full w-full bg-black object-contain"
-            />
-          </div>
-        </div>
-      )}
+      {viewUrl && <FootageModal url={viewUrl} onClose={() => setViewUrl(null)} />}
     </div>
   );
 }
