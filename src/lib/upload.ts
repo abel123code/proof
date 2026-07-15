@@ -1,4 +1,19 @@
 /**
+ * Normalize a video mime to a browser-playable container label.
+ *
+ * Phones/screen-recorders report H.264 clips as `video/quicktime` (a .mov). Storing them raw
+ * (as a `.webm` with a quicktime content-type — the old mapping) makes the in-app <video> preview
+ * a black box even though the file is fine and renders fine. H.264 in a mov/mp4 (ISOBMFF)
+ * container plays in-browser when it's labelled mp4, so map everything that isn't webm to mp4.
+ * (The render service re-encodes anything genuinely odd anyway.)
+ */
+export function normalizeVideoType(raw: string | undefined): { contentType: string; ext: string } {
+  const t = (raw || "").toLowerCase();
+  if (t.includes("webm")) return { contentType: "video/webm", ext: "webm" };
+  return { contentType: "video/mp4", ext: "mp4" };
+}
+
+/**
  * Upload a scene clip straight to Supabase Storage via a signed ticket, so the bytes never
  * transit the Vercel function (whose ~4.5MB request-body limit capped clips at ~30s).
  * Three steps: mint ticket -> PUT direct to Supabase (with progress) -> confirm the row.
@@ -11,7 +26,7 @@ export async function uploadSceneFootageDirect(input: {
   contentType?: string;
   onProgress?: (fraction: number) => void;
 }): Promise<string> {
-  const contentType = input.contentType || input.file.type || "video/webm";
+  const { contentType } = normalizeVideoType(input.contentType || input.file.type);
 
   // 1. Mint a signed upload ticket (tiny JSON — immune to the body limit).
   const signRes = await fetch("/api/footage/sign", {
@@ -32,7 +47,11 @@ export async function uploadSceneFootageDirect(input: {
   await new Promise<void>((resolve, reject) => {
     const form = new FormData();
     form.append("cacheControl", "3600");
-    form.append("", input.file);
+    // Supabase infers the stored object's content-type from this part's Blob type — re-wrap so a
+    // quicktime clip lands as video/mp4 (matching the .mp4 path), not an unplayable quicktime .webm.
+    const filePart =
+      input.file.type === contentType ? input.file : new Blob([input.file], { type: contentType });
+    form.append("", filePart);
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", signedUrl);
     // Generous ceiling for large clips on slow links; without it a stalled
