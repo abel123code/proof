@@ -107,6 +107,12 @@ test("allowedAssetHosts falls back to the Supabase host, and PREMIUM_ASSET_HOSTS
   );
   assert.deepEqual(
     allowedAssetHosts({
+      NEXT_PUBLIC_SUPABASE_URL: "https://public-ref.supabase.co",
+    } as NodeJS.ProcessEnv),
+    ["public-ref.supabase.co"],
+  );
+  assert.deepEqual(
+    allowedAssetHosts({
       SUPABASE_URL: "https://abc123.supabase.co",
       PREMIUM_ASSET_HOSTS: "cdn.example.com, images.example.org",
     } as NodeJS.ProcessEnv),

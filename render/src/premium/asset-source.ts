@@ -65,7 +65,9 @@ export function allowedAssetHosts(env: NodeJS.ProcessEnv = process.env): string[
     .filter(Boolean);
   if (explicit.length) return explicit;
   try {
-    return [new URL(env.SUPABASE_URL || "").hostname.toLowerCase()];
+    return [
+      new URL(env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || "").hostname.toLowerCase(),
+    ];
   } catch {
     return [];
   }
@@ -99,7 +101,9 @@ export function validateAssetSource(src: string, hosts: string[]): URL {
     throw new Error(`asset must use https (got "${url.protocol}")`);
   }
   if (!hosts.length) {
-    throw new Error("no allowed asset hosts configured (set PREMIUM_ASSET_HOSTS or SUPABASE_URL)");
+    throw new Error(
+      "no allowed asset hosts configured (set PREMIUM_ASSET_HOSTS, SUPABASE_URL, or NEXT_PUBLIC_SUPABASE_URL)",
+    );
   }
   if (!hosts.includes(url.hostname.toLowerCase())) {
     throw new Error(`asset host not allowed: ${url.hostname}`);
