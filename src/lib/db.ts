@@ -710,7 +710,9 @@ export async function uploadSceneFootage(input: {
   contentType: string;
 }): Promise<string> {
   const supabase = getSupabaseAdmin();
-  const ext = input.contentType.includes("mp4") ? "mp4" : "webm";
+  // Only webm stays webm; everything else (mp4, and H.264-in-quicktime clips from phones) is
+  // stored as .mp4 so the in-app <video> preview can actually play it.
+  const ext = input.contentType.includes("webm") ? "webm" : "mp4";
   const path = `${input.briefId}/scene-${input.sceneIndex}.${ext}`;
 
   const body =
@@ -744,7 +746,8 @@ export async function uploadSceneFootage(input: {
 }
 
 function footagePath(briefId: string, sceneIndex: number, contentType: string): string {
-  const ext = contentType.includes("mp4") ? "mp4" : "webm";
+  // Only webm stays webm; quicktime/mov/mp4 all become .mp4 (browser-playable H.264 container).
+  const ext = contentType.includes("webm") ? "webm" : "mp4";
   return `${briefId}/scene-${sceneIndex}.${ext}`;
 }
 
