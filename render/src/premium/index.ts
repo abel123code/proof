@@ -8,6 +8,7 @@ import { qaScene } from "./qa.js";
 import { composeScenes } from "./compose.js";
 import { renderComposition, hyperframesAvailable } from "./hyperframes.js";
 import { validateComposition } from "./sanitize.js";
+import { fetchAssetBytes } from "./asset-source.js";
 
 export { hyperframesAvailable };
 
@@ -43,14 +44,17 @@ function safeAssetName(src: string, i: number): string {
   return /\.(png|jpe?g|webp|gif|svg)$/i.test(clean) ? clean : `${clean}.png`;
 }
 
+/**
+ * Fetch one asset into the workdir.
+ *
+ * Asset URLs are user-controlled, so this is an SSRF / local-file-read boundary: it is
+ * https-only, allowlisted-host-only, DNS-checked against private ranges, redirect-free,
+ * image-only and size-bounded (see asset-source.ts). Bare filesystem paths are rejected
+ * outright — previously any non-http string was copied straight in, which would have let a
+ * caller pull `/app/.env` into a scene and composite the service's API keys into the output.
+ */
 async function fetchAsset(src: string, destPath: string): Promise<void> {
-  if (/^https?:\/\//i.test(src)) {
-    const res = await fetch(src);
-    if (!res.ok) throw new Error(`download failed (${res.status})`);
-    await writeFile(destPath, Buffer.from(await res.arrayBuffer()));
-  } else {
-    await copyFile(src.replace(/^file:\/\//, ""), destPath);
-  }
+  await writeFile(destPath, await fetchAssetBytes(src));
 }
 
 /**
