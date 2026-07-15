@@ -5,11 +5,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { scriptToVocabPrompt } from "../src/transcribe.js";
-import { normalizeScenes } from "../src/premium/scenes.js";
+import {
+  normalizeScenes,
+  planScenes,
+  findAnchorMs,
+  buildSceneIntent,
+  scenesFromBrief,
+} from "../src/premium/scenes.js";
 import { validateComposition } from "../src/premium/sanitize.js";
 import { produceScene } from "../src/premium/index.js";
 import { parseQaVerdict } from "../src/premium/qa.js";
-import type { SceneSpec } from "../src/types.js";
+import { isReasoningModel, normalizeEffort, chatTuning } from "../src/premium/model-params.js";
+import type { SceneSpec, RenderBrief, Word } from "../src/types.js";
 
 const VALID_HTML = `<!doctype html><html><head></head><body>
 <div id="stage" data-composition-id="scene-1" data-width="1080" data-height="1920" data-fps="30"></div>
@@ -225,4 +232,86 @@ test("produceScene never renders unsafe model HTML (external script) and skips i
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+// ---- model-params (Task 1) ----
+
+test("isReasoningModel: gpt-5.x and o-series are reasoning models; gpt-4o is not", () => {
+  for (const m of ["gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.6-luna", "o3", "o4-mini"]) {
+    assert.equal(isReasoningModel(m), true, `${m} should be a reasoning model`);
+  }
+  for (const m of ["gpt-4o", "gpt-4o-mini", "gpt-4.1"]) {
+    assert.equal(isReasoningModel(m), false, `${m} should NOT be a reasoning model`);
+  }
+});
+
+test("normalizeEffort: accepts low/medium/high, defaults everything else to low", () => {
+  assert.equal(normalizeEffort("medium"), "medium");
+  assert.equal(normalizeEffort("HIGH"), "high");
+  assert.equal(normalizeEffort("low"), "low");
+  assert.equal(normalizeEffort("minimal"), "low"); // gpt-5.x rejects minimal -> fall back
+  assert.equal(normalizeEffort(undefined), "low");
+  assert.equal(normalizeEffort(""), "low");
+});
+
+test("chatTuning: reasoning models get reasoning_effort and NO temperature; legacy models get neither", () => {
+  assert.deepEqual(chatTuning("gpt-5.4", "medium"), { reasoning_effort: "medium" });
+  assert.deepEqual(chatTuning("gpt-5.4", undefined), { reasoning_effort: "low" });
+  assert.deepEqual(chatTuning("gpt-4o", "medium"), {}); // no temperature key at all
+  assert.equal("temperature" in chatTuning("gpt-5.4", "low"), false);
+});
+
+// ---- brief.scenes -> SceneSpec (Task 3) ----
+
+const words = (pairs: Array<[number, string]>): Word[] =>
+  pairs.map(([startMs, text]) => ({ text, startMs, endMs: startMs + 300 }));
+
+test("findAnchorMs matches the spoken line's opening words to a word-start", () => {
+  const w = words([[0, "We"], [300, "built"], [600, "a"], [900, "deadline"], [1200, "tracker"]]);
+  assert.equal(findAnchorMs("built a deadline", w), 300);
+  assert.equal(findAnchorMs("nowhere in here", w), null); // no token overlap -> null
+});
+
+test("buildSceneIntent bakes brollCue + headline + asset filenames into one directive", () => {
+  const intent = buildSceneIntent(
+    { label: "payoff", spokenLine: "and it's live", onScreenText: "SHIP IT", brollCue: "the popup slides up into a phone frame" },
+    ["main-view.png"],
+  );
+  assert.match(intent, /popup slides up/);
+  assert.match(intent, /SHIP IT/);
+  assert.match(intent, /main-view\.png/);
+  assert.match(intent, /headline-only card is NOT acceptable/i);
+});
+
+test("scenesFromBrief anchors each brief scene to the timeline and honors the motif", () => {
+  const w = words([[0, "problem"], [1000, "platforms"], [3000, "manual"], [4000, "burden"], [6000, "done"]]);
+  const brief = {
+    script: "x", keywordFlags: [],
+    assets: { motif: "an accent chip that transforms" },
+    scenes: [
+      { label: "a", spokenLine: "problem platforms", onScreenText: "PLATFORMS", brollCue: "logos rain in", durationSeconds: 2 },
+      { label: "b", spokenLine: "manual burden", onScreenText: "MANUAL", brollCue: "a stack of tasks piles up", durationSeconds: 2 },
+    ],
+  } as RenderBrief;
+  const specs = scenesFromBrief({ brief, words: w, durationMs: 8000, assetHints: [] });
+  assert.equal(specs.length, 2);
+  assert.equal(specs[0].anchorMs, 0);
+  assert.equal(specs[1].anchorMs, 3000);
+  assert.equal(specs[0].motif, "an accent chip that transforms");
+  assert.match(specs[0].intent, /logos rain in/);
+  assert.equal(specs[0].captionText, "problem platforms");
+});
+
+// ---- planScenes prefers brief.scenes (Task 4) ----
+
+test("planScenes uses the brief's own scenes without calling the LLM when they exist", async () => {
+  const w = words([[0, "problem"], [1000, "platforms"], [3000, "manual"], [4000, "burden"]]);
+  const brief = {
+    script: "x", keywordFlags: [],
+    scenes: [{ label: "a", spokenLine: "problem platforms", onScreenText: "PLATFORMS", brollCue: "logos rain in" }],
+  } as RenderBrief;
+  // If this path hit OpenAI it would throw (no key in unit env). It must NOT.
+  const specs = await planScenes({ brief, words: w, durationMs: 6000, assetHints: [] });
+  assert.equal(specs.length, 1);
+  assert.match(specs[0].intent, /logos rain in/);
 });
