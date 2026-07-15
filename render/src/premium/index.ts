@@ -11,6 +11,7 @@ import { validateComposition } from "./sanitize.js";
 import { assetsNamedInIntent, missingAssets } from "./assets-gate.js";
 import { createSemaphore } from "../semaphore.js";
 import sharp from "sharp";
+import { fetchAssetBytes } from "./asset-source.js";
 
 export { hyperframesAvailable };
 
@@ -65,14 +66,17 @@ async function rasterizeSvg(svgPath: string, pngPath: string): Promise<void> {
   await sharp(svgPath, { density: 384 }).resize(512, 512, { fit: "inside" }).png().toFile(pngPath);
 }
 
+/**
+ * Fetch one asset into the workdir.
+ *
+ * Asset URLs are user-controlled, so this is an SSRF / local-file-read boundary: it is
+ * https-only, allowlisted-host-only, DNS-checked against private ranges, redirect-free,
+ * image-only and size-bounded (see asset-source.ts). Bare filesystem paths are rejected
+ * outright — previously any non-http string was copied straight in, which would have let a
+ * caller pull `/app/.env` into a scene and composite the service's API keys into the output.
+ */
 async function fetchAsset(src: string, destPath: string): Promise<void> {
-  if (/^https?:\/\//i.test(src)) {
-    const res = await fetch(src);
-    if (!res.ok) throw new Error(`download failed (${res.status})`);
-    await writeFile(destPath, Buffer.from(await res.arrayBuffer()));
-  } else {
-    await copyFile(src.replace(/^file:\/\//, ""), destPath);
-  }
+  await writeFile(destPath, await fetchAssetBytes(src));
 }
 
 /**
