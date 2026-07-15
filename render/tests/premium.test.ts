@@ -175,9 +175,9 @@ test("produceScene skips (no movPath) when QA rejects through the final retry", 
       },
     );
     assert.equal(out.movPath, undefined, "a QA-rejected scene must not carry a movPath");
-    // MAX_QA_ITERS defaults to 1 -> initial attempt + 1 retry.
-    assert.equal(authored, 2, "author runs for the initial attempt + 1 retry");
-    assert.equal(rendered, 2);
+    // MAX_QA_ITERS defaults to 2 -> initial attempt + 2 retries.
+    assert.equal(authored, 3, "author runs for the initial attempt + 2 retries");
+    assert.equal(rendered, 3);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -15,10 +15,12 @@ export { hyperframesAvailable };
 
 // Guard against a malformed env value: Number("abc") is NaN, and `iter <= NaN`
 // is always false, so produceScene's loop would never run and could return a
-// scene as "success" with no rendered mov. Fall back to the default of 1.
+// scene as "success" with no rendered mov. Fall back to the default of 2.
+// (e2e 2026-07-15: 1 retry -> 1/4 scenes pass, 2 retries -> 2/4; the 2nd retry
+// recovers real scenes off the QA feedback, so a QUALITY tier keeps 2.)
 const MAX_QA_ITERS_RAW = Number(process.env.PREMIUM_MAX_QA_ITERS);
 const MAX_QA_ITERS =
-  Number.isFinite(MAX_QA_ITERS_RAW) && MAX_QA_ITERS_RAW > 0 ? MAX_QA_ITERS_RAW : 1;
+  Number.isFinite(MAX_QA_ITERS_RAW) && MAX_QA_ITERS_RAW > 0 ? MAX_QA_ITERS_RAW : 2;
 
 // Parallel scene production. Each scene is a HyperFrames Chromium render + ffmpeg composite, as heavy
 // as a full render, so keep this low: 2 is the proven-safe ceiling on the live box (see semaphore.ts /
