@@ -132,15 +132,22 @@ export async function fetchAssetBytes(src: string): Promise<Buffer> {
 
   // redirect:"error" — a 302 could bounce an allowlisted host to an internal one.
   const res = await fetch(url, { redirect: "error" });
-  if (!res.ok) throw new Error(`download failed (${res.status})`);
+  if (!res.ok) {
+    await res.body?.cancel().catch(() => {});
+    throw new Error(`download failed (${res.status})`);
+  }
 
   const type = res.headers.get("content-type") || "";
-  if (!/^image\//i.test(type)) throw new Error(`asset is not an image (content-type: "${type}")`);
+  if (!/^image\//i.test(type)) {
+    await res.body?.cancel().catch(() => {});
+    throw new Error(`asset is not an image (content-type: "${type}")`);
+  }
 
   // A declared content-length lets us bail before reading a byte — but it's optional and can
   // lie, so it's only a fast path. readCapped() is what actually enforces the ceiling.
   const declared = Number(res.headers.get("content-length") || 0);
   if (Number.isFinite(declared) && declared > MAX_ASSET_BYTES) {
+    await res.body?.cancel().catch(() => {});
     throw new Error(`asset too large (${declared} > ${MAX_ASSET_BYTES} bytes)`);
   }
   if (!res.body) throw new Error("asset response had no body");

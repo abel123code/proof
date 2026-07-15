@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   allowedAssetHosts,
+  fetchAssetBytes,
   isPrivateAddress,
   parseMaxAssetBytes,
   readCapped,
@@ -98,6 +99,41 @@ test("readCapped returns bodies under the cap", async () => {
 test("readCapped aborts a body that streams past the cap (memory-exhaustion DoS)", async () => {
   // A hostile host that ignores content-length and just keeps sending.
   await assert.rejects(() => readCapped(streamOf(1000, 1000), 5000), /asset too large/);
+});
+
+test("fetchAssetBytes cancels response bodies rejected before streaming", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalHosts = process.env.PREMIUM_ASSET_HOSTS;
+  process.env.PREMIUM_ASSET_HOSTS = "8.8.8.8";
+  try {
+    const responseInits: ResponseInit[] = [
+      { status: 500, headers: { "content-type": "image/png" } },
+      { status: 200, headers: { "content-type": "text/plain" } },
+      {
+        status: 200,
+        headers: { "content-type": "image/png", "content-length": "15000001" },
+      },
+    ];
+    for (const responseInit of responseInits) {
+      let cancelled = false;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1]));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      });
+      globalThis.fetch = async () => new Response(body, responseInit);
+
+      await assert.rejects(() => fetchAssetBytes("https://8.8.8.8/asset.png"));
+      assert.equal(cancelled, true, `body was not cancelled for status ${responseInit.status}`);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalHosts === undefined) delete process.env.PREMIUM_ASSET_HOSTS;
+    else process.env.PREMIUM_ASSET_HOSTS = originalHosts;
+  }
 });
 
 test("allowedAssetHosts falls back to the Supabase host, and PREMIUM_ASSET_HOSTS overrides", () => {
