@@ -14,6 +14,11 @@ import { getActiveProject, setActiveProject } from "@/components/studio/active-p
 import { getProfileData } from "@/components/studio/profile-store";
 import { RenderConfirmDialog } from "@/components/studio/render-confirm-dialog";
 import { Teleprompter } from "@/components/studio/teleprompter";
+import {
+  readFootageNames,
+  removeFootageName,
+  setFootageName,
+} from "@/components/studio/footage-names";
 import { toRenderBrief } from "@/lib/render-brief";
 import { uploadSceneFootageDirect } from "@/lib/upload";
 import type { Angle, BriefDoc, InfoGap, Project, ReferencePattern } from "@/lib/types";
@@ -73,6 +78,10 @@ export function BriefPanel() {
   const [doc, setDoc] = useState<BriefDoc | null>(null);
   const [briefId, setBriefId] = useState<string | null>(null);
   const [footage, setFootage] = useState<Record<number, string>>({});
+  // Human-readable label per scene (original filename, or "Recorded take"). Client-only,
+  // localStorage-backed per brief — the DB stores footage at a fixed path, so this is what
+  // lets a creator tell which of their recordings they attached. See footage-names.ts.
+  const [filenames, setFilenames] = useState<Record<number, string>>({});
   const [recordScene, setRecordScene] = useState<number | null>(null);
   const [renderJobId, setRenderJobId] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState<string | null>(null);
@@ -87,6 +96,13 @@ export function BriefPanel() {
   // matches the server HTML (avoids a hydration mismatch).
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // Footage URLs come from the DB, but the original filenames live only in the browser
+  // (localStorage). Re-hydrate them whenever the brief changes so a reload still shows
+  // "which clip is this?" per scene.
+  useEffect(() => {
+    setFilenames(readFootageNames(briefId));
+  }, [briefId]);
 
   // Recover the project on a hard refresh where ?project= isn't in the URL — the
   // brand-new-video path only sets it in state, and the top-nav stepper links to a
@@ -429,6 +445,8 @@ export function BriefPanel() {
             toast.loading(`Uploading scene ${sceneIndex + 1}… ${Math.round(f * 100)}%`, { id }),
         });
         setFootage((m) => ({ ...m, [sceneIndex]: url }));
+        // Remember the file the creator actually picked so the scene can show its name.
+        setFilenames(setFootageName(briefId, sceneIndex, file.name));
         toast.success(`Scene ${sceneIndex + 1} uploaded`, { id });
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Upload failed", { id });
@@ -455,6 +473,7 @@ export function BriefPanel() {
           delete next[sceneIndex];
           return next;
         });
+        setFilenames(removeFootageName(briefId, sceneIndex));
         toast.success("Footage deleted");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Delete failed");
@@ -584,6 +603,7 @@ export function BriefPanel() {
         <BriefView
           doc={doc}
           footage={footage}
+          filenames={filenames}
           onRecord={(i) => setRecordScene(i)}
           onUpload={uploadFootage}
           onDelete={deleteFootage}
@@ -596,14 +616,20 @@ export function BriefPanel() {
           briefId={briefId}
           startScene={recordScene}
           initialFootage={footage}
-          onFootageChange={(sceneIndex, url) =>
+          initialNames={filenames}
+          onFootageChange={(sceneIndex, url, name) => {
             setFootage((m) => {
               const next = { ...m };
               if (url) next[sceneIndex] = url;
               else delete next[sceneIndex];
               return next;
-            })
-          }
+            });
+            setFilenames(
+              url
+                ? setFootageName(briefId, sceneIndex, name ?? "Recorded take")
+                : removeFootageName(briefId, sceneIndex),
+            );
+          }}
           onClose={() => setRecordScene(null)}
         />
       )}
@@ -728,15 +754,66 @@ function QuestionsForm({
   );
 }
 
+// Inline confirmation strip for an attached clip: a poster-frame thumbnail (click to play
+// full-size) plus the filename the creator picked, so they can tell one recording from the
+// next without opening each one.
+function FootagePreview({
+  url,
+  name,
+  onOpen,
+}: {
+  url: string;
+  name?: string;
+  onOpen: () => void;
+}) {
+  const label = name ?? "Uploaded clip";
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title="Play this clip"
+      className="group mt-3 flex w-full items-center gap-3 rounded-md border border-border bg-muted/50 p-2 text-left transition hover:border-primary/50 hover:bg-muted"
+    >
+      <span className="relative block aspect-[9/16] h-16 shrink-0 overflow-hidden rounded bg-black">
+        {/* Metadata-only poster frame; #t=0.1 nudges browsers to paint the first frame. */}
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video
+          src={`${url}#t=0.1`}
+          muted
+          playsInline
+          preload="metadata"
+          tabIndex={-1}
+          aria-hidden
+          className="h-full w-full object-cover"
+        />
+        <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-sm text-white/90 transition group-hover:bg-black/35">
+          ▶
+        </span>
+      </span>
+      <span className="min-w-0 flex-1">
+        <Kicker>Your footage</Kicker>
+        <span className="mt-1 block truncate font-mono text-xs text-foreground" title={label}>
+          {label}
+        </span>
+        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+          Tap to play — confirm it&apos;s the right clip
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function BriefView({
   doc,
   footage,
+  filenames,
   onRecord,
   onUpload,
   onDelete,
 }: {
   doc: BriefDoc;
   footage: Record<number, string>;
+  filenames: Record<number, string>;
   onRecord: (sceneIndex: number) => void;
   onUpload: (sceneIndex: number, file: File) => void;
   onDelete: (sceneIndex: number) => void;
@@ -788,6 +865,7 @@ function BriefView({
       <div className="mt-2 space-y-3">
         {doc.scenes.map((s, i) => {
           const clip = footage[i];
+          const clipName = filenames[i];
           return (
           <article
             key={i}
@@ -813,15 +891,6 @@ function BriefView({
                     ~{s.durationSeconds}s
                   </span>
                 ) : null}
-                {clip && (
-                  <button
-                    onClick={() => setViewUrl(clip)}
-                    title="View footage"
-                    className="rounded-full border border-primary/50 px-2 py-0.5 font-mono text-[10px] text-primary transition hover:bg-primary/10"
-                  >
-                    ▷ view
-                  </button>
-                )}
                 <label
                   title="Upload footage from this device"
                   className="cursor-pointer rounded-full border border-border px-2 py-0.5 font-mono text-[10px] text-muted-foreground transition hover:border-primary hover:text-primary"
@@ -856,6 +925,10 @@ function BriefView({
                 )}
               </div>
             </div>
+
+            {clip && (
+              <FootagePreview url={clip} name={clipName} onOpen={() => setViewUrl(clip)} />
+            )}
 
             <p className="mt-2 text-[15px] leading-snug">{s.spokenLine}</p>
 
