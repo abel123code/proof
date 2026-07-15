@@ -9,7 +9,9 @@ import { composeScenes } from "./compose.js";
 import { renderComposition, hyperframesAvailable } from "./hyperframes.js";
 import { validateComposition } from "./sanitize.js";
 import { fetchAssetBytes } from "./asset-source.js";
+import { assetsNamedInIntent, missingAssets } from "./assets-gate.js";
 import { createSemaphore } from "../semaphore.js";
+import sharp from "sharp";
 
 export { hyperframesAvailable };
 
@@ -56,13 +58,21 @@ function safeAssetName(src: string, i: number): string {
 }
 
 /**
+ * Rasterize an SVG to a crisp PNG. The author embeds PNG screenshots far more reliably than SVG
+ * logos (e2e 2026-07-15: SVG logos were the #1 skipped-scene cause — the model substitutes generic
+ * icons). High density so small brand marks stay sharp when scaled up in a scene.
+ */
+async function rasterizeSvg(svgPath: string, pngPath: string): Promise<void> {
+  await sharp(svgPath, { density: 384 }).resize(512, 512, { fit: "inside" }).png().toFile(pngPath);
+}
+
+/**
  * Fetch one asset into the workdir.
  *
  * Asset URLs are user-controlled, so this is an SSRF / local-file-read boundary: it is
  * https-only, allowlisted-host-only, DNS-checked against private ranges, redirect-free,
  * image-only and size-bounded (see asset-source.ts). Bare filesystem paths are rejected
- * outright — previously any non-http string was copied straight in, which would have let a
- * caller pull `/app/.env` into a scene and composite the service's API keys into the output.
+ * outright because local files can contain service credentials.
  */
 async function fetchAsset(src: string, destPath: string): Promise<void> {
   await writeFile(destPath, await fetchAssetBytes(src));
@@ -126,6 +136,19 @@ export async function produceScene(
       continue;
     }
 
+    // Asset-inclusion gate: if the intent names specific assets, the HTML must embed them. Catches
+    // the "described the logo but drew a generic icon" failure BEFORE a wasted render + vision call.
+    const missing = missingAssets(html, assetsNamedInIntent(spec.intent, assetHints));
+    if (missing.length && !last) {
+      issues = [
+        `MUST FIX: the intent requires featuring ${missing.join(", ")}, but your HTML never references ` +
+          `${missing.length > 1 ? "them" : "it"}. Embed each with <img src="./assets/<file>" style="..."> ` +
+          `as a real, visible element — not a generic icon, emoji, or CSS placeholder.`,
+      ];
+      log(`  ${spec.id}: re-author ${iter + 1} — missing required asset(s): ${missing.join(", ")}`);
+      continue;
+    }
+
     await deps.render({ html, sceneDir, outMovPath: movPath, fps });
     const qa = skipQa
       ? { ok: true as const, issues: [] as string[] }
@@ -174,21 +197,39 @@ export async function runPremium(args: {
   const assetsDir = join(premiumDir, "assets");
   await mkdir(assetsDir, { recursive: true });
 
-  // 1. Fetch the assets folder; hints are the filenames the author may reference.
+  // 1. Fetch the assets folder; hints are the filenames the author may reference. SVG logos are
+  //    rasterized to PNG (the author embeds PNGs far more reliably), and any ".svg" reference in the
+  //    scene intents is rewritten to ".png" so the intent, the assetHints, and the gate all agree.
   const assetHints: string[] = [];
+  const svgToPng = new Map<string, string>();
   for (const [i, src] of (brief.assets?.images ?? []).entries()) {
     try {
       const name = safeAssetName(src, i);
       await fetchAsset(src, join(assetsDir, name));
-      assetHints.push(name);
+      if (/\.svg$/i.test(name)) {
+        const png = name.replace(/\.svg$/i, ".png");
+        try {
+          await rasterizeSvg(join(assetsDir, name), join(assetsDir, png));
+          svgToPng.set(name, png);
+          assetHints.push(png);
+        } catch (e) {
+          log(`premium: svg rasterize failed (${name}), keeping svg: ${(e as Error).message}`);
+          assetHints.push(name);
+        }
+      } else {
+        assetHints.push(name);
+      }
     } catch (e) {
       log(`premium: asset fetch failed (${src}): ${(e as Error).message}`);
     }
   }
 
-  // 2. Storyboard.
+  // 2. Storyboard, then repoint any ".svg" the intents named at the rasterized ".png".
   const specs = await planScenes({ brief, words, durationMs, assetHints });
   if (specs.length === 0) throw new Error("planScenes produced no scenes");
+  for (const spec of specs) {
+    for (const [svg, png] of svgToPng) spec.intent = spec.intent.split(svg).join(png);
+  }
   log(`premium: ${specs.length} scenes planned, ${assetHints.length} assets`);
 
   // 3. Author -> render -> QA each scene, up to PREMIUM_CONCURRENCY at a time (order preserved).

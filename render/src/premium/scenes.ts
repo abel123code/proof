@@ -96,7 +96,41 @@ export function scenesFromBrief(args: {
     };
   });
 
-  return normalizeScenes(raw, wordStarts, motif, durationMs);
+  return placeBriefScenes(raw, motif, durationMs);
+}
+
+/**
+ * Place brief-derived scenes on the timeline PRESERVING ALL of them: they come from the human's
+ * own storyboard in narrative order, so overlaps are NUDGED forward (anchor := end of the previous
+ * scene) instead of dropped the way the LLM-storyboard path (normalizeScenes) drops them. Durations
+ * are clamped; a scene is only dropped if the timeline is genuinely full (no room for the floor).
+ */
+export function placeBriefScenes(
+  raw: Array<{ anchorMs: number; durMs: number; intent: string; captionText: string }>,
+  motif: string,
+  durationMs: number,
+): SceneSpec[] {
+  const out: SceneSpec[] = [];
+  let cursor = 0;
+  for (const s of raw) {
+    if (!s.intent || !s.intent.trim()) continue;
+    const anchor = Math.max(Math.round(s.anchorMs), cursor); // nudge past the previous scene, keep order
+    if (anchor + MIN_SCENE_MS > durationMs) break; // no room left for even a floor-length scene
+    const durMs = Math.min(MAX_SCENE_MS, Math.max(MIN_SCENE_MS, Math.round(s.durMs)));
+    const end = Math.min(anchor + durMs, durationMs);
+    const finalDur = end - anchor;
+    if (finalDur < MIN_SCENE_MS) break;
+    out.push({
+      id: `scene-${out.length + 1}`,
+      anchorMs: anchor,
+      durMs: finalDur,
+      motif,
+      intent: s.intent,
+      captionText: s.captionText,
+    });
+    cursor = end;
+  }
+  return out;
 }
 
 /**

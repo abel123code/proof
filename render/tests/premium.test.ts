@@ -316,3 +316,51 @@ test("planScenes uses the brief's own scenes without calling the LLM when they e
   assert.equal(specs.length, 1);
   assert.match(specs[0].intent, /logos rain in/);
 });
+
+// ---- asset-inclusion gate (Task 6 fix lever 1) ----
+
+import { assetsNamedInIntent, missingAssets } from "../src/premium/assets-gate.js";
+
+test("assetsNamedInIntent returns only the asset filenames the intent actually references", () => {
+  const hints = ["edimension.svg", "gradescope.svg", "main-view.png", "calendar-export.png"];
+  const intent = "Slam ./assets/edimension.svg top-left and ./assets/gradescope.svg top-right; strings snap.";
+  assert.deepEqual(assetsNamedInIntent(intent, hints).sort(), ["edimension.svg", "gradescope.svg"]);
+  // a pure-motion beat that names no asset requires none
+  assert.deepEqual(assetsNamedInIntent("A red MISSED card punches up. No product asset needed.", hints), []);
+});
+
+test("missingAssets flags required assets absent from the HTML (case-insensitive)", () => {
+  const html = `<div id="stage"><img src="./assets/edimension.svg"></div>`;
+  assert.deepEqual(missingAssets(html, ["edimension.svg", "gradescope.svg"]), ["gradescope.svg"]);
+  assert.deepEqual(missingAssets(html, ["edimension.svg"]), []);
+  assert.deepEqual(missingAssets(`<img src="./ASSETS/Main-View.PNG">`, ["main-view.png"]), []);
+});
+
+// ---- anchor placement preserves all brief scenes (Task 6 fix lever 3) ----
+
+import { placeBriefScenes } from "../src/premium/scenes.js";
+
+test("placeBriefScenes keeps ALL brief scenes, nudging overlaps forward instead of dropping them", () => {
+  const raw = [0, 1000, 2000, 2500, 3000, 3500].map((anchorMs, i) => ({
+    anchorMs,
+    durMs: 3000,
+    intent: `scene ${i}`,
+    captionText: `line ${i}`,
+  }));
+  const out = placeBriefScenes(raw, "motif", 30000);
+  assert.equal(out.length, 6, "all six overlapping scenes survive");
+  // monotonic, non-overlapping, in order
+  for (let i = 1; i < out.length; i++) {
+    assert.ok(out[i].anchorMs >= out[i - 1].anchorMs + out[i - 1].durMs, `scene ${i} must not overlap ${i - 1}`);
+  }
+  assert.equal(out[0].id, "scene-1");
+  assert.equal(out[5].id, "scene-6");
+  assert.equal(out[0].motif, "motif");
+});
+
+test("placeBriefScenes stops adding scenes once the timeline is full (no zero-length tail)", () => {
+  const raw = [0, 100, 200].map((anchorMs, i) => ({ anchorMs, durMs: 3000, intent: `s${i}`, captionText: "" }));
+  const out = placeBriefScenes(raw, "m", 4000); // only room for ~one 3000ms scene + a floor
+  assert.ok(out.length >= 1 && out.length <= 2);
+  for (const s of out) assert.ok(s.anchorMs + s.durMs <= 4000);
+});
