@@ -39,6 +39,7 @@ export function Teleprompter({
   briefId,
   startScene = 0,
   initialFootage = {},
+  initialNames = {},
   onFootageChange,
   onClose,
 }: {
@@ -46,7 +47,8 @@ export function Teleprompter({
   briefId: string | null;
   startScene?: number;
   initialFootage?: Record<number, string>;
-  onFootageChange?: (sceneIndex: number, url: string | null) => void;
+  initialNames?: Record<number, string>;
+  onFootageChange?: (sceneIndex: number, url: string | null, name?: string) => void;
   onClose: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -74,6 +76,12 @@ export function Teleprompter({
   const [mirror, setMirror] = useState(false);
   // Persistent footage per scene index (public Storage URLs), seeded from the brief.
   const [footage, setFootage] = useState<Record<number, string>>(initialFootage);
+  // An uploaded .mov/HEVC take won't decode in a browser <video> (it renders fine — the box
+  // re-encodes it), so we swap the black box for a note. Reset per source via onLoadStart.
+  const [previewFailed, setPreviewFailed] = useState(false);
+  // Label per scene (original filename from an upload, or "Recorded take"), seeded from
+  // the brief so a previously-attached clip still shows what it is.
+  const [names, setNames] = useState<Record<number, string>>(initialNames);
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState(0);
   const [viewing, setViewing] = useState(false);
@@ -81,6 +89,7 @@ export function Teleprompter({
   const [camReady, setCamReady] = useState(false);
   const scene = doc.scenes[active];
   const currentUrl = footage[active] ?? null;
+  const currentName = names[active];
   const pxPerSec = speed * 10;
   const busy = recording || countdown != null || uploading;
 
@@ -103,7 +112,8 @@ export function Teleprompter({
           onProgress: setUploadPct,
         });
         setFootage((m) => ({ ...m, [sceneIdx]: url }));
-        onFootageChange?.(sceneIdx, url);
+        setNames((n) => ({ ...n, [sceneIdx]: "Recorded take" }));
+        onFootageChange?.(sceneIdx, url, "Recorded take");
         toast.success(`Scene ${sceneIdx + 1} uploaded`);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Upload failed");
@@ -130,6 +140,11 @@ export function Teleprompter({
       }
       setFootage((m) => {
         const next = { ...m };
+        delete next[idx];
+        return next;
+      });
+      setNames((n) => {
+        const next = { ...n };
         delete next[idx];
         return next;
       });
@@ -370,14 +385,26 @@ export function Teleprompter({
       <div className="relative z-10 aspect-[9/16] h-[50vh] max-w-[92vw] shrink-0 overflow-hidden rounded-[2.4rem] border-[6px] border-neutral-800 bg-black shadow-2xl lg:h-[85vh]">
         {/* Playback of the uploaded take for this scene */}
         {viewing && currentUrl ? (
-          // eslint-disable-next-line jsx-a11y/media-has-caption
-          <video
-            src={currentUrl}
-            controls
-            autoPlay
-            playsInline
-            className="absolute inset-0 h-full w-full bg-black object-contain"
-          />
+          previewFailed ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center">
+              <span className="text-4xl">🎞</span>
+              <p className="font-mono text-sm text-white/90">Can&apos;t preview this format in the browser.</p>
+              <p className="font-mono text-[11px] text-white/50">
+                It&apos;ll still render fine — proof re-encodes it during editing.
+              </p>
+            </div>
+          ) : (
+            // eslint-disable-next-line jsx-a11y/media-has-caption
+            <video
+              src={currentUrl}
+              controls
+              autoPlay
+              playsInline
+              onLoadStart={() => setPreviewFailed(false)}
+              onError={() => setPreviewFailed(true)}
+              className="absolute inset-0 h-full w-full bg-black object-contain"
+            />
+          )
         ) : (
           <>
             {!camError && (
@@ -585,19 +612,28 @@ export function Teleprompter({
         </div>
 
         {currentUrl && !recording && !uploading && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setViewing((v) => !v)}
-              className="rounded-full bg-white px-4 py-1.5 text-xs font-medium text-black transition hover:bg-white/90"
+          <div className="flex flex-col gap-2">
+            <p
+              className="truncate font-mono text-[11px] text-white/55"
+              title={currentName ?? "Recorded take"}
             >
-              {viewing ? "Back to camera" : "▷ View take"}
-            </button>
-            <button
-              onClick={deleteCurrent}
-              className="rounded-full border border-white/25 px-4 py-1.5 text-xs text-white/70 transition hover:border-[#e0533d] hover:text-[#e0533d]"
-            >
-              Delete
-            </button>
+              <span className="uppercase tracking-[0.18em] text-white/35">clip · </span>
+              {currentName ?? "Recorded take"}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setViewing((v) => !v)}
+                className="rounded-full bg-white px-4 py-1.5 text-xs font-medium text-black transition hover:bg-white/90"
+              >
+                {viewing ? "Back to camera" : "▷ View take"}
+              </button>
+              <button
+                onClick={deleteCurrent}
+                className="rounded-full border border-white/25 px-4 py-1.5 text-xs text-white/70 transition hover:border-[#e0533d] hover:text-[#e0533d]"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         )}
 
