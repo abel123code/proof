@@ -20,8 +20,15 @@ import {
   setFootageName,
 } from "@/components/studio/footage-names";
 import { toRenderBrief } from "@/lib/render-brief";
-import { uploadSceneFootageDirect } from "@/lib/upload";
-import type { Angle, BriefDoc, InfoGap, Project, ReferencePattern } from "@/lib/types";
+import { uploadSceneFootageDirect, uploadAssetDirect } from "@/lib/upload";
+import type {
+  Angle,
+  BriefDoc,
+  InfoGap,
+  Project,
+  ReferencePattern,
+  RenderAssets,
+} from "@/lib/types";
 
 // The research stage hands the chosen angle to the brief via sessionStorage
 // (too big for a query param). Brand-new-video path stores a freeform prompt.
@@ -82,6 +89,8 @@ export function BriefPanel() {
   // localStorage-backed per brief — the DB stores footage at a fixed path, so this is what
   // lets a creator tell which of their recordings they attached. See footage-names.ts.
   const [filenames, setFilenames] = useState<Record<number, string>>({});
+  // Per-brief brand assets (screenshots/logo/color) for the premium bespoke-scene render path.
+  const [assets, setAssets] = useState<RenderAssets | null>(null);
   const [recordScene, setRecordScene] = useState<number | null>(null);
   const [renderJobId, setRenderJobId] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState<string | null>(null);
@@ -102,6 +111,23 @@ export function BriefPanel() {
   // "which clip is this?" per scene.
   useEffect(() => {
     setFilenames(readFootageNames(briefId));
+  }, [briefId]);
+
+  // Load the brief's saved brand-assets folder so a reload keeps the uploaded screenshots/logo/color.
+  // Sets in the async callback (never synchronously) and resets to the loaded value so switching
+  // briefs doesn't leave the previous brief's assets behind.
+  useEffect(() => {
+    if (!briefId) return;
+    let cancelled = false;
+    fetch(`/api/assets?briefId=${briefId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled) setAssets(d?.assets ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [briefId]);
 
   // Recover the project on a hard refresh where ?project= isn't in the URL — the
@@ -303,6 +329,7 @@ export function BriefPanel() {
     const brief = toRenderBrief(filmedScenes, {
       hook: doc.hook,
       targetFeeling: doc.targetFeeling,
+      assets: assets ?? undefined,
     });
     // Clear the previous job id first so the poll can't briefly hit the old job
     // (whose persisted URL would short-circuit us back to the stale video).
@@ -326,7 +353,7 @@ export function BriefPanel() {
     } finally {
       emitCreditsChanged();
     }
-  }, [doc, briefId, footage]);
+  }, [doc, briefId, footage, assets]);
 
   const requestRender = useCallback(async () => {
     if (DEMO_RENDER_URL) {
@@ -602,6 +629,9 @@ export function BriefPanel() {
       {phase === "brief" && doc && (
         <BriefView
           doc={doc}
+          briefId={briefId}
+          assets={assets}
+          onAssetsChange={setAssets}
           footage={footage}
           filenames={filenames}
           onRecord={(i) => setRecordScene(i)}
@@ -861,8 +891,162 @@ function FootageModal({ url, onClose }: { url: string; onClose: () => void }) {
   );
 }
 
+// The per-brief assets folder: real product screenshots + logo(s) + brand color that the premium
+// (bespoke-scene) render path embeds into scenes instead of generic text cards. Images upload
+// straight to storage; the whole folder is persisted on the brief. Optional — a render with no
+// assets still works (it just falls back to plainer scenes).
+function AssetsSection({
+  briefId,
+  value,
+  onChange,
+}: {
+  briefId: string;
+  value: RenderAssets | null;
+  onChange: (a: RenderAssets) => void;
+}) {
+  const assets = useMemo<RenderAssets>(() => value ?? {}, [value]);
+  const images = useMemo(() => assets.images ?? [], [assets]);
+  const [busy, setBusy] = useState(false);
+  const [brandColor, setBrandColor] = useState(assets.brandColor ?? "");
+  const [motif, setMotif] = useState(assets.motif ?? "");
+
+  const persist = useCallback(
+    async (next: RenderAssets) => {
+      onChange(next);
+      try {
+        const res = await fetch("/api/assets", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ briefId, assets: next }),
+        });
+        if (!res.ok) {
+          const b = await res.json().catch(() => ({}));
+          throw new Error(b.error ?? "Could not save");
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not save assets");
+      }
+    },
+    [briefId, onChange],
+  );
+
+  const addImages = useCallback(
+    async (files: FileList) => {
+      const list = Array.from(files).slice(0, 12 - images.length);
+      if (list.length === 0) {
+        toast.error("That's the max — remove one first.");
+        return;
+      }
+      setBusy(true);
+      const tid = toast.loading(`Uploading ${list.length} image${list.length > 1 ? "s" : ""}…`);
+      try {
+        const urls: string[] = [];
+        for (const file of list) urls.push(await uploadAssetDirect({ briefId, file }));
+        await persist({ ...assets, images: [...images, ...urls] });
+        toast.success("Added to your assets", { id: tid });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Upload failed", { id: tid });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [assets, images, briefId, persist],
+  );
+
+  return (
+    <div className="mt-6 rounded-lg border border-dashed border-border bg-secondary/20 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Kicker>Brand assets — optional</Kicker>
+        <span className="font-mono text-[10px] text-muted-foreground">{images.length} / 12</span>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Screenshots, logos &amp; your accent color. proof weaves the real product UI into the
+        animated scenes instead of plain text cards.
+      </p>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {images.map((url) => (
+          <span
+            key={url}
+            className="group relative block h-16 w-16 overflow-hidden rounded-md border border-border bg-muted"
+          >
+            {/* Tiny brand thumbnails from arbitrary Supabase URLs — next/image would need per-host
+                remotePatterns config for no LCP benefit at this size. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={url} alt="brand asset" className="h-full w-full object-contain" />
+            <button
+              type="button"
+              onClick={() => persist({ ...assets, images: images.filter((u) => u !== url) })}
+              aria-label="Remove asset"
+              className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center bg-black/60 text-[10px] text-white/90 opacity-0 transition group-hover:opacity-100"
+            >
+              ✕
+            </button>
+          </span>
+        ))}
+        <label
+          title="Upload screenshots or a logo"
+          className={`flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-border font-mono text-[10px] text-muted-foreground transition hover:border-primary hover:text-primary ${
+            busy ? "pointer-events-none opacity-50" : ""
+          }`}
+        >
+          <span className="text-base leading-none">＋</span>
+          <span className="mt-0.5">add</span>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            disabled={busy}
+            onChange={(e) => {
+              if (e.target.files?.length) void addImages(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </label>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-end gap-5">
+        <label className="block">
+          <Kicker>Brand color</Kicker>
+          <span className="mt-1.5 flex items-center gap-2">
+            <input
+              type="color"
+              value={/^#[0-9a-fA-F]{6}$/.test(brandColor) ? brandColor : "#d9ff45"}
+              onChange={(e) => setBrandColor(e.target.value)}
+              onBlur={() => persist({ ...assets, brandColor: brandColor || undefined })}
+              className="h-8 w-10 cursor-pointer rounded border border-border bg-transparent p-0.5"
+              aria-label="Brand accent color"
+            />
+            <input
+              value={brandColor}
+              onChange={(e) => setBrandColor(e.target.value)}
+              onBlur={() => persist({ ...assets, brandColor: brandColor || undefined })}
+              placeholder="#d9ff45"
+              className="w-24 rounded-md border border-border bg-transparent px-2 py-1 font-mono text-xs"
+            />
+          </span>
+        </label>
+        <label className="block min-w-[14rem] flex-1">
+          <Kicker>Recurring motif — optional</Kicker>
+          <input
+            value={motif}
+            onChange={(e) => setMotif(e.target.value)}
+            onBlur={() => persist({ ...assets, motif: motif || undefined })}
+            placeholder="e.g. a deadline chip that consolidates into one list"
+            className="mt-1.5 w-full rounded-md border border-border bg-transparent px-2 py-1 text-xs"
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function BriefView({
   doc,
+  briefId,
+  assets,
+  onAssetsChange,
   footage,
   filenames,
   onRecord,
@@ -870,6 +1054,9 @@ function BriefView({
   onDelete,
 }: {
   doc: BriefDoc;
+  briefId: string | null;
+  assets: RenderAssets | null;
+  onAssetsChange: (a: RenderAssets) => void;
   footage: Record<number, string>;
   filenames: Record<number, string>;
   onRecord: (sceneIndex: number) => void;
@@ -912,6 +1099,8 @@ function BriefView({
           </div>
         )}
       </div>
+
+      {briefId && <AssetsSection briefId={briefId} value={assets} onChange={onAssetsChange} />}
 
       <div className="mt-6 flex items-center justify-between">
         <Kicker>Scenes</Kicker>
