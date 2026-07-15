@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isAuthConfigured, requireApprovedUser } from "@/lib/auth";
 import { getWallet, updateProfileGithub } from "@/lib/db";
 import { parseUsername } from "@/lib/github";
+import { CREDIT_COSTS } from "@/lib/pricing";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,7 @@ export async function GET() {
     ...(isAdmin ? { isAdmin: true } : {}),
     creditsRemaining: wallet?.remaining ?? null,
     creditsTotal: wallet?.total ?? null,
+    renderCost: CREDIT_COSTS.render,
   });
 }
 

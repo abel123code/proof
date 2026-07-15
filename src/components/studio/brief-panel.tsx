@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { emitCreditsChanged } from "@/components/studio/credits";
-import { setActiveProject } from "@/components/studio/active-project";
+import { getActiveProject, setActiveProject } from "@/components/studio/active-project";
+import { getProfileData } from "@/components/studio/profile-store";
+import { RenderConfirmDialog } from "@/components/studio/render-confirm-dialog";
 import { Teleprompter } from "@/components/studio/teleprompter";
 import { toRenderBrief } from "@/lib/render-brief";
 import { uploadSceneFootageDirect } from "@/lib/upload";
@@ -50,6 +52,7 @@ type Phase = "loading" | "gaps" | "questions" | "drafting" | "brief" | "empty";
 
 export function BriefPanel() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [projectId, setProjectId] = useState<string | null>(searchParams.get("project"));
   // Smoke-test mode: /brief?test=1 spins up a real one-scene brief so you can film
   // a single scene and hit "Send to editor" without the full pipeline.
@@ -75,6 +78,8 @@ export function BriefPanel() {
   const [renderStatus, setRenderStatus] = useState<string | null>(null);
   const [renderUrl, setRenderUrl] = useState<string | null>(null);
   const [showRender, setShowRender] = useState(false);
+  const [confirmRenderOpen, setConfirmRenderOpen] = useState(false);
+  const [renderCost, setRenderCost] = useState<number | null>(null);
   const [deletingRender, setDeletingRender] = useState(false);
   const [downloadingRender, setDownloadingRender] = useState(false);
   // `angle`/`freeformPrompt` are seeded from localStorage, which is empty during SSR.
@@ -82,6 +87,27 @@ export function BriefPanel() {
   // matches the server HTML (avoids a hydration mismatch).
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // Recover the project on a hard refresh where ?project= isn't in the URL — the
+  // brand-new-video path only sets it in state, and the top-nav stepper links to a
+  // bare /brief. Without this, a reload loses the saved brief AND its render state,
+  // so a finished/in-flight edit reverts to "Send to editor". The active-project
+  // store (localStorage) survives reloads. Skip when a fresh angle/freeform is
+  // pending so we don't hijack a brand-new video with a stale stored project.
+  useEffect(() => {
+    if (testMode || projectId || angle || freeformPrompt) return;
+    const stored = getActiveProject();
+    if (stored?.id) setProjectId(stored.id);
+  }, [testMode, projectId, angle, freeformPrompt]);
+
+  // Keep ?project= in the URL once we know the project (from a draft, a resume, or
+  // the store recovery above) so every subsequent refresh restores this exact brief.
+  useEffect(() => {
+    if (!projectId || searchParams.get("project") === projectId) return;
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    params.set("project", projectId);
+    router.replace(`/brief?${params.toString()}`, { scroll: false });
+  }, [projectId, searchParams, router]);
 
   // We can generate a brief if we have a plan (angle or freeform), or just view
   // a previously-saved brief when we have a project.
@@ -172,18 +198,15 @@ export function BriefPanel() {
           setAnswers(briefRes.brief.answers ?? {});
           setBriefId(briefRes.brief.id ?? null);
           setPhase("brief");
-          setRenderUrl(briefRes.brief.renderUrl ?? null);
+          setRenderUrl(briefRes.brief.renderUrl || null);
           setRenderStatus(briefRes.brief.renderStatus ?? null);
-          {
-            const st: string | null = briefRes.brief.renderStatus ?? null;
-            if (
-              briefRes.brief.renderJobId &&
-              !briefRes.brief.renderUrl &&
-              st !== "done" &&
-              st !== "error"
-            ) {
-              setRenderJobId(briefRes.brief.renderJobId);
-            }
+          // Resume polling whenever a job exists but we don't yet have the final
+          // video URL. The durable render_jobs row (updated by the render service)
+          // is the source of truth, so even if the brief's status looks stale — or
+          // the render finished while the tab was closed — the poll recovers the
+          // real terminal state (and reveals the video) instead of stranding it.
+          if (briefRes.brief.renderJobId && !briefRes.brief.renderUrl) {
+            setRenderJobId(briefRes.brief.renderJobId);
           }
           if (briefRes.brief.id) {
             fetch(`/api/footage?briefId=${briefRes.brief.id}`)
@@ -288,6 +311,20 @@ export function BriefPanel() {
       emitCreditsChanged();
     }
   }, [doc, briefId, footage]);
+
+  const requestRender = useCallback(async () => {
+    if (DEMO_RENDER_URL) {
+      await sendToEditor();
+      return;
+    }
+    const profile = await getProfileData();
+    if (profile?.renderCost == null) {
+      toast.error("Could not verify the render cost. Please try again.");
+      return;
+    }
+    setRenderCost(profile.renderCost);
+    setConfirmRenderOpen(true);
+  }, [sendToEditor]);
 
   // Poll the render job until it finishes, then persist + reveal the edited video.
   // Gated on the render STATUS (not renderUrl): a re-render leaves the old URL in
@@ -477,7 +514,7 @@ export function BriefPanel() {
               <Button
                 size="sm"
                 disabled
-                title="Editing your video — the premium edit can take a few minutes. You can leave this page and come back."
+                title="Editing your video — this can take a few minutes. You can leave this page and come back; it'll keep going."
               >
                 <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />
                 {renderStatusLabel}
@@ -487,7 +524,7 @@ export function BriefPanel() {
                 <Button size="sm" onClick={() => setShowRender(true)}>
                   ▶ View edited video
                 </Button>
-                <Button size="sm" variant="outline" onClick={sendToEditor}>
+                <Button size="sm" variant="outline" onClick={requestRender}>
                   Re-render
                 </Button>
                 <Button
@@ -503,7 +540,7 @@ export function BriefPanel() {
             ) : (
               <Button
                 size="sm"
-                onClick={sendToEditor}
+                onClick={requestRender}
                 disabled={!DEMO_RENDER_URL && filmedCount === 0}
               >
                 ✦ Send to editor
@@ -570,6 +607,16 @@ export function BriefPanel() {
           onClose={() => setRecordScene(null)}
         />
       )}
+
+      <RenderConfirmDialog
+        open={confirmRenderOpen}
+        cost={renderCost}
+        onOpenChange={setConfirmRenderOpen}
+        onConfirm={() => {
+          setConfirmRenderOpen(false);
+          void sendToEditor();
+        }}
+      />
 
       {showRender && renderUrl && (
         <div

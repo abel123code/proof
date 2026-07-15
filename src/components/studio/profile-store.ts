@@ -13,6 +13,7 @@ export interface ProfileData {
   isAdmin: boolean;
   creditsRemaining: number | null;
   creditsTotal: number | null;
+  renderCost: number | null;
 }
 
 // Minimal repo shape used by the connect picker; cached here so returning to
@@ -42,6 +43,7 @@ async function fetchProfile(): Promise<ProfileData | null> {
       isAdmin: Boolean(d?.isAdmin),
       creditsRemaining: typeof d?.creditsRemaining === "number" ? d.creditsRemaining : null,
       creditsTotal: typeof d?.creditsTotal === "number" ? d.creditsTotal : null,
+      renderCost: typeof d?.renderCost === "number" ? d.renderCost : null,
     };
   } catch {
     return null;
