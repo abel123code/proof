@@ -91,6 +91,9 @@ export function BriefPanel() {
   const [filenames, setFilenames] = useState<Record<number, string>>({});
   // Per-brief brand assets (screenshots/logo/color) for the premium bespoke-scene render path.
   const [assets, setAssets] = useState<RenderAssets | null>(null);
+  // "Cinematic" = route the render through the premium bespoke-scene engine (which embeds the
+  // assets) instead of the default fixed-template path. Defaults on once a brief has assets.
+  const [cinematic, setCinematic] = useState(false);
   const [recordScene, setRecordScene] = useState<number | null>(null);
   const [renderJobId, setRenderJobId] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState<string | null>(null);
@@ -122,7 +125,11 @@ export function BriefPanel() {
     fetch(`/api/assets?briefId=${briefId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!cancelled) setAssets(d?.assets ?? null);
+        if (cancelled) return;
+        setAssets(d?.assets ?? null);
+        // Default cinematic ON when a brief loads with assets. Only runs on brief load (briefId
+        // change), so a manual toggle-off mid-session isn't clobbered.
+        if (d?.assets?.images?.length) setCinematic(true);
       })
       .catch(() => {});
     return () => {
@@ -341,7 +348,14 @@ export function BriefPanel() {
       const res = await fetch("/api/render", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ briefId, videoUrls, brief, editMode: "brief-driven" }),
+        body: JSON.stringify({
+          briefId,
+          videoUrls,
+          brief,
+          // Cinematic routes to the premium bespoke-scene engine (embeds brand assets); otherwise
+          // the default fixed-template path. Only meaningful once the good engine (PR #8) is live.
+          editMode: cinematic ? "generated-experimental" : "brief-driven",
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not start the render");
@@ -353,7 +367,7 @@ export function BriefPanel() {
     } finally {
       emitCreditsChanged();
     }
-  }, [doc, briefId, footage, assets]);
+  }, [doc, briefId, footage, assets, cinematic]);
 
   const requestRender = useCallback(async () => {
     if (DEMO_RENDER_URL) {
@@ -556,6 +570,21 @@ export function BriefPanel() {
             <Button size="sm" variant="outline" onClick={() => setRecordScene(0)}>
               ● Record
             </Button>
+            {(assets?.images?.length ?? 0) > 0 && !renderActive && !renderUrl && (
+              <button
+                type="button"
+                onClick={() => setCinematic((c) => !c)}
+                title="Cinematic scenes animate your uploaded screenshots/logos into the video (bespoke motion graphics) instead of plain text overlays. Experimental — takes a few extra minutes to render."
+                aria-pressed={cinematic}
+                className={`rounded-full border px-2.5 py-1 font-mono text-[11px] transition ${
+                  cinematic
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                }`}
+              >
+                ✨ cinematic {cinematic ? "on" : "off"}
+              </button>
+            )}
             {renderActive ? (
               <Button
                 size="sm"
