@@ -9,15 +9,24 @@ import { composeScenes } from "./compose.js";
 import { renderComposition, hyperframesAvailable } from "./hyperframes.js";
 import { validateComposition } from "./sanitize.js";
 import { fetchAssetBytes } from "./asset-source.js";
+import { createSemaphore } from "../semaphore.js";
 
 export { hyperframesAvailable };
 
 // Guard against a malformed env value: Number("abc") is NaN, and `iter <= NaN`
 // is always false, so produceScene's loop would never run and could return a
-// scene as "success" with no rendered mov. Fall back to the default of 2.
+// scene as "success" with no rendered mov. Fall back to the default of 1.
 const MAX_QA_ITERS_RAW = Number(process.env.PREMIUM_MAX_QA_ITERS);
 const MAX_QA_ITERS =
-  Number.isFinite(MAX_QA_ITERS_RAW) && MAX_QA_ITERS_RAW > 0 ? MAX_QA_ITERS_RAW : 2;
+  Number.isFinite(MAX_QA_ITERS_RAW) && MAX_QA_ITERS_RAW > 0 ? MAX_QA_ITERS_RAW : 1;
+
+// Parallel scene production. Each scene is a HyperFrames Chromium render + ffmpeg composite, as heavy
+// as a full render, so keep this low: 2 is the proven-safe ceiling on the live box (see semaphore.ts /
+// DECISIONS.md 2026-07-10; 3 concurrent heavy renders OOM). Tunable via PREMIUM_CONCURRENCY, clamped 1..4.
+const PREMIUM_CONCURRENCY_RAW = Number(process.env.PREMIUM_CONCURRENCY);
+const PREMIUM_CONCURRENCY = Number.isFinite(PREMIUM_CONCURRENCY_RAW)
+  ? Math.min(4, Math.max(1, Math.floor(PREMIUM_CONCURRENCY_RAW)))
+  : 2;
 
 // Escape hatch: skip the vision-QA gate so every rendered scene ships (useful for
 // eyeballing raw premium output while QA is being tuned). SECURITY validation
@@ -180,18 +189,20 @@ export async function runPremium(args: {
   if (specs.length === 0) throw new Error("planScenes produced no scenes");
   log(`premium: ${specs.length} scenes planned, ${assetHints.length} assets`);
 
-  // 3. Author -> render -> QA each scene (sequential to bound Chromium memory).
-  const authored: AuthoredScene[] = [];
-  for (const spec of specs) {
-    try {
-      authored.push(
-        await produceScene({ spec, brief, assetHints, assetsDir, premiumDir, basePath, fps, log }),
-      );
-    } catch (e) {
-      log(`premium: scene ${spec.id} failed, skipping — ${(e as Error).message}`);
-      authored.push({ spec, html: "" }); // no movPath -> skipped in compose
-    }
-  }
+  // 3. Author -> render -> QA each scene, up to PREMIUM_CONCURRENCY at a time (order preserved).
+  const sem = createSemaphore(PREMIUM_CONCURRENCY);
+  const authored: AuthoredScene[] = await Promise.all(
+    specs.map((spec) =>
+      sem.run(async () => {
+        try {
+          return await produceScene({ spec, brief, assetHints, assetsDir, premiumDir, basePath, fps, log });
+        } catch (e) {
+          log(`premium: scene ${spec.id} failed, skipping — ${(e as Error).message}`);
+          return { spec, html: "" } as AuthoredScene; // no movPath -> skipped in compose
+        }
+      }),
+    ),
+  );
 
   const rendered = authored.filter((s) => s.movPath).length;
   if (rendered === 0) throw new Error("premium: no scenes rendered");
