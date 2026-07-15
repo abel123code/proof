@@ -1,7 +1,9 @@
 import { getOpenAI } from "../openai.js";
+import { chatTuning } from "./model-params.js";
 import type { RenderBrief, SceneSpec } from "../types.js";
 
-const AUTHOR_MODEL = process.env.PREMIUM_AUTHOR_MODEL || "gpt-4o";
+const AUTHOR_MODEL = process.env.PREMIUM_AUTHOR_MODEL || "gpt-5.4";
+const AUTHOR_EFFORT = process.env.PREMIUM_AUTHOR_EFFORT; // default "low" via chatTuning
 
 /**
  * The HyperFrames composition contract (verified against hyperframes@0.7.54 `render --help`
@@ -33,10 +35,17 @@ HARD CONTRACT (the renderer fails if you break these):
 7. Keep type large and legible on mobile (min ~40px). The footage ALREADY has burned-in captions across the
    BOTTOM ~22% of the frame — keep that band completely clear, and keep the center clear so you never cover the
    speaker's face. Anchor graphics to the TOP third or the side edges.
-8. YOU ARE NOT A SUBTITLE TRACK. The spoken words are already captioned along the bottom, so do NOT transcribe
-   speech or reproduce the spoken sentence. Show only a SHORT punchy headline — a keyword, metric, label, or the
-   motif — ideally 2-5 words. "spokenContext" is given ONLY so you know what the beat is about; never paste it
-   on screen verbatim.
+8. BUILD A VISUAL, NOT A CAPTION. A bare headline/label on a background — a text card — is the #1
+   failure mode and will be REJECTED. Every scene must SHOW something concrete: the product screenshot,
+   the logos, a recreated UI element, a chart/number that animates, a diagram. Text is a label ON the
+   visual, never the whole scene. You are NOT a subtitle track — the spoken words ("spokenContext") are
+   already captioned along the bottom, so never transcribe speech or reproduce the spoken sentence.
+9. FEATURE THE ASSETS. When assets are provided (see "assets"), the scene MUST be built AROUND them:
+   embed the actual image with <img src="./assets/<filename>" style="..."> (a screenshot in a device/
+   browser frame, logos as real tiles, a UI cropped and called out). Do NOT describe an asset in text
+   when you can show it. Only fall back to a pure-CSS visual when NO asset fits the beat.
+10. Follow "intent" literally — it names the exact visual to build and which asset(s) to feature. The
+    short on-screen headline (if any) comes from the intent; everything else is motion + imagery.
 
 DESIGN: premium, intentional, on-brand. Honor the recurring motif. Animate with purpose (staggered reveals,
 one hero move) — not everything at once. Use the brand color as the accent. Use a system/web-safe font stack
@@ -82,7 +91,7 @@ export async function authorScene(args: {
   const client = getOpenAI();
   const resp = await client.chat.completions.create({
     model: AUTHOR_MODEL,
-    temperature: 0.6,
+    ...chatTuning(AUTHOR_MODEL, AUTHOR_EFFORT),
     messages: [
       { role: "system", content: system },
       {
