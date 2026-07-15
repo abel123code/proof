@@ -582,7 +582,7 @@ export function BriefPanel() {
                     : "border-border text-muted-foreground hover:border-primary hover:text-primary"
                 }`}
               >
-                ✨ cinematic {cinematic ? "on" : "off"}
+                {cinematic ? "●" : "○"} cinematic scenes
               </button>
             )}
             {renderActive ? (
@@ -1019,7 +1019,7 @@ function AssetsSection({
             busy ? "pointer-events-none opacity-50" : ""
           }`}
         >
-          <span className="text-base leading-none">＋</span>
+          <span className="text-lg leading-none">+</span>
           <span className="mt-0.5">add</span>
           <input
             type="file"
