@@ -86,3 +86,50 @@ export async function uploadSceneFootageDirect(input: {
   if (!confirmRes.ok) throw new Error(confirm.error ?? "Could not finalize upload");
   return confirm.url as string;
 }
+
+/**
+ * Upload one brand-asset image (screenshot / logo) straight to Supabase via a signed ticket and
+ * return its public URL. Unlike footage there's no DB row per image — the caller collects the URLs
+ * and persists them together onto the brief (POST /api/assets). Mirrors the footage wire format.
+ */
+export async function uploadAssetDirect(input: {
+  briefId: string;
+  file: File;
+  onProgress?: (fraction: number) => void;
+}): Promise<string> {
+  const signRes = await fetch("/api/assets/sign", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      briefId: input.briefId,
+      filename: input.file.name,
+      contentType: input.file.type || "image/png",
+    }),
+  });
+  const ticket = await signRes.json().catch(() => ({}));
+  if (!signRes.ok) throw new Error(ticket.error ?? "Could not start upload");
+  const { signedUrl, publicUrl } = ticket as { signedUrl: string; publicUrl: string };
+
+  await new Promise<void>((resolve, reject) => {
+    const form = new FormData();
+    form.append("cacheControl", "3600");
+    form.append("", input.file);
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", signedUrl);
+    xhr.timeout = 5 * 60 * 1000;
+    xhr.setRequestHeader("x-upsert", "true"); // browser sets the multipart content-type/boundary
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) input.onProgress?.(e.loaded / e.total);
+    };
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error(`Upload failed (${xhr.status})`));
+    xhr.onerror = () => reject(new Error("Upload failed — network error"));
+    xhr.ontimeout = () => reject(new Error("Upload timed out"));
+    xhr.onabort = () => reject(new Error("Upload aborted"));
+    xhr.send(form);
+  });
+  input.onProgress?.(1);
+  return publicUrl;
+}
