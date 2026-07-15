@@ -3,23 +3,24 @@ import { join } from "node:path";
 import { getOpenAI } from "../openai.js";
 import { buildCutVideo, overlayScenesAtOffsets, extractFrames } from "../ffmpeg.js";
 import type { SceneSpec, SceneQA } from "../types.js";
+import { chatTuning } from "./model-params.js";
 
-const QA_MODEL = process.env.PREMIUM_QA_MODEL || "gpt-4o";
+const QA_MODEL = process.env.PREMIUM_QA_MODEL || "gpt-5.4-mini";
+const QA_EFFORT = process.env.PREMIUM_QA_EFFORT; // default "low" via chatTuning
 
-const QA_SYSTEM = `You are a ruthless art director reviewing frames of a bespoke motion-graphic scene composited over
-talking-head footage in a vertical (1080x1920) marketing video. The footage ALREADY has burned-in captions along
-the bottom of the frame — the scene is a short HEADLINE graphic, NOT a subtitle track. Judge ONLY what you can see.
-Fail the scene for:
-- reproducing the spoken sentence as on-screen subtitles, or any text that duplicates/echoes the bottom captions
-- on-screen text longer than a short headline (it should be a keyword/metric/label, not a transcript)
+const QA_SYSTEM = `You are a ruthless art director reviewing frames of a bespoke motion-graphic scene
+composited over talking-head footage in a vertical (1080x1920) marketing video. The footage ALREADY has
+burned-in captions along the bottom. Judge ONLY what you can see. FAIL the scene for:
+- IT'S JUST TEXT. A headline/label on a background with no real visual is the #1 failure. A scene must
+  SHOW something concrete — the product screenshot, the logos, a UI element, a chart — not merely words.
+- reproducing the spoken sentence as on-screen subtitles / duplicating the bottom captions
 - misspelled or garbled on-screen text
 - text/graphics clipped at an edge, overlapping badly, or unreadable (too small / low contrast)
 - graphics covering the bottom caption band or burying the speaker's face in the center third
 - empty/broken render (nothing meaningful on screen) or obvious AI-slop layout
-Do NOT require the on-screen text to match the spoken words — the scene should paraphrase into a punchy headline.
-Respond with JSON: { "ok": boolean, "issues": string[] }. Each issue is a SHORT concrete fix ("move the title
-out of the center", "shorten to a 3-word headline", "fix 'Triger.dev' -> 'Trigger.dev'"). Return an empty issues
-array when the scene is good.`;
+Respond with JSON: { "ok": boolean, "issues": string[] }. Each issue is a SHORT concrete fix
+("embed the actual screenshot, don't just name it", "move the title out of the center",
+"fix 'Triger.dev' -> 'Trigger.dev'"). Return an empty issues array when the scene is good.`;
 
 /**
  * Render→look→re-render QA for one scene. Composites the scene MOV onto just its window of the
@@ -63,7 +64,7 @@ export async function qaScene(args: {
   const client = getOpenAI();
   const resp = await client.chat.completions.create({
     model: QA_MODEL,
-    temperature: 0,
+    ...chatTuning(QA_MODEL, QA_EFFORT),
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: QA_SYSTEM },
