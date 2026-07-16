@@ -19,6 +19,7 @@ import {
   type PublicRepo,
 } from "@/components/studio/profile-store";
 import type { Project } from "@/lib/types";
+import { emitOnboardingAction } from "@/components/studio/onboarding-events";
 
 function timeAgo(iso: string | null): string {
   if (!iso) return "";
@@ -94,6 +95,7 @@ export function ProjectPanel() {
 
   const analyzeRepo = useCallback(async (repo: PublicRepo) => {
     setAnalyzingRepo(repo.fullName);
+    emitOnboardingAction("repo-selected");
     try {
       const res = await fetch("/api/analyze-repo", {
         method: "POST",
@@ -107,8 +109,10 @@ export function ProjectPanel() {
         setActiveProject({ id: data.project.id, name: data.project.name ?? repo.name });
       }
       toast.success(`Analysed ${repo.name}`);
+      emitOnboardingAction("repo-analyzed");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Analysis failed");
+      emitOnboardingAction("repo-analysis-failed");
     } finally {
       setAnalyzingRepo(null);
       emitCreditsChanged();
@@ -171,9 +175,20 @@ export function ProjectPanel() {
           <div className="mt-3 overflow-hidden rounded-lg border border-border bg-card">
             <div className="border-b border-border p-2">
               <Input
+                data-tour="repo-search"
                 placeholder="Search repos…"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setQuery(value);
+                  const normalized = value.trim().toLowerCase();
+                  const hasMatch = repos.some(
+                    (repo) =>
+                      repo.name.toLowerCase().includes(normalized) ||
+                      (repo.description?.toLowerCase().includes(normalized) ?? false),
+                  );
+                  if (normalized && hasMatch) emitOnboardingAction("repo-searched");
+                }}
                 className="h-9 border-0 bg-transparent font-mono text-sm shadow-none focus-visible:ring-0"
               />
             </div>
@@ -194,8 +209,11 @@ export function ProjectPanel() {
                   : "No repos match your search."}
               </p>
             ) : (
-              <div className="max-h-[420px] divide-y divide-border overflow-y-auto">
-                {filtered.map((r) => {
+              <div
+                className="max-h-[420px] divide-y divide-border overflow-y-auto"
+                data-tour="repo-list"
+              >
+                {filtered.map((r, index) => {
                   const busy = analyzingRepo === r.fullName;
                   const analyzed = analyzedUrls.has(r.url.toLowerCase());
                   return (
@@ -231,6 +249,7 @@ export function ProjectPanel() {
                         </div>
                       </div>
                       <Button
+                        data-tour={index === 0 ? "repo-select" : undefined}
                         size="sm"
                         variant={analyzed ? "default" : "outline"}
                         className="h-7 shrink-0 px-3 text-xs"

@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { STARTING_CREDITS } from "@/lib/pricing";
+import type { OnboardingState } from "@/lib/onboarding";
 import { resolveResumeStage, type ProjectProgress } from "@/lib/resume";
 import type {
   Brief,
@@ -273,6 +274,9 @@ export interface Profile {
   email: string | null;
   githubUsername: string | null;
   isAdmin: boolean;
+  onboardingState: OnboardingState;
+  onboardingVersion: number;
+  onboardingCompletedAt: string | null;
   createdAt: string;
 }
 
@@ -281,6 +285,9 @@ interface ProfileRow {
   email: string | null;
   github_username: string | null;
   is_admin?: boolean;
+  onboarding_state?: OnboardingState;
+  onboarding_version?: number;
+  onboarding_completed_at?: string | null;
   created_at: string;
 }
 
@@ -290,6 +297,9 @@ function mapProfile(r: ProfileRow): Profile {
     email: r.email,
     githubUsername: r.github_username,
     isAdmin: Boolean(r.is_admin),
+    onboardingState: r.onboarding_state ?? "not_started",
+    onboardingVersion: r.onboarding_version ?? 1,
+    onboardingCompletedAt: r.onboarding_completed_at ?? null,
     createdAt: r.created_at,
   };
 }
@@ -318,6 +328,25 @@ export async function updateProfileGithub(
     .update({ github_username: githubUsername })
     .eq("user_id", userId);
   if (error) throw new Error(`updateProfileGithub failed: ${error.message}`);
+}
+
+export async function updateProfileOnboarding(
+  userId: string,
+  state: OnboardingState,
+  version: number,
+): Promise<void> {
+  if (!realUserId(userId)) return;
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      onboarding_state: state,
+      onboarding_version: version,
+      onboarding_completed_at:
+        state === "completed" ? new Date().toISOString() : null,
+    })
+    .eq("user_id", userId);
+  if (error) throw new Error(`updateProfileOnboarding failed: ${error.message}`);
 }
 
 export async function countProfiles(): Promise<number> {

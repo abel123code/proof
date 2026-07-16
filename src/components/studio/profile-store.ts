@@ -1,5 +1,7 @@
 "use client";
 
+import type { OnboardingState } from "@/lib/onboarding";
+
 // Shared client-side cache for the user's profile (`/api/profile`). Before this,
 // the header (twice), the project panel, and settings each fetched the same
 // endpoint on every studio page load - 2-3 duplicate round-trips, each of which
@@ -14,6 +16,9 @@ export interface ProfileData {
   creditsRemaining: number | null;
   creditsTotal: number | null;
   renderCost: number | null;
+  onboardingState: OnboardingState;
+  onboardingVersion: number;
+  onboardingCompletedAt: string | null;
 }
 
 // Minimal repo shape used by the connect picker; cached here so returning to
@@ -44,6 +49,14 @@ async function fetchProfile(): Promise<ProfileData | null> {
       creditsRemaining: typeof d?.creditsRemaining === "number" ? d.creditsRemaining : null,
       creditsTotal: typeof d?.creditsTotal === "number" ? d.creditsTotal : null,
       renderCost: typeof d?.renderCost === "number" ? d.renderCost : null,
+      onboardingState:
+        d?.onboardingState === "completed" || d?.onboardingState === "skipped"
+          ? d.onboardingState
+          : "not_started",
+      onboardingVersion:
+        typeof d?.onboardingVersion === "number" ? d.onboardingVersion : 1,
+      onboardingCompletedAt:
+        typeof d?.onboardingCompletedAt === "string" ? d.onboardingCompletedAt : null,
     };
   } catch {
     return null;

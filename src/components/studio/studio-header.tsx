@@ -15,6 +15,10 @@ import {
   refreshProfileDebounced,
   subscribeProfile,
 } from "@/components/studio/profile-store";
+import {
+  OnboardingTour,
+  ReplayOnboardingButton,
+} from "@/components/studio/onboarding-tour";
 
 export function StudioHeader() {
   const pathname = usePathname();
@@ -129,6 +133,7 @@ export function StudioHeader() {
         </nav>
 
         <div className="flex items-center gap-1">
+          <ReplayOnboardingButton />
           {credits !== null && (
             <span
               title="Credits remaining"
@@ -150,6 +155,7 @@ export function StudioHeader() {
           )}
           <Link
             href="/settings"
+            data-tour="settings-link"
             title="Settings"
             className="flex items-center gap-2 rounded-md px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
@@ -157,6 +163,7 @@ export function StudioHeader() {
           </Link>
         </div>
       </div>
+      <OnboardingTour />
     </header>
   );
 }

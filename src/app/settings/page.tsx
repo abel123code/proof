@@ -10,6 +10,7 @@ import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { HANDLE_KEY } from "@/components/studio/github-handle";
 import { getProfileData, refreshProfile } from "@/components/studio/profile-store";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { emitOnboardingAction } from "@/components/studio/onboarding-events";
 
 export default function SettingsPage() {
   const [handle, setHandle] = useState("");
@@ -61,6 +62,7 @@ export default function SettingsPage() {
       // Refresh the shared store so the header/connect reflect the new handle.
       void refreshProfile();
       toast.success(`Saved @${data.githubUsername}`);
+      emitOnboardingAction("github-saved");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not save");
     } finally {
@@ -95,7 +97,7 @@ export default function SettingsPage() {
             base a video on. You can change this any time.
           </p>
 
-          <div className="mt-8">
+          <div className="mt-8" data-tour="github-connect">
             <Kicker>GitHub handle</Kicker>
             <div className="mt-2 flex gap-2">
               <Input
@@ -127,6 +129,7 @@ export default function SettingsPage() {
                 .{" "}
                 <Link
                   href="/connect"
+                  data-tour="pick-repo-link"
                   className="text-primary underline underline-offset-2"
                 >
                   Pick a repo →

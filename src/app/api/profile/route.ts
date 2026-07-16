@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { isAuthConfigured, requireApprovedUser } from "@/lib/auth";
-import { getWallet, updateProfileGithub } from "@/lib/db";
+import { getWallet, updateProfileGithub, updateProfileOnboarding } from "@/lib/db";
 import { parseUsername } from "@/lib/github";
+import { isOnboardingState, ONBOARDING_VERSION } from "@/lib/onboarding";
 import { CREDIT_COSTS } from "@/lib/pricing";
 
 export const runtime = "nodejs";
@@ -23,10 +24,35 @@ export async function GET() {
   return NextResponse.json({
     githubUsername: profile?.githubUsername ?? null,
     email: profile?.email ?? null,
+    onboardingState: profile?.onboardingState ?? "not_started",
+    onboardingVersion: profile?.onboardingVersion ?? ONBOARDING_VERSION,
+    onboardingCompletedAt: profile?.onboardingCompletedAt ?? null,
     ...(isAdmin ? { isAdmin: true } : {}),
     creditsRemaining: wallet?.remaining ?? null,
     creditsTotal: wallet?.total ?? null,
     renderCost: CREDIT_COSTS.render,
+  });
+}
+
+export async function PATCH(req: Request) {
+  const auth = await requireApprovedUser();
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  const body = await req.json().catch(() => ({}));
+  if (!isOnboardingState(body?.onboardingState) || body.onboardingState === "not_started") {
+    return NextResponse.json(
+      { error: "A completed or skipped onboarding state is required." },
+      { status: 400 },
+    );
+  }
+
+  await updateProfileOnboarding(auth.userId, body.onboardingState, ONBOARDING_VERSION);
+
+  return NextResponse.json({
+    onboardingState: body.onboardingState,
+    onboardingVersion: ONBOARDING_VERSION,
+    onboardingCompletedAt:
+      body.onboardingState === "completed" ? new Date().toISOString() : null,
   });
 }
 

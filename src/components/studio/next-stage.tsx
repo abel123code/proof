@@ -12,7 +12,10 @@ export function NextStage({ from, query }: { from: string; query?: string }) {
   const href = `${next.href}${query ?? ""}`;
 
   return (
-    <div className="mt-10 flex flex-col gap-3 rounded-lg border border-border bg-secondary/40 p-5 sm:flex-row sm:items-center sm:justify-between">
+    <div
+      data-tour="next-stage"
+      className="mt-10 flex flex-col gap-3 rounded-lg border border-border bg-secondary/40 p-5 sm:flex-row sm:items-center sm:justify-between"
+    >
       <div>
         <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
           Up next · {next.n}
