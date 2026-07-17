@@ -575,6 +575,85 @@ export async function rejectAccessRequest(id: string): Promise<void> {
   if (error) throw new Error(`rejectAccessRequest failed: ${error.message}`);
 }
 
+// ---- bug reports ----
+// Beta feedback loop: the studio header lets a user send a message with the
+// diagnostic context the client already holds. Admins triage on /admin.
+
+/** Diagnostic context attached to a report. Loose by design — best-effort capture. */
+export interface BugReportContext {
+  url?: string;
+  projectId?: string | null;
+  briefId?: string | null;
+  renderJobId?: string | null;
+  renderStatus?: string | null;
+  renderUrl?: string | null;
+  /** The render-failure message the app otherwise throws away into a toast. */
+  lastError?: string | null;
+  userAgent?: string;
+}
+
+export interface BugReport {
+  id: string;
+  email: string | null;
+  message: string;
+  context: BugReportContext | null;
+  status: "open" | "closed";
+  createdAt: string;
+}
+
+/** Store a bug report. `user_id` goes through realUserId so local dev doesn't hit the FK. */
+export async function insertBugReport(input: {
+  userId?: string | null;
+  email?: string | null;
+  message: string;
+  context?: BugReportContext | null;
+}): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("bug_reports").insert({
+    user_id: realUserId(input.userId),
+    email: input.email ?? null,
+    message: input.message,
+    context: input.context ?? null,
+    status: "open",
+  });
+  if (error) throw new Error(`insertBugReport failed: ${error.message}`);
+}
+
+export async function listBugReports(): Promise<BugReport[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("bug_reports")
+    .select()
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`listBugReports failed: ${error.message}`);
+  return (
+    data as Array<{
+      id: string;
+      email: string | null;
+      message: string;
+      context: BugReportContext | null;
+      status: string;
+      created_at: string;
+    }>
+  ).map((r) => ({
+    id: r.id,
+    email: r.email,
+    message: r.message,
+    context: r.context ?? null,
+    status: r.status === "closed" ? "closed" : "open",
+    createdAt: r.created_at,
+  }));
+}
+
+export async function updateBugReportStatus(
+  id: string,
+  status: "open" | "closed",
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("bug_reports").update({ status }).eq("id", id);
+  if (error) throw new Error(`updateBugReportStatus failed: ${error.message}`);
+}
+
 // ---- credit wallet ----
 // One lifetime balance per user. Every paid action reserves credits up front
 // (atomic, burst-safe) and refunds on failure. See src/lib/pricing.ts.

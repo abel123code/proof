@@ -35,6 +35,23 @@ interface Wallet {
   used: number;
   remaining: number;
 }
+interface BugReportContext {
+  url?: string;
+  projectId?: string;
+  briefId?: string;
+  renderJobId?: string;
+  renderStatus?: string;
+  lastError?: string;
+  userAgent?: string;
+}
+interface BugReport {
+  id: string;
+  email: string | null;
+  message: string;
+  context: BugReportContext | null;
+  status: "open" | "closed";
+  createdAt: string;
+}
 
 function fmtDate(iso: string): string {
   try {
@@ -54,6 +71,7 @@ export default function AdminPage() {
   const [allowed, setAllowed] = useState<AllowedUser[]>([]);
   const [requests, setRequests] = useState<AccessRequest[]>([]);
   const [wallets, setWallets] = useState<Record<string, Wallet>>({});
+  const [bugReports, setBugReports] = useState<BugReport[]>([]);
   const [newEmail, setNewEmail] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -70,6 +88,7 @@ export default function AdminPage() {
       setAllowed(data.allowed ?? []);
       setRequests(data.requests ?? []);
       setWallets(data.wallets ?? {});
+      setBugReports(data.bugReports ?? []);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -175,7 +194,45 @@ export default function AdminPage() {
     [load],
   );
 
+  const triageBug = useCallback(
+    async (id: string, action: "close" | "reopen") => {
+      setBusy(id);
+      try {
+        const res = await fetch("/api/admin/bug-reports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, action }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Action failed");
+        await load();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Action failed");
+      } finally {
+        setBusy(null);
+      }
+    },
+    [load],
+  );
+
   const pending = requests.filter((r) => r.status === "pending");
+  const openBugs = bugReports.filter((b) => b.status === "open");
+
+  // The context line is what makes a report actionable — which brief/render it came
+  // from, and whether the render itself errored. Keep it terse; it's a scannable index.
+  const bugMeta = (b: BugReport): string => {
+    const c = b.context ?? {};
+    const short = (v?: string) => (v && v.length > 8 ? `${v.slice(0, 8)}…` : v);
+    return [
+      b.email ?? "unknown",
+      c.briefId ? `brief ${short(c.briefId)}` : null,
+      c.renderJobId ? `render ${short(c.renderJobId)}` : null,
+      c.renderStatus ? `status ${c.renderStatus}` : null,
+      fmtDate(b.createdAt),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  };
 
   return (
     <div className="flex flex-1 flex-col">
@@ -239,6 +296,54 @@ export default function AdminPage() {
                           onClick={() => actOnRequest(r.id, "reject")}
                         >
                           Reject
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* Bug reports */}
+              <section className="mt-8">
+                <Kicker>Bug reports ({openBugs.length})</Kicker>
+                {bugReports.length === 0 ? (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Nothing reported. Anything sent from the &ldquo;Report a bug&rdquo; button
+                    shows up here, with the brief and render it came from.
+                  </p>
+                ) : (
+                  <div className="mt-2 divide-y divide-border rounded-lg border border-border">
+                    {bugReports.map((b) => (
+                      <div
+                        key={b.id}
+                        className={`flex flex-wrap items-center gap-3 gap-y-2 px-4 py-3 ${
+                          b.status === "closed" ? "opacity-60" : ""
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-mono text-sm" title={b.message}>
+                            {b.message}
+                          </p>
+                          <p className="truncate font-mono text-[10px] text-muted-foreground/70">
+                            {bugMeta(b)}
+                          </p>
+                          {b.context?.lastError && (
+                            <p
+                              className="truncate font-mono text-[10px] text-destructive/80"
+                              title={b.context.lastError}
+                            >
+                              {b.context.lastError}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-3 text-xs"
+                          disabled={busy === b.id}
+                          onClick={() => triageBug(b.id, b.status === "open" ? "close" : "reopen")}
+                        >
+                          {b.status === "open" ? "Close" : "Reopen"}
                         </Button>
                       </div>
                     ))}
