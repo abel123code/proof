@@ -32,6 +32,18 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# NOTE: `.env*` does NOT match a dotless `env` file. The repo root has one holding
+# live secrets (service-role key, OpenAI key) — ignore it explicitly. Public repo.
+env
+
+# local media / scratch artefacts (demos, branding, exports) — keep out of git
+*.mp4
+*.zip
+/branding/
+/peekaboo-demo/
+/ugc-proof/
+/.playwright-mcp/
+/docs/superpowers/
 
 # vercel
 .vercel
