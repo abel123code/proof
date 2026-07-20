@@ -14,6 +14,7 @@ import {
   spendCredits,
 } from "@/lib/db";
 import { CREDIT_COSTS } from "@/lib/pricing";
+import { resolveRenderMode } from "@/lib/render-mode";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -23,12 +24,9 @@ const RENDER_SERVICE_URL = process.env.RENDER_SERVICE_URL ?? "http://localhost:8
 const RENDER_TOKEN = process.env.RENDER_TOKEN;
 const FOOTAGE_BUCKET = "footage";
 
-// Premium render tier (bespoke GPT-authored scenes + vision QA on the render box).
-// Default on; set PREMIUM_RENDER=false to fall back to the fixed-component render
-// without a code change. The render service always degrades to the captioned output
-// on any premium failure, so this is safe to leave on.
-const PREMIUM_RENDER = (process.env.PREMIUM_RENDER ?? "true").toLowerCase() !== "false";
-const DEFAULT_EDIT_MODE = process.env.RENDER_EDIT_MODE ?? "brief-driven";
+// The server owns this choice so a stale or modified client cannot bypass vision QA.
+// Operators can select a supported fallback through RENDER_EDIT_MODE.
+const EDIT_MODE = resolveRenderMode(process.env.RENDER_EDIT_MODE);
 
 /**
  * Kick off a render. Body: { briefId, videoUrls: string[], brief }.
@@ -42,7 +40,6 @@ export async function POST(req: Request) {
   const briefId: unknown = body?.briefId;
   const videoUrls: unknown = body?.videoUrls;
   const brief: unknown = body?.brief;
-  const requestedEditMode: unknown = body?.editMode;
 
   if (typeof briefId !== "string") {
     return NextResponse.json({ error: "briefId is required" }, { status: 400 });
@@ -72,8 +69,7 @@ export async function POST(req: Request) {
   try {
     const jobId = randomUUID();
     durableJobId = jobId;
-    const editMode =
-      typeof requestedEditMode === "string" ? requestedEditMode : DEFAULT_EDIT_MODE;
+    const editMode = EDIT_MODE;
     const durableInput = { videoUrls, videoUrl: videoUrls[0], brief, editMode };
     await createRenderJob({
       id: jobId,
@@ -98,7 +94,6 @@ export async function POST(req: Request) {
         videoUrl: videoUrls[0],
         brief,
         editMode,
-        premium: PREMIUM_RENDER,
       }),
     });
     const data = await res.json().catch(() => ({}));
