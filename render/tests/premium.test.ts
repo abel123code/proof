@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,7 +34,7 @@ import {
   premiumRequestOptions,
 } from "../src/premium/model-params.js";
 import { DEFAULT_BRIEF_VISUAL_MODEL } from "../src/visual-planner.js";
-import { SPEAKER_SAFE_ALPHA_FILTER } from "../src/ffmpeg.js";
+import { maskOverlaySafeZones, SPEAKER_SAFE_ALPHA_FILTER } from "../src/ffmpeg.js";
 import type { SceneSpec, RenderBrief, Word } from "../src/types.js";
 
 const VALID_HTML = `<!doctype html><html><head></head><body>
@@ -154,6 +155,9 @@ test("parseQaVerdict fails CLOSED on empty or unparseable responses", () => {
   assert.equal(parseQaVerdict(undefined).ok, false);
   assert.equal(parseQaVerdict("").ok, false);
   assert.equal(parseQaVerdict("not json {").ok, false);
+  assert.deepEqual(parseQaVerdict(JSON.stringify({ ok: false, issues: [] })).issues, [
+    "QA rejected the scene without reasons",
+  ]);
   // valid but rejecting
   const rejected = parseQaVerdict(JSON.stringify({ ok: false, issues: ["clipped title"] }));
   assert.equal(rejected.ok, false);
@@ -179,7 +183,6 @@ test("produceScene skips (no movPath) when QA rejects through the final retry", 
         basePath: "base.mp4",
         fps: 30,
         log: () => {},
-        skipQa: false, // force QA on regardless of ambient PREMIUM_SKIP_QA
       },
       {
         author: async () => {
@@ -249,7 +252,6 @@ test("produceScene sends concrete QA issues into the next author attempt", async
         basePath: "base.mp4",
         fps: 30,
         log: () => {},
-        skipQa: false,
       },
       {
         author: async ({ priorIssues }) => {
@@ -316,20 +318,21 @@ test("isReasoningModel: gpt-5.x and o-series are reasoning models; gpt-4o is not
   }
 });
 
-test("normalizeEffort: accepts low/medium/high, defaults everything else to low", () => {
-  assert.equal(normalizeEffort("none"), "none");
-  assert.equal(normalizeEffort("medium"), "medium");
-  assert.equal(normalizeEffort("HIGH"), "high");
-  assert.equal(normalizeEffort("low"), "low");
-  assert.equal(normalizeEffort("minimal"), "low"); // gpt-5.x rejects minimal -> fall back
+test("normalizeEffort accepts the API values and rejects invalid configuration", () => {
+  for (const effort of ["none", "low", "medium", "high", "xhigh", "max"] as const) {
+    assert.equal(normalizeEffort(effort.toUpperCase()), effort);
+  }
   assert.equal(normalizeEffort(undefined), "low");
   assert.equal(normalizeEffort(""), "low");
+  assert.throws(() => normalizeEffort("minimal"), /Invalid PREMIUM reasoning effort/);
+  assert.throws(() => normalizeEffort("turbo"), /Invalid PREMIUM reasoning effort/);
 });
 
 test("chatTuning: reasoning models get reasoning_effort and NO temperature; legacy models get neither", () => {
   assert.deepEqual(chatTuning("gpt-5.4", "medium"), { reasoning_effort: "medium" });
   assert.deepEqual(chatTuning("gpt-5.4", undefined), { reasoning_effort: "low" });
   assert.deepEqual(chatTuning("gpt-5.6-luna", "none"), { reasoning_effort: "none" });
+  assert.deepEqual(chatTuning("gpt-5.6-sol", "max"), { reasoning_effort: "max" });
   assert.deepEqual(chatTuning("gpt-4o", "medium"), {}); // no temperature key at all
   assert.equal("temperature" in chatTuning("gpt-5.4", "low"), false);
 });
@@ -361,6 +364,46 @@ test("the deterministic overlay mask clears the moving-speaker and caption zones
   assert.match(SPEAKER_SAFE_ALPHA_FILTER, /x=160:y=180:w=760:h=1070/);
   assert.match(SPEAKER_SAFE_ALPHA_FILTER, /x=0:y=1450:w=iw:h=470/);
   assert.match(SPEAKER_SAFE_ALPHA_FILTER, /black@0/);
+});
+
+test("the FFmpeg mask clears protected alpha pixels and preserves permitted pixels", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "premium-mask-"));
+  const overlay = join(dir, "overlay.mov");
+  const ffmpeg = process.env.FFMPEG_PATH || "ffmpeg";
+  try {
+    execFileSync(ffmpeg, [
+      "-loglevel", "error", "-y",
+      "-f", "lavfi",
+      "-i", "color=c=white@1:s=1080x1920:r=1:d=1",
+      "-vf", "format=rgba",
+      "-frames:v", "1",
+      "-c:v", "prores_ks",
+      "-profile:v", "4",
+      "-pix_fmt", "yuva444p10le",
+      overlay,
+    ]);
+
+    await maskOverlaySafeZones(overlay);
+
+    const alphaAt = (x: number, y: number): number => {
+      const pixel = execFileSync(ffmpeg, [
+        "-loglevel", "error", "-i", overlay,
+        "-vf", `alphaextract,crop=1:1:${x}:${y}`,
+        "-frames:v", "1",
+        "-f", "rawvideo",
+        "-pix_fmt", "gray",
+        "pipe:1",
+      ]);
+      return pixel[0];
+    };
+
+    assert.equal(alphaAt(500, 500), 0, "speaker corridor must be transparent");
+    assert.equal(alphaAt(500, 1500), 0, "caption band must be transparent");
+    assert.ok(alphaAt(80, 100) >= 250, "header-safe pixels must stay opaque");
+    assert.ok(alphaAt(500, 1300) >= 250, "lower permitted pixels must stay opaque");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("vision QA sends explicit full-detail frames and samples scene boundaries", () => {

@@ -40,20 +40,22 @@ For **project rules** → [AGENTS.md](AGENTS.md) (imported by CLAUDE.md)
 
 ---
 
-## 2026-07-21: Make vision-reviewed scenes the server-owned default
+## 2026-07-21: Make vision-reviewed scenes the operator-owned default
 
 **Context:** The browser sent `editMode: "brief-driven"`, which bypassed the premium author and
 vision gate even when the legacy `premium` boolean was enabled. A live SUTD fixture exposed a
 second failure: fixed keyword chips were already burned into the captioned base. Vision QA
 correctly rejected the chip for entering the protected head zone, then sent an impossible repair
-to the scene author because the author did not own that base layer.
+to the scene author because the author did not own that base layer. Review found the same issue
+for fixed text-card overlays.
 
-**Decision:** The Next.js route owns render mode and defaults to `generated-experimental`.
-Client mode fields are ignored. Operators can set `RENDER_EDIT_MODE` to `brief-driven` or
-`classic`. Premium mode omits fixed keyword chips, masks authored alpha over the moving-speaker
-and caption zones, then submits five composited frames to GPT-5.6 Sol at original detail.
-Rejected reasons feed the next author attempt. Parsing remains fail closed. Model-authored HTML
-still passes the sanitizer before rendering.
+**Decision:** The Next.js route and render worker own render mode and default to
+`generated-experimental`. Client mode fields are ignored at both boundaries. Operators can set
+`RENDER_EDIT_MODE` to `brief-driven` or `classic` on both services. Premium mode omits fixed
+keyword chips and text-card overlays, masks authored alpha over the moving-speaker and caption
+zones, then submits five composited frames to GPT-5.6 Sol at original detail. Rejected reasons
+feed the next author attempt. Parsing remains fail closed, and vision QA has no runtime bypass.
+Model-authored HTML still passes the sanitizer before rendering.
 
 Premium OpenAI requests use a 90-second per-attempt timeout and one retry. This gives one chance
 to recover from a connection reset while bounding the SDK retry window.

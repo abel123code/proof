@@ -17,12 +17,12 @@ for OpenAI Build Week.
 - Five-frame, original-detail Sol vision QA with concrete author repairs and fail-closed parsing.
 - Deterministic speaker and caption alpha mask before QA.
 - Sanitized model HTML and SSRF-hardened remote asset loading.
-- Server-owned premium mode on the normal user path.
+- Web-route and worker-owned premium mode on the normal user path.
 
 ## Verified on 2026-07-21
 
 - 52 web tests passed.
-- 59 render tests passed.
+- 62 render tests passed.
 - Live Sol and Luna Chat Completions passed.
 - Live Sol Responses web search passed.
 - Live Sol vision input with `detail: "auto"` passed.

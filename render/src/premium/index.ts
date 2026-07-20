@@ -33,10 +33,7 @@ const PREMIUM_CONCURRENCY = Number.isFinite(PREMIUM_CONCURRENCY_RAW)
   ? Math.min(4, Math.max(1, Math.floor(PREMIUM_CONCURRENCY_RAW)))
   : 2;
 
-// Escape hatch: skip the vision-QA gate so every rendered scene ships (useful for
-// eyeballing raw premium output while QA is being tuned). SECURITY validation
-// (validateComposition) still runs — we only bypass the aesthetic/accuracy check.
-const SKIP_QA = /^(1|true|on|yes)$/i.test(process.env.PREMIUM_SKIP_QA ?? "");
+// Vision QA is mandatory for every scene that reaches the premium composite.
 
 // GSAP is served LOCALLY into each scene dir (no CDN) so a compliant scene needs zero network.
 const require = createRequire(import.meta.url);
@@ -105,13 +102,10 @@ export async function produceScene(
     basePath: string;
     fps: number;
     log: (m: string) => void;
-    /** Override the PREMIUM_SKIP_QA env default (mainly for deterministic tests). */
-    skipQa?: boolean;
   },
   deps: SceneDeps = DEFAULT_DEPS,
 ): Promise<AuthoredScene> {
   const { spec, brief, assetHints, assetsDir, premiumDir, basePath, fps, log } = args;
-  const skipQa = args.skipQa ?? SKIP_QA;
 
   // Each scene renders from its own dir; assets + local GSAP are copied in so `./assets/<name>`
   // and `./gsap.min.js` resolve with no network.
@@ -158,15 +152,9 @@ export async function produceScene(
 
     await deps.render({ html, sceneDir, outMovPath: movPath, fps });
     await deps.mask(movPath);
-    const qa = skipQa
-      ? { ok: true as const, issues: [] as string[] }
-      : await deps.qa({ spec, movPath, basePath, workDir: premiumDir });
+    const qa = await deps.qa({ spec, movPath, basePath, workDir: premiumDir });
     if (qa.ok) {
-      const how = skipQa
-        ? " (QA skipped)"
-        : iter
-          ? ` after ${iter} retr${iter === 1 ? "y" : "ies"}`
-          : "";
+      const how = iter ? ` after ${iter} retr${iter === 1 ? "y" : "ies"}` : "";
       log(`  ${spec.id}: approved${how}`);
       return { spec, html, movPath };
     }

@@ -84,3 +84,13 @@ export function buildOverlayCues(
   }
   return cues;
 }
+
+/** Premium scenes own all non-caption visuals; brief-driven uses its template planner. */
+export function buildOverlayCuesForMode(
+  words: Word[],
+  overlays: OverlaySpec[],
+  totalMs: number,
+  editMode: EditMode,
+): OverlayCue[] {
+  return editMode === "classic" ? buildOverlayCues(words, overlays, totalMs) : [];
+}

@@ -63,9 +63,9 @@ Each role is environment-overridable. The defaults live in
 
 ## Render and vision QA
 
-The normal user path is server-owned and defaults to `generated-experimental`. Only the server
-environment can select a fallback. Operators can set `RENDER_EDIT_MODE` to `brief-driven` or
-`classic`.
+The normal user path is operator-owned and defaults to `generated-experimental`. Both the web
+route and render worker ignore client mode fields. Operators can set `RENDER_EDIT_MODE` to
+`brief-driven` or `classic` on both services to select a fallback.
 
 For each premium scene, Proof:
 
@@ -80,6 +80,9 @@ For each premium scene, Proof:
    detail.
 7. Requires `{ ok: true, issues: [] }`. Empty, malformed, or rejecting responses fail closed.
 8. Feeds concrete issues back to the author for up to two repairs.
+
+Vision QA has no runtime bypass. Premium mode also removes fixed keyword chips and text cards
+from the base layer so every non-caption graphic remains repairable by the author.
 
 If every authored scene is rejected or a premium request fails, Proof returns the captioned
 base render. The user still receives a valid video.
@@ -135,7 +138,7 @@ npm run build
 
 # Render service
 npm --prefix render run check
-npm --prefix render run test:unit   # 59 tests
+npm --prefix render run test:unit   # 62 tests
 ```
 
 The Build Week verification also exercised live `gpt-5.6-sol` and `gpt-5.6-luna` requests,

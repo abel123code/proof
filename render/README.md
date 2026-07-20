@@ -25,9 +25,9 @@ scene clips
   -> upload to Supabase Storage
 ```
 
-The web route owns the mode. Its default is `generated-experimental`, which runs the premium
-author and vision-reviewed path. Set `RENDER_EDIT_MODE` in the web app to select an operator
-fallback:
+The web route and render worker own the mode. Both ignore a caller-supplied `editMode` and default
+to `generated-experimental`, which runs the premium author and vision-reviewed path. Set the same
+`RENDER_EDIT_MODE` value in both services to select an operator fallback:
 
 - `generated-experimental`: brief-driven bespoke scenes, HyperFrames, safety mask, and vision QA
 - `brief-driven`: Luna selects from deterministic Remotion visual templates
@@ -48,12 +48,14 @@ reasoning by default. Premium requests have a 90-second per-attempt timeout and 
 
 Vision review sends five composited PNGs with explicit `detail: "auto"`, which GPT-5.6 treats
 as original detail. The parser requires `ok: true` plus an empty issues array. Any parse error
-rejects the scene.
+rejects the scene. There is no runtime QA bypass. Premium mode removes fixed keyword chips and
+text cards before authoring so rejected graphics remain repairable.
 
 ## HTTP API
 
 - `POST /render` accepts `{ captureId }`, `{ videoUrl, brief }`, or
-  `{ jobId, briefId, videoUrls, brief, editMode }` and returns `202 { jobId }`
+  `{ jobId, briefId, videoUrls, brief }` and returns `202 { jobId }`. Any supplied `editMode` is
+  ignored.
 - `GET /render/:jobId` returns `{ status, mp4Url?, error? }`
 - `GET /health` returns `{ ok: true }`
 
@@ -111,10 +113,8 @@ Useful controls:
 - `PREMIUM_MAX_QA_ITERS`, default `2`
 - `PREMIUM_OPENAI_TIMEOUT_MS`, default `90000`
 - `PREMIUM_ASSET_HOSTS`, comma-separated HTTPS host allowlist
+- `RENDER_EDIT_MODE`, default `generated-experimental`
 - `RENDER_TOKEN`, optional shared secret for `x-render-token`
-
-`PREMIUM_SKIP_QA=true` exists for local diagnostics. Production user renders should leave it
-unset.
 
 ## Durable jobs
 

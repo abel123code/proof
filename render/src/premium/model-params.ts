@@ -4,7 +4,14 @@
  * We drop `temperature` entirely (the default is fine for both) and only add `reasoning_effort`
  * for models that accept it, so the same call site works across model tiers.
  */
-export type ReasoningEffort = "none" | "low" | "medium" | "high";
+export type ReasoningEffort =
+  | "none"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
+type SdkReasoningEffort = Exclude<ReasoningEffort, "max">;
 export const DEFAULT_PREMIUM_OPENAI_TIMEOUT_MS = 90_000;
 
 export function isReasoningModel(model: string): boolean {
@@ -13,19 +20,23 @@ export function isReasoningModel(model: string): boolean {
 
 export function normalizeEffort(raw: string | undefined): ReasoningEffort {
   const v = (raw ?? "").trim().toLowerCase();
-  return v === "none" ||
-    v === "medium" ||
-    v === "high"
-    ? v
-    : "low";
+  if (!v) return "low";
+  if (["none", "low", "medium", "high", "xhigh", "max"].includes(v)) {
+    return v as ReasoningEffort;
+  }
+  throw new Error(`Invalid PREMIUM reasoning effort: ${raw}`);
 }
 
 /** Spread into `client.chat.completions.create({...})`. Empty object for legacy models. */
 export function chatTuning(
   model: string,
   effort: string | undefined,
-): { reasoning_effort?: ReasoningEffort } {
-  return isReasoningModel(model) ? { reasoning_effort: normalizeEffort(effort) } : {};
+): { reasoning_effort?: SdkReasoningEffort } {
+  // OpenAI SDK 6.45's Chat Completions type omits the API's `max` literal.
+  // Keep the cast at this compatibility boundary; the serialized value is unchanged.
+  return isReasoningModel(model)
+    ? { reasoning_effort: normalizeEffort(effort) as SdkReasoningEffort }
+    : {};
 }
 
 /** Bound adaptive render calls so a slow model request cannot hold the job indefinitely. */

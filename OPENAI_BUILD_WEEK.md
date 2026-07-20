@@ -153,7 +153,7 @@ npm run build
 
 npm --prefix render ci
 npm --prefix render run check
-npm --prefix render run test:unit   # 59 render tests
+npm --prefix render run test:unit   # 62 render tests
 ```
 
 The repository's existing global lint run reports seven `react-hooks/set-state-in-effect`

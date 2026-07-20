@@ -108,7 +108,10 @@ export function parseQaVerdict(content: string | null | undefined): SceneQA {
   if (!content) return { ok: false, issues: ["QA returned an empty response"] };
   try {
     const parsed = JSON.parse(content) as { ok?: boolean; issues?: unknown };
-    const issues = Array.isArray(parsed.issues) ? parsed.issues.map(String).filter(Boolean) : [];
+    const reported = Array.isArray(parsed.issues) ? parsed.issues.map(String).filter(Boolean) : [];
+    const issues = parsed.ok === false && reported.length === 0
+      ? ["QA rejected the scene without reasons"]
+      : reported;
     return { ok: parsed.ok === true && issues.length === 0, issues };
   } catch {
     return { ok: false, issues: ["QA returned unparseable JSON"] };
