@@ -16,8 +16,10 @@ export function getOpenAI(): OpenAI {
  * cheap tier. Both are env-overridable so a wrong slug on an account is a
  * one-line fix, not a code change.
  */
-export const OPENAI_TEXT_MODEL = optionalEnv("OPENAI_TEXT_MODEL") ?? "gpt-5.5";
-export const OPENAI_MINI_MODEL = optionalEnv("OPENAI_MINI_MODEL") ?? "gpt-5.4-mini";
+export const DEFAULT_OPENAI_TEXT_MODEL = "gpt-5.6-sol";
+export const DEFAULT_OPENAI_MINI_MODEL = "gpt-5.6-luna";
+export const OPENAI_TEXT_MODEL = optionalEnv("OPENAI_TEXT_MODEL") ?? DEFAULT_OPENAI_TEXT_MODEL;
+export const OPENAI_MINI_MODEL = optionalEnv("OPENAI_MINI_MODEL") ?? DEFAULT_OPENAI_MINI_MODEL;
 /** Model used for web-search-grounded research (Responses API). */
 export const OPENAI_SEARCH_MODEL = optionalEnv("OPENAI_SEARCH_MODEL") ?? OPENAI_TEXT_MODEL;
 
@@ -34,8 +36,10 @@ export async function openaiJSON<T>(args: {
   maxTokens?: number;
 }): Promise<T> {
   const client = getOpenAI();
+  const model = args.model ?? OPENAI_MINI_MODEL;
   const completion = await client.chat.completions.create({
-    model: args.model ?? OPENAI_MINI_MODEL,
+    model,
+    ...chatReasoningForModel(model, OPENAI_MINI_MODEL),
     response_format: { type: "json_object" },
     max_completion_tokens: args.maxTokens,
     messages: [
@@ -56,6 +60,14 @@ export async function openaiJSON<T>(args: {
  */
 function isReasoningModel(model: string): boolean {
   return /^(o\d|gpt-5)/i.test(model);
+}
+
+/** Preserve the previous no-reasoning baseline for the high-volume mechanical tier. */
+export function chatReasoningForModel(
+  model: string,
+  miniModel: string,
+): { reasoning_effort?: "none" } {
+  return isReasoningModel(model) && model === miniModel ? { reasoning_effort: "none" } : {};
 }
 
 export async function openaiWebSearchJSON<T>(args: {

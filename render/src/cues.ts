@@ -1,4 +1,4 @@
-import type { KeywordCue, KeywordFlag, OverlayCue, OverlaySpec, Word } from "./types.js";
+import type { EditMode, KeywordCue, KeywordFlag, OverlayCue, OverlaySpec, Word } from "./types.js";
 
 function norm(word: string): string {
   return word.toLowerCase().replace(/[^a-z0-9']/g, "");
@@ -49,6 +49,15 @@ export function buildKeywordCues(words: Word[], flags: KeywordFlag[]): KeywordCu
   return cues;
 }
 
+/** Premium scenes own the visual layer; fixed keyword chips would be judged as part of scene QA. */
+export function buildKeywordCuesForMode(
+  words: Word[],
+  flags: KeywordFlag[],
+  editMode: EditMode,
+): KeywordCue[] {
+  return editMode === "generated-experimental" ? [] : buildKeywordCues(words, flags);
+}
+
 /** Big overlays (diagram / image / text card), anchored to a keyword hit or a ratio. */
 export function buildOverlayCues(
   words: Word[],
@@ -74,4 +83,14 @@ export function buildOverlayCues(
     });
   }
   return cues;
+}
+
+/** Premium scenes own all non-caption visuals; brief-driven uses its template planner. */
+export function buildOverlayCuesForMode(
+  words: Word[],
+  overlays: OverlaySpec[],
+  totalMs: number,
+  editMode: EditMode,
+): OverlayCue[] {
+  return editMode === "classic" ? buildOverlayCues(words, overlays, totalMs) : [];
 }

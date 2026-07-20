@@ -1,132 +1,156 @@
-# proof — render service (Zo + Remotion)
+# Proof render service
 
-Turns scene-by-scene teleprompter footage plus its content brief into a finished vertical
-creator reel. The default `brief-driven` editor uses scene labels, on-screen copy, B-roll
-cues, the hook, and word timings to drive concise motion graphics and phrase captions.
+The render package turns teleprompter footage plus a content brief into a vertical MP4. It
+runs as an Express service on Railway or Zo and keeps the heavy ffmpeg, Remotion, Chromium,
+HyperFrames, and vision work outside the Next.js process.
 
-## Pipeline (one job)
+## Default pipeline
 
+```text
+scene clips
+  -> normalize and concatenate at 1080x1920 CFR30
+  -> whisper-1 word timestamps with a brief-derived vocabulary prompt
+  -> remove fillers and dead space
+  -> remap words and scene anchors to the cut timeline
+  -> Remotion captions on a transparent ProRes overlay
+  -> ffmpeg caption composite
+  -> GPT-5.6 Sol scene author
+  -> sanitize model HTML
+  -> HyperFrames transparent scene render
+  -> deterministic speaker and caption alpha mask
+  -> five-frame GPT-5.6 Sol vision QA
+  -> repair, approve, or omit each scene
+  -> ffmpeg final composite
+  -> validate dimensions and duration
+  -> upload to Supabase Storage
 ```
-scene clips    ->  normalize to 1080x1920 CFR30 + concatenate
-               ->  extract audio (ffmpeg)
-               ->  transcribe word-level (OpenAI whisper-1)
-               ->  cut: filler + dead-space removal -> kept segments
-               ->  ffmpeg: concat kept segments -> clean base clip (all-keyframe, CFR 30)
-               ->  remap word + cue timings onto the cut timeline
-               ->  brief-driven edit plan: scene windows, emphasis, visual templates
-               ->  Remotion: render captions + deterministic visual templates (alpha)
-               ->  ffmpeg: burn the overlay onto the base clip -> edited.mp4
-               ->  validate dimensions/duration + normalize speech loudness
-               ->  upload to Supabase Storage
-```
 
-Remotion never touches the source video (no `OffthreadVideo`), so frame-seeking can never
-fail. ffmpeg owns the video, Remotion owns the motion graphics.
+The web route and render worker own the mode. Both ignore a caller-supplied `editMode` and default
+to `generated-experimental`, which runs the premium author and vision-reviewed path. Set the same
+`RENDER_EDIT_MODE` value in both services to select an operator fallback:
+
+- `generated-experimental`: brief-driven bespoke scenes, HyperFrames, safety mask, and vision QA
+- `brief-driven`: Luna selects from deterministic Remotion visual templates
+- `classic`: legacy captions and fixed overlays
+
+Premium failure falls back to the valid captioned base video. A rejected scene never reaches
+the final composite.
+
+## Model roles
+
+- `PREMIUM_PLAN_MODEL=gpt-5.6-sol`
+- `PREMIUM_AUTHOR_MODEL=gpt-5.6-sol`
+- `PREMIUM_QA_MODEL=gpt-5.6-sol`
+- `BRIEF_VISUAL_MODEL=gpt-5.6-luna`
+
+Premium Chat Completions use low reasoning by default. The Luna visual selector uses no
+reasoning by default. Premium requests have a 90-second per-attempt timeout and one retry.
+
+Vision review sends five composited PNGs with explicit `detail: "auto"`, which GPT-5.6 treats
+as original detail. The parser requires `ok: true` plus an empty issues array. Any parse error
+rejects the scene. There is no runtime QA bypass. Premium mode removes fixed keyword chips and
+text cards before authoring so rejected graphics remain repairable.
 
 ## HTTP API
 
-- `POST /render` body `{ captureId }` or `{ videoUrl, brief }` or
-  `{ jobId, briefId, videoUrls, brief, editMode }` -> `202 { jobId }`
-- `GET /render/:jobId` -> `{ status, mp4Url?, error? }`
-  status: `queued | transcribing | cutting | rendering | uploading | done | error`
-- `GET /health` -> `{ ok: true }`
+- `POST /render` accepts `{ captureId }`, `{ videoUrl, brief }`, or
+  `{ jobId, briefId, videoUrls, brief }` and returns `202 { jobId }`. Any supplied `editMode` is
+  ignored.
+- `GET /render/:jobId` returns `{ status, mp4Url?, error? }`
+- `GET /health` returns `{ ok: true }`
 
-`brief` shape: `{ script, keywordFlags: [{phrase, emphasis?}], overlays?: [...] }`.
-The brief-driven path additionally accepts `{ hook, targetFeeling, scenes }`, where each
-scene carries `{ label, spokenLine, onScreenText, brollCue, durationSeconds? }`.
+Statuses include `queued`, `transcribing`, `cutting`, `planning`, `rendering`,
+`quality-checking`, `uploading`, `done`, and `error`.
 
-`editMode` values:
-- `brief-driven` (default): reusable creator-reel templates selected by one structured AI
-  planning call, with deterministic scene-label selection as the fallback.
-- `classic`: legacy caption + fixed overlay components.
-- `generated-experimental`: GPT/HyperFrames scene authoring with vision QA.
-With `captureId`, the service loads the recording + script straight from Supabase
-(`captures` -> `scripts`) and writes back `transcripts` + `renders`.
+The brief accepts:
 
-## Local dev
-
+```ts
+{
+  script: string;
+  keywordFlags: Array<{ phrase: string; emphasis?: string }>;
+  hook?: string;
+  targetFeeling?: string;
+  scenes?: Array<{
+    label: string;
+    spokenLine: string;
+    onScreenText?: string;
+    brollCue?: string;
+    durationSeconds?: number;
+  }>;
+  assets?: {
+    images?: string[];
+    brandColor?: string;
+    brandVoice?: string;
+    motif?: string;
+  };
+}
 ```
-npm install
-npm run verify:whisper [media]     # confirm whisper-1 word timestamps
-npm run test:local [raw.mov]       # full pipeline -> out/edited-*.mp4 (no DB needed)
-npm run server                     # POST /render on :8080
+
+## Local development
+
+The service loads the repo-root `.env.local`.
+
+```bash
+cd render
+npm ci
+npm run check
+npm run test:unit
+npm run verify:whisper -- <media-file>
+npm run test:local -- <raw-video>
+npm run server
 ```
 
-Env is read from the repo-root `.env.local` (`OPENAI_API_KEY`,
-`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`).
+Required values:
 
-## Deploy on Railway
+- `OPENAI_API_KEY`
+- `SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
-Live at **https://proof-render-production.up.railway.app** (Railway project `proof-render`).
+Useful controls:
 
-Three files drive the deploy:
+- `RENDER_CONCURRENCY`, default `2`
+- `PREMIUM_CONCURRENCY`, default `2`
+- `PREMIUM_MAX_QA_ITERS`, default `2`
+- `PREMIUM_OPENAI_TIMEOUT_MS`, default `90000`
+- `PREMIUM_ASSET_HOSTS`, comma-separated HTTPS host allowlist
+- `RENDER_EDIT_MODE`, default `generated-experimental`
+- `RENDER_TOKEN`, optional shared secret for `x-render-token`
 
-- **`Dockerfile`** — mirrors `zo-deploy.sh setup()`'s apt list (ffmpeg + the chromium shared
-  libs `chrome-headless-shell` needs) on `node:22-bookworm-slim`. Everything after
-  `USER node` — `npm ci`, `npx remotion browser ensure`, and the runtime — runs as the
-  non-root `node` user, because Remotion's headless chromium refuses to sandbox as root.
-  `npx remotion browser ensure` pre-warms `chrome-headless-shell` at build time so the
-  first real render doesn't cold-download it.
-- **`railway.json`** — sets the Dockerfile builder, a `/health` healthcheck (300s timeout),
-  and `ON_FAILURE` restarts (max 3 retries).
-- **`.dockerignore`** — critically excludes `.env*` from the build context. `src/env.ts`
-  loads env files with `override: true`, so a baked-in `.env.local` would clobber whatever
-  Railway injects at runtime; keeping it out of the image is what makes Railway's env vars
-  authoritative.
+## Durable jobs
 
-```
-# from inside render/ — this makes render/ the build context, so no
-# root-directory config is needed and there's no GitHub repo coupling
+Apply [`../supabase/migrations/0013_render_jobs.sql`](../supabase/migrations/0013_render_jobs.sql).
+Vercel creates each `render_jobs` row. Railway updates phase and progress, uploads the final
+MP4, and marks the row complete. On restart, Railway reclaims queued jobs and processing jobs
+whose lock is older than 15 minutes.
+
+The in-memory table and `/out` route remain for local and legacy requests. DB-backed jobs use
+Supabase as the durable source of truth.
+
+## Railway
+
+The current project is `proof-render`, with the configured public URL
+`https://proof-render-production.up.railway.app`.
+
+`Dockerfile` installs ffmpeg and Chromium libraries on Node 22 Bookworm, switches to the
+non-root `node` user, runs `npm ci`, and preloads Remotion's headless browser.
+
+```bash
+cd render
 railway up
 ```
 
-Project: `proof-render`. Public URL: https://proof-render-production.up.railway.app
+Set the required values in Railway. Leave `PORT` to Railway. If `RENDER_TOKEN` is enabled,
+configure the same value in the Next.js deployment.
 
-Required Railway variables (set in the Railway dashboard, not committed anywhere):
-`OPENAI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`. Don't set `PORT` — Railway
-injects it.
+`tmp/` and `out/` are ephemeral. DB-backed final videos are uploaded to Supabase Storage.
 
-The Next app needs `RENDER_SERVICE_URL` pointed at the Railway URL above (repo-root
-`.env.local` locally, a real env var in prod).
+## Zo alternative
 
-`RENDER_TOKEN` is optional shared-secret auth. If you set it on the Railway service, the
-Next app must set the **same** value (it sends it as an `x-render-token` header) or every
-render request fails with 401. Leave it unset on both sides to run without auth.
-
-### Durable jobs
-
-Apply `supabase/migrations/0013_render_jobs.sql` before deploying this version. Vercel
-creates the durable job row; Railway updates progress and uploads the final video directly
-to Supabase. On restart, Railway reclaims queued jobs and processing jobs whose lock is
-older than 15 minutes. The in-memory table and `/out` route remain as local/legacy fallbacks.
-
-### Railway caveats
-
-- **`tmp/` and `out/` are ephemeral.** They don't survive redeploys/restarts. Final MP4s
-  for DB-backed jobs (`captureId` requests) are persisted to Supabase Storage — that's the
-  durable copy. `videoUrl`-only jobs are served straight from `/out` and are only as
-  durable as the current container.
-- **First build is slow.** Downloading `chrome-headless-shell` during `npx remotion browser
-  ensure` makes a from-scratch build take ~4-5 minutes.
-
-## Deploy on Zo (legacy / alternative)
-
-```
-# on the Zo box, in render/
-export OPENAI_API_KEY=...  SUPABASE_URL=...  SUPABASE_SERVICE_ROLE_KEY=...
-bash zo-deploy.sh setup      # ffmpeg + chromium libs + npm ci + headless browser
-bash zo-deploy.sh start      # run under Zo "process mode" so it stays up
+```bash
+cd render
+bash zo-deploy.sh setup
+bash zo-deploy.sh start
 ```
 
-Then expose port `8080` (Zo gives an HTTP Proxy URL) and the Next app calls
-`https://<zo-host>/render`.
-
-### Zo gotchas to watch
-
-- **Remotion headless chromium** needs the shared libs in `zo-deploy.sh setup`. If a render
-  errors with a missing `.so`, install that lib and re-run.
-- **Running as root**: if chromium reports a sandbox error, run the service as a non-root
-  user, or pass Remotion a no-sandbox chromium option.
-- **First render is slow**: Remotion downloads `chrome-headless-shell` once. `setup` does
-  this ahead of time via `npx remotion browser ensure`.
-- **CPU**: rendering is CPU-bound. A ~30s clip is a few minutes on a modest box.
+Expose port `8080` and point `RENDER_SERVICE_URL` at the proxy URL. Run as a non-root user so
+Chromium can use its sandbox.

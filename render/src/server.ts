@@ -7,6 +7,7 @@ import { runJob } from "./job.js";
 import { RENDER_ROOT } from "./render.js";
 import { createSemaphore } from "./semaphore.js";
 import { loadRecoverableJobs, updateDurableJob } from "./durable.js";
+import { enforceWorkerEditMode, resolveWorkerEditMode } from "./edit-mode.js";
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -38,6 +39,7 @@ const jobs = new Map<string, JobState>();
 const activeIds = new Set<string>();
 const RENDER_CONCURRENCY = Math.max(1, Number(process.env.RENDER_CONCURRENCY) || 2);
 const renderGate = createSemaphore(RENDER_CONCURRENCY);
+const WORKER_EDIT_MODE = resolveWorkerEditMode(process.env.RENDER_EDIT_MODE);
 
 function enqueueJob(id: string, input: RenderJobInput): void {
   if (activeIds.has(id)) return;
@@ -46,9 +48,10 @@ function enqueueJob(id: string, input: RenderJobInput): void {
   jobs.set(id, jobs.get(id) ?? { id, status: "queued", startedAt: now, updatedAt: now });
   void updateDurableJob(id, "queued").catch(() => {});
 
+  const enforcedInput = enforceWorkerEditMode(input, WORKER_EDIT_MODE);
   renderGate
     .run(() =>
-      runJob(id, input, (status, extra) => {
+      runJob(id, enforcedInput, (status, extra) => {
         const current = jobs.get(id);
         if (current) jobs.set(id, { ...current, status, ...extra, updatedAt: Date.now() });
         void updateDurableJob(id, status).catch((error) =>

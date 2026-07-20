@@ -3,27 +3,45 @@ import { join } from "node:path";
 import { getOpenAI } from "../openai.js";
 import { buildCutVideo, overlayScenesAtOffsets, extractFrames } from "../ffmpeg.js";
 import type { SceneSpec, SceneQA } from "../types.js";
+import { chatTuning, premiumRequestOptions } from "./model-params.js";
 
-const QA_MODEL = process.env.PREMIUM_QA_MODEL || "gpt-4o";
+export const DEFAULT_PREMIUM_QA_MODEL = "gpt-5.6-sol";
+const QA_MODEL = process.env.PREMIUM_QA_MODEL || DEFAULT_PREMIUM_QA_MODEL;
+const QA_EFFORT = process.env.PREMIUM_QA_EFFORT; // default "low" via chatTuning
 
-const QA_SYSTEM = `You are a ruthless art director reviewing frames of a bespoke motion-graphic scene composited over
-talking-head footage in a vertical (1080x1920) marketing video. The footage ALREADY has burned-in captions along
-the bottom of the frame — the scene is a short HEADLINE graphic, NOT a subtitle track. Judge ONLY what you can see.
-Fail the scene for:
-- reproducing the spoken sentence as on-screen subtitles, or any text that duplicates/echoes the bottom captions
-- on-screen text longer than a short headline (it should be a keyword/metric/label, not a transcript)
+const QA_SYSTEM = `You are a ruthless art director reviewing frames of a bespoke motion-graphic scene
+composited over talking-head footage in a vertical (1080x1920) marketing video. The footage ALREADY has
+burned-in captions along the bottom. Judge ONLY what you can see. FAIL the scene for:
+- IT'S JUST TEXT. A headline/label on a background with no real visual is the #1 failure. A scene must
+  SHOW something concrete — the product screenshot, the logos, a UI element, a chart — not merely words.
+- reproducing the spoken sentence as on-screen subtitles / duplicating the bottom captions
 - misspelled or garbled on-screen text
 - text/graphics clipped at an edge, overlapping badly, or unreadable (too small / low contrast)
-- graphics covering the bottom caption band or burying the speaker's face in the center third
+- any text or graphic touching the speaker's face, forehead, eyes, or head, wherever the speaker appears
+- graphics covering the bottom caption band
 - empty/broken render (nothing meaningful on screen) or obvious AI-slop layout
-Do NOT require the on-screen text to match the spoken words — the scene should paraphrase into a punchy headline.
-Respond with JSON: { "ok": boolean, "issues": string[] }. Each issue is a SHORT concrete fix ("move the title
-out of the center", "shorten to a 3-word headline", "fix 'Triger.dev' -> 'Trigger.dev'"). Return an empty issues
-array when the scene is good.`;
+Respond with JSON: { "ok": boolean, "issues": string[] }. Each issue is a SHORT concrete fix
+("embed the actual screenshot, don't just name it", "move the title fully to the left rail",
+"fix 'Triger.dev' -> 'Trigger.dev'"). Return an empty issues array when the scene is good.`;
+
+export function qaSampleTimes(durationSec: number): number[] {
+  return [0.05, 0.2, 0.5, 0.85, 0.95].map((ratio) =>
+    Number((durationSec * ratio).toFixed(3)),
+  );
+}
+
+export function qaImagePart(dataUrl: string) {
+  return {
+    type: "image_url" as const,
+    // GPT-5.6 treats explicit auto as original detail. The Chat Completions SDK type
+    // currently exposes auto but not the equivalent original literal.
+    image_url: { url: dataUrl, detail: "auto" as const },
+  };
+}
 
 /**
  * Render→look→re-render QA for one scene. Composites the scene MOV onto just its window of the
- * base clip, samples 3 frames, and asks GPT-4o vision to approve or return concrete fixes. The
+ * base clip, samples 5 frames, and asks GPT-5.6 vision to approve or return concrete fixes. The
  * fixes feed back into authorScene for a re-render. This is the loop that kills the slop.
  */
 export async function qaScene(args: {
@@ -44,7 +62,7 @@ export async function qaScene(args: {
   // 2. Sample frames across the window.
   const frames = await extractFrames(
     qaComposite,
-    [durSec * 0.2, durSec * 0.5, durSec * 0.85],
+    qaSampleTimes(durSec),
     workDir,
     `${spec.id}-frame`,
   );
@@ -53,17 +71,14 @@ export async function qaScene(args: {
   const images = await Promise.all(
     frames.map(async (f) => {
       const b64 = (await readFile(f)).toString("base64");
-      return {
-        type: "image_url" as const,
-        image_url: { url: `data:image/png;base64,${b64}` },
-      };
+      return qaImagePart(`data:image/png;base64,${b64}`);
     }),
   );
 
   const client = getOpenAI();
   const resp = await client.chat.completions.create({
     model: QA_MODEL,
-    temperature: 0,
+    ...chatTuning(QA_MODEL, QA_EFFORT),
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: QA_SYSTEM },
@@ -78,7 +93,7 @@ export async function qaScene(args: {
         ],
       },
     ],
-  });
+  }, premiumRequestOptions());
 
   return parseQaVerdict(resp.choices[0]?.message?.content);
 }
@@ -93,7 +108,10 @@ export function parseQaVerdict(content: string | null | undefined): SceneQA {
   if (!content) return { ok: false, issues: ["QA returned an empty response"] };
   try {
     const parsed = JSON.parse(content) as { ok?: boolean; issues?: unknown };
-    const issues = Array.isArray(parsed.issues) ? parsed.issues.map(String).filter(Boolean) : [];
+    const reported = Array.isArray(parsed.issues) ? parsed.issues.map(String).filter(Boolean) : [];
+    const issues = parsed.ok === false && reported.length === 0
+      ? ["QA rejected the scene without reasons"]
+      : reported;
     return { ok: parsed.ok === true && issues.length === 0, issues };
   } catch {
     return { ok: false, issues: ["QA returned unparseable JSON"] };

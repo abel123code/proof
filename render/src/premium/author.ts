@@ -1,13 +1,16 @@
 import { getOpenAI } from "../openai.js";
+import { chatTuning, premiumRequestOptions } from "./model-params.js";
 import type { RenderBrief, SceneSpec } from "../types.js";
 
-const AUTHOR_MODEL = process.env.PREMIUM_AUTHOR_MODEL || "gpt-4o";
+export const DEFAULT_PREMIUM_AUTHOR_MODEL = "gpt-5.6-sol";
+const AUTHOR_MODEL = process.env.PREMIUM_AUTHOR_MODEL || DEFAULT_PREMIUM_AUTHOR_MODEL;
+const AUTHOR_EFFORT = process.env.PREMIUM_AUTHOR_EFFORT; // default "low" via chatTuning
 
 /**
  * The HyperFrames composition contract (verified against hyperframes@0.7.54 `render --help`
  * and the runtime docs). Baked into the system prompt so GPT authors renderable HTML.
  */
-function systemPrompt(durSec: number): string {
+export function authorSystemPrompt(durSec: number): string {
   return `You author a single HyperFrames HTML composition: a bespoke motion-graphic scene that overlays on top
 of talking-head footage in a 1080x1920 vertical video. Output ONE complete, self-contained HTML document. No
 markdown, no commentary — just the HTML.
@@ -30,13 +33,23 @@ HARD CONTRACT (the renderer fails if you break these):
    reference ANY external URL (no http/https/ws/ftp, no protocol-relative //). Inline small graphics as
    data: URIs if needed. Do NOT use fetch, XMLHttpRequest, WebSocket, EventSource, dynamic import(), eval,
    new Function(), or navigator.sendBeacon. The scene renders with no network.
-7. Keep type large and legible on mobile (min ~40px). The footage ALREADY has burned-in captions across the
-   BOTTOM ~22% of the frame — keep that band completely clear, and keep the center clear so you never cover the
-   speaker's face. Anchor graphics to the TOP third or the side edges.
-8. YOU ARE NOT A SUBTITLE TRACK. The spoken words are already captioned along the bottom, so do NOT transcribe
-   speech or reproduce the spoken sentence. Show only a SHORT punchy headline — a keyword, metric, label, or the
-   motif — ideally 2-5 words. "spokenContext" is given ONLY so you know what the beat is about; never paste it
-   on screen verbatim.
+7. SPEAKER-SAFE LAYOUT. The speaker moves: keep x=160..920, y=180..1250 completely empty at every point,
+   including entrance and exit motion. Keep the burned-in caption band y=1450..1920 empty. Safe placement is
+   the header y=48..160, far gutters x=48..150 or x=930..1032, and lower band y=1260..1420. Keep every child
+   inside its safe parent; a chip flying through the protected zone or touching hair will be rejected. There is
+   no empty placeholder at any sampled frame: populate a card before revealing it and hide the whole card on
+   exit. On repair, move every offender fully into a safe band. Keep type at least 40px and never clip a wordmark.
+8. BUILD A VISUAL, NOT A CAPTION. A bare headline/label on a background — a text card — is the #1
+   failure mode and will be REJECTED. Every scene must SHOW something concrete: the product screenshot,
+   the logos, a recreated UI element, a chart/number that animates, a diagram. Text is a label ON the
+   visual, never the whole scene. You are NOT a subtitle track — the spoken words ("spokenContext") are
+   already captioned along the bottom, so never transcribe speech or reproduce the spoken sentence.
+9. FEATURE THE ASSETS. When assets are provided (see "assets"), the scene MUST be built AROUND them:
+   embed the actual image with <img src="./assets/<filename>" style="..."> (a screenshot in a device/
+   browser frame, logos as real tiles, a UI cropped and called out). Do NOT describe an asset in text
+   when you can show it. Only fall back to a pure-CSS visual when NO asset fits the beat.
+10. Follow "intent" literally — it names the exact visual to build and which asset(s) to feature. The
+    short on-screen headline (if any) comes from the intent; everything else is motion + imagery.
 
 DESIGN: premium, intentional, on-brand. Honor the recurring motif. Animate with purpose (staggered reveals,
 one hero move) — not everything at once. Use the brand color as the accent. Use a system/web-safe font stack
@@ -78,11 +91,11 @@ export async function authorScene(args: {
         : undefined,
   };
 
-  const system = systemPrompt(spec.durMs / 1000).replace(/\{\{ID\}\}/g, spec.id);
+  const system = authorSystemPrompt(spec.durMs / 1000).replace(/\{\{ID\}\}/g, spec.id);
   const client = getOpenAI();
   const resp = await client.chat.completions.create({
     model: AUTHOR_MODEL,
-    temperature: 0.6,
+    ...chatTuning(AUTHOR_MODEL, AUTHOR_EFFORT),
     messages: [
       { role: "system", content: system },
       {
@@ -94,7 +107,7 @@ export async function authorScene(args: {
           : `Author this scene:\n${JSON.stringify(payload)}`,
       },
     ],
-  });
+  }, premiumRequestOptions());
 
   const html = stripFences(resp.choices[0]?.message?.content || "");
   if (!html.toLowerCase().includes("id=\"stage\"") && !html.toLowerCase().includes("id='stage'")) {

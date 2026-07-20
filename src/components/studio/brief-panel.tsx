@@ -314,7 +314,7 @@ export function BriefPanel() {
       const res = await fetch("/api/render", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ briefId, videoUrls, brief, editMode: "brief-driven" }),
+        body: JSON.stringify({ briefId, videoUrls, brief }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not start the render");
