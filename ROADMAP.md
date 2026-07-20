@@ -1,58 +1,50 @@
-# Proof roadmap and current state
+# Proof roadmap
 
 Last updated: 2026-07-21.
 
-Proof turns a founder's GitHub work into a researched, scripted, recorded, and edited vertical
-video. The product previously placed 1st Runner-Up at 'Sup Build2026 and is now being prepared
-for OpenAI Build Week.
-
 ## Current state
 
-- Next.js app with GitHub analysis, web-search research, angle scoring, briefs, teleprompter,
-  GitHub OAuth, onboarding, credits, and render confirmation.
-- Railway render service with durable Supabase jobs and a measured concurrency cap of two.
-- `whisper-1` word timestamps with a script and keyword-derived vocabulary prompt.
-- Remotion captions and ffmpeg cutting/composition.
-- GPT-5.6 Sol premium scene authoring through HyperFrames.
-- Five-frame, original-detail Sol vision QA with concrete author repairs and fail-closed parsing.
-- Deterministic speaker and caption alpha mask before QA.
-- Sanitized model HTML and SSRF-hardened remote asset loading.
-- Web-route and worker-owned premium mode on the normal user path.
+Proof runs from GitHub analysis through research, filming, and final vertical MP4 delivery.
+The normal render path uses GPT-5.6 Sol for scene authoring and five-frame vision QA, with Luna
+handling structured high-volume work.
 
-## Verified on 2026-07-21
+The current release includes:
 
-- 52 web tests passed.
-- 62 render tests passed.
-- Live Sol and Luna Chat Completions passed.
-- Live Sol Responses web search passed.
-- Live Sol vision input with `detail: "auto"` passed.
-- An eight-second SUTD fixture completed the full premium path in 397 seconds.
-- Vision QA rejected two variants and approved the second repair.
-- The final 1080x1920 MP4 differed from the caption-only fallback.
+- durable Supabase render jobs and final-video storage
+- script-informed `whisper-1` word timestamps
+- ffmpeg cutting and Remotion captions
+- HyperFrames scene authoring with asset inclusion checks
+- fail-closed, original-detail GPT-5.6 vision QA
+- concrete author repairs after rejection
+- deterministic speaker and caption alpha masking
+- sanitized model HTML and SSRF-hardened assets
+- operator-owned render mode at both web and worker boundaries
 
-## Before submission
+## Verified baseline
 
-- [ ] Add the public demo video link to `README.md` and `OPENAI_BUILD_WEEK.md`.
-- [ ] Submit Codex `/feedback` and add the Session ID.
-- [ ] Verify the branch on the production Vercel and Railway deployments after review.
-- [ ] Confirm production model access and environment overrides use the GPT-5.6 defaults.
-- [ ] Record a judge path that finishes under three minutes.
+- 52 web tests
+- 62 render tests
+- production Next.js build
+- live Sol and Luna Chat Completions
+- live Sol Responses web search
+- live Sol image input with `detail: "auto"`
+- full eight-second fixture through authoring, masking, two repairs, and final composition
 
-## Product and quality follow-ups
+## Product priorities
 
-- [ ] Reduce premium latency. The local eight-second fixture took 397 seconds with two repairs.
-- [ ] Track the subject and derive a per-video safety mask for off-center footage.
-- [ ] Run a hosted asset fixture through fetch, SVG rasterization, inclusion checking, QA, and
-      final composition.
-- [ ] Add observability for author latency, QA verdicts, repair count, fallback rate, and scene
-      acceptance rate.
-- [ ] Add resumable scene production so a transient model failure only reruns the affected scene.
-- [ ] Revisit the render concurrency cap with 60-second clips before wider access.
+1. Reduce premium latency. The measured eight-second fixture took 397 seconds with two repairs.
+2. Track the subject and derive the protected region per video instead of assuming a centered
+   talking head.
+3. Add hosted asset fixtures covering fetch, SVG rasterization, inclusion checks, QA, and final
+   composition.
+4. Record author latency, QA verdicts, repair count, fallback rate, and scene acceptance rate.
+5. Resume scene production after transient failures instead of rerunning the full job.
+6. Re-measure worker concurrency with 60-second clips before widening access.
 
-## Accepted limitations
+## Accepted limits
 
-- Premium rendering is measured in minutes.
-- The current safety mask assumes a broadly centered talking head.
-- A premium failure returns the captioned base video.
-- Local and legacy `/out` files remain ephemeral. DB-backed jobs and final videos are durable in
-  Supabase.
+- Premium rendering currently takes minutes.
+- The safety mask assumes a broadly centered talking head.
+- A rejected generated scene is omitted.
+- If no generated scene passes QA, Proof returns the captioned base video.
+- Local and legacy `/out` files are ephemeral. Database-backed jobs and final videos are durable.

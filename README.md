@@ -1,112 +1,176 @@
 # Proof
 
-Proof turns a founder's GitHub work into a short vertical product video. It finds the proof in
-the repo, researches current angles, writes a scene brief, records each take in a browser
-teleprompter, and returns a cut, captioned MP4 with reviewed motion graphics.
+Proof turns a founder's GitHub work into a researched, scripted, recorded, and edited product
+video.
 
-[Product site](https://tryproof.org) | [OpenAI Build Week notes](OPENAI_BUILD_WEEK.md)
+Technical founders can ship software faster than they can explain it. Good projects disappear
+because research, scripting, filming, and editing become a second job. Proof handles that work
+while the founder chooses the angle and records the take.
 
-> Demo video: TODO. Add the public link after the final recording is uploaded.
+**OpenAI Build Week track:** Work and productivity
 
-## Product flow
+[Live app](https://tryproof.org) ·
+[Backup deployment](https://proof-build2026.vercel.app) ·
+[No-signup recording demo](https://proof-build2026.vercel.app/#demo) ·
+[GPT-5.6-rendered output](https://www.youtube.com/shorts/5Q1ufojJ_f4) ·
+[Build Week evidence](OPENAI_BUILD_WEEK.md)
+
+[![Watch the GPT-5.6-rendered output](https://i.ytimg.com/vi/5Q1ufojJ_f4/hq2.jpg)](https://www.youtube.com/shorts/5Q1ufojJ_f4)
+
+## What Proof does
 
 ```text
-GitHub -> grounded research -> ranked angles -> brief -> teleprompter -> render -> MP4
+GitHub repository
+    -> current web research
+    -> ranked content angles
+    -> scene-by-scene brief
+    -> browser teleprompter
+    -> transcription and cutting
+    -> captions and generated graphics
+    -> vision review and repair
+    -> vertical MP4
 ```
 
-1. Connect GitHub and select a project.
-2. Run web-search research and generate ranked content angles.
-3. Turn the selected angle into a scene-by-scene filming brief.
-4. Record or upload one take per scene.
-5. Send the footage to the render service. Proof transcribes, cuts, captions, authors graphics,
-   reviews rendered frames, and composites the approved result.
+1. Connect GitHub and choose a project.
+2. Proof extracts the parts worth showing and researches current angles.
+3. GPT-5.6 ranks the angles and writes a filming brief.
+4. Record each scene in the browser or upload existing footage.
+5. The render service transcribes, cuts, captions, authors motion graphics, reviews the rendered
+   frames, and returns the final MP4.
+
+The landing page includes a one-scene recording demo that works without an account.
+
+## What changed during Build Week
+
+Proof existed before OpenAI Build Week and previously placed 1st Runner-Up at 'Sup Build2026.
+The eligibility boundary is commit
+[`adb92bc`](https://github.com/abel123code/proof/commit/adb92bcd9517fffaf875207d0da7be968ddc6c1e),
+created before the July 13 submission window.
+
+The initial product already had GitHub analysis, research, briefs, recording, base rendering,
+and an optional GPT-authored scene pipeline. Build Week turned that pipeline into the normal,
+tested GPT-5.6 path:
+
+- migrated judgment-heavy work to GPT-5.6 Sol and structured high-volume work to GPT-5.6 Luna
+- enabled original-detail, five-frame vision review on the normal render path
+- made render mode operator-owned at both the Next.js route and Railway worker
+- removed runtime switches that could bypass vision QA and made unexplained rejections produce a
+  usable repair issue
+- added a deterministic speaker and caption alpha mask
+- removed fixed graphics that the scene author could not repair
+- hardened remote assets against SSRF, local-file reads, redirects, and oversized streams
+- added durable render jobs, credit refunds, onboarding, upload fixes, and a no-signup demo
+
+The exact commit boundary is documented in [`OPENAI_BUILD_WEEK.md`](OPENAI_BUILD_WEEK.md).
+
+## Why GPT-5.6
+
+Proof uses Sol for research, angle judgment, scene authoring, and rendered-frame QA. Luna handles
+structured work such as repository understanding, brief drafting, and visual-template selection.
+`whisper-1` supplies the word timestamps used for cuts and captions.
+
+Two GPT-5.6 capabilities map directly to the render problem:
+
+- GPT-5.6 improves frontend layout, hierarchy, and design judgment. Proof asks Sol to author the
+  HTML and animation for each scene.
+- GPT-5.6 preserves original image dimensions when image detail is `auto` or `original`. Proof
+  uses explicit `detail: "auto"` so QA reviews the rendered frame rather than a reduced thumbnail.
+
+The complete role map and code paths are in [`OPENAI_BUILD_WEEK.md`](OPENAI_BUILD_WEEK.md).
+
+## The vision-reviewed render loop
+
+```mermaid
+flowchart LR
+  brief["Brief + transcript"] --> author["GPT-5.6 Sol authors scene HTML"]
+  author --> sanitize["HTML and asset validation"]
+  sanitize --> render["HyperFrames transparent render"]
+  render --> mask["Speaker and caption alpha mask"]
+  mask --> review["Sol reviews five composited frames"]
+  review -- "concrete issues" --> author
+  review -- "approved" --> final["Final MP4"]
+  review -- "retries exhausted" --> fallback["Captioned base video"]
+```
+
+Approval requires `{ "ok": true, "issues": [] }`. Empty output, malformed JSON, unsafe HTML,
+missing assets, and rejected frames fail closed. A rejected scene never reaches the final
+composite. If no generated scene survives, Proof returns the valid captioned base video.
+
+## Locally observed verification
+
+These results were observed on July 21 during the Codex task that produced this branch. The
+test and build commands are reproducible below. The public Short proves the final artifact, not
+the internal retry log.
+
+| Check | Result |
+|---|---|
+| Web tests | 52 passed |
+| Render service tests | 62 passed |
+| Production Next.js build | Passed |
+| Live Sol and Luna API requests | Passed |
+| Live Responses web search | Passed |
+| Live Sol image input with `detail: "auto"` | Passed |
+| FFmpeg alpha-mask pixel test | Passed |
+| Full eight-second talking-head fixture | Completed |
+| Vision result | Two variants rejected, second repair approved |
+| Output | 1080x1920 MP4 with audio |
+| Public generated output | [Watch on YouTube](https://www.youtube.com/shorts/5Q1ufojJ_f4) |
+
+The full fixture took 397 seconds on the local Windows verification machine because Sol rejected
+two variants before approving the third. It caught duplicate values, weak entrance contrast,
+and malformed headline copy.
+
+## Fastest verification path
+
+1. Watch the [GPT-5.6-rendered output](https://www.youtube.com/shorts/5Q1ufojJ_f4).
+2. Open the [no-signup recording demo](https://proof-build2026.vercel.app/#demo).
+3. Inspect the adaptive loop in:
+   - [`render/src/premium/index.ts`](render/src/premium/index.ts)
+   - [`render/src/premium/qa.ts`](render/src/premium/qa.ts)
+   - [`render/src/premium/author.ts`](render/src/premium/author.ts)
+   - [`render/src/ffmpeg.ts`](render/src/ffmpeg.ts)
+4. Run the verification commands below.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  web["Next.js app\nresearch, brief, teleprompter"]
-  api["Render API\ndurable job"]
+  web["Next.js app\nGitHub, research, brief, teleprompter"]
+  jobs["Supabase\njobs, credits, storage"]
+  worker["Railway render worker"]
   base["Whisper + ffmpeg + Remotion\ncut and captions"]
   author["GPT-5.6 Sol\nscene author"]
   qa["GPT-5.6 Sol vision\nfive-frame review"]
-  out["Supabase\nPostgres and Storage"]
+  output["Final MP4"]
 
-  web --> api --> base --> author --> qa
+  web --> jobs --> worker --> base --> author --> qa
   qa -- "repair reasons" --> author
-  qa -- "approved scene" --> out
-  web <--> out
+  qa -- "approved scenes" --> output
+  qa -- "no approved scenes" --> base
+  output --> jobs
+  jobs --> web
 ```
 
-The repo has two packages:
+The root package owns GitHub analysis, research, angle scoring, briefs, authentication, credits,
+capture, and durable job creation. [`render/`](render/README.md) owns transcription, cutting,
+captions, HyperFrames rendering, vision QA, ffmpeg composition, and final upload.
 
-- The root Next.js app owns GitHub analysis, research, angle scoring, briefs, auth, credits,
-  footage capture, and durable render-job creation.
-- [`render/`](render/README.md) owns Whisper transcription, cutting, Remotion captions,
-  HyperFrames scene rendering, GPT vision review, ffmpeg composition, and final upload.
+## Built with Codex
 
-## OpenAI model roles
+Codex recovered and audited the premium-render experiments, migrated each model role with tests,
+traced the browser request that bypassed premium rendering, and ran the API and render checks.
 
-| Work | Default | Why |
-|---|---|---|
-| Angle scoring and other high-judgment text work | `gpt-5.6-sol` | Quality changes the product decision |
-| High-volume structured work | `gpt-5.6-luna` | Lower-cost mechanical JSON tasks |
-| Web-search research | `gpt-5.6-sol` with Responses web search | Current sources and extraction |
-| Premium scene planning fallback, authoring, and vision QA | `gpt-5.6-sol` | Layout, repair, and visual judgment |
-| Brief-driven visual template selection | `gpt-5.6-luna` | Small structured selection task |
-| Word timestamps | `whisper-1` | Per-word timing for cuts and captions |
+The human decisions stayed explicit: keep the name Proof, focus on founders, enter Work and
+productivity, make vision QA mandatory, assign Sol and Luna by workload, and leave Programmatic
+Tool Calling out of a data-dependent repair loop.
 
-Each role is environment-overridable. The defaults live in
-[`src/lib/openai.ts`](src/lib/openai.ts),
-[`render/src/premium/`](render/src/premium/), and
-[`render/src/visual-planner.ts`](render/src/visual-planner.ts).
-
-## Render and vision QA
-
-The normal user path is operator-owned and defaults to `generated-experimental`. Both the web
-route and render worker ignore client mode fields. Operators can set `RENDER_EDIT_MODE` to
-`brief-driven` or `classic` on both services to select a fallback.
-
-For each premium scene, Proof:
-
-1. Builds a scene spec from the filming brief and transcript timing.
-2. Asks Sol for one self-contained HyperFrames HTML composition.
-3. Rejects unsafe HTML before Chromium sees it. External network references, traversal,
-   dynamic imports, `eval`, and similar execution paths fail validation.
-4. Renders a transparent MOV and clears authored pixels over the moving-speaker corridor and
-   burned-in caption band.
-5. Composites the scene over the real footage and samples five frames from entrance to exit.
-6. Sends those frames with explicit `detail: "auto"`. GPT-5.6 processes `auto` at original
-   detail.
-7. Requires `{ ok: true, issues: [] }`. Empty, malformed, or rejecting responses fail closed.
-8. Feeds concrete issues back to the author for up to two repairs.
-
-Vision QA has no runtime bypass. Premium mode also removes fixed keyword chips and text cards
-from the base layer so every non-caption graphic remains repairable by the author.
-
-If every authored scene is rejected or a premium request fails, Proof returns the captioned
-base render. The user still receives a valid video.
-
-The safety boundary combines model review with deterministic controls. Prompt instructions
-help the author. Sanitization, the alpha mask, and fail-closed parsing enforce the result.
-
-## Security and reliability
-
-- Render routes authenticate the caller and verify brief ownership before spending credits or
-  reading a job.
-- Durable jobs live in `render_jobs`. Railway can reclaim queued jobs and stale processing
-  locks after a restart.
-- Remote scene assets are HTTPS-only, host-allowlisted, DNS-checked against private ranges,
-  redirect-free, image-only, and size-bounded.
-- Public tables added by early migrations use deny-all RLS. Owner-scoped tables keep their
-  existing policies. Server routes use the service role with explicit ownership checks.
-- Heavy renders use a measured concurrency cap of two. Premium scene renders use a separate
-  cap of two.
-- Premium OpenAI calls use a 90-second per-attempt deadline with one transient retry.
+The required `/feedback` Session ID comes from the Codex task that produced this branch and is
+supplied through the Devpost submission.
 
 ## Local setup
 
-Prerequisites: Node 20+, ffmpeg, a Supabase project with GitHub OAuth, and an OpenAI API key.
+Requirements: Node.js 20 or newer, FFmpeg, an OpenAI API key, and a Supabase project with GitHub
+OAuth.
 
 ```bash
 npm ci
@@ -114,11 +178,8 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Run the migrations in [`supabase/migrations/`](supabase/migrations/) in order. Approve a user
-through `allowed_users`. Local development can run with auth bypassed when the public Supabase
-anon key is absent.
-
-Start the render service separately:
+Apply the migrations in [`supabase/migrations/`](supabase/migrations/) in order, then start the
+render service:
 
 ```bash
 cd render
@@ -126,46 +187,44 @@ npm ci
 npm run server
 ```
 
-See [`.env.example`](.env.example) for the full secret-free configuration surface and
-[`render/README.md`](render/README.md) for Railway and Zo setup.
+The public no-signup demo contains a fixed one-scene brief, so it can be tested without local
+sample data or an account.
 
 ## Verification
 
 ```bash
-# Web app
-npm run verify       # TypeScript + 52 tests
+# Web application
+npm run verify
 npm run build
 
 # Render service
 npm --prefix render run check
-npm --prefix render run test:unit   # 62 tests
+npm --prefix render run test:unit
 ```
 
-The Build Week verification also exercised live `gpt-5.6-sol` and `gpt-5.6-luna` requests,
-Responses web search, image input at original detail, and one real SUTD fixture through the
-complete render path. Sol rejected two scene variants, supplied repair reasons, approved the
-third, and the final 1080x1920 MP4 differed from the caption-only fallback.
+Expected results: 52 web tests, 62 render tests, and a successful production build.
 
-`npm run lint` currently reports seven pre-existing `react-hooks/set-state-in-effect` errors in
-the admin and studio UI. This branch leaves those effect bodies unchanged.
+## Security and reliability
+
+Model-authored HTML is validated before Chromium runs it. Remote assets are HTTPS-only,
+host-allowlisted, DNS-checked, redirect-free, image-only, and size-bounded. Render routes verify
+ownership before reserving credits, and failed starts are refunded. The full trust-boundary map
+is in [`OPENAI_BUILD_WEEK.md`](OPENAI_BUILD_WEEK.md#trust-boundaries).
 
 ## Repository map
 
 ```text
-src/app/                 Next.js pages and route handlers
-src/components/studio/   research, brief, teleprompter, and render UI
+src/app/                 Next.js pages and API routes
+src/components/studio/   research, brief, recording, and render UI
 src/lib/                 OpenAI, GitHub, auth, database, and brief logic
-render/src/premium/      scene plan, author, sanitizer, renderer, and vision QA
-render/remotion/         deterministic captions and base overlay
-supabase/migrations/     schema, credits, RLS, durable jobs, onboarding
-tests/                   web app unit tests
-render/tests/            render service unit tests
+render/src/premium/      scene authoring, sanitization, assets, and vision QA
+render/remotion/         captions and deterministic base visuals
+supabase/migrations/     schema, RLS, credits, durable jobs, and onboarding
+tests/                   web application tests
+render/tests/            render service tests
 ```
 
-## Project history
+## Team
 
-Proof existed before OpenAI Build Week and placed 1st Runner-Up at 'Sup Build2026. The Build
-Week work is scoped in [OPENAI_BUILD_WEEK.md](OPENAI_BUILD_WEEK.md) and the dated git history.
-
-- Abel Lee: web app, research, brief, teleprompter, auth, and credits
-- Abhishek Vulla: render service, cutting, bespoke scenes, and vision QA
+- Abel Lee: web application, research, briefs, teleprompter, authentication, and credits
+- Abhishek Vulla: render service, cutting, generated scenes, vision QA, and Build Week integration

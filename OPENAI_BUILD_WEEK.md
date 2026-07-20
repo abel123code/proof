@@ -1,173 +1,261 @@
 # Proof for OpenAI Build Week
 
+Proof turns a founder's GitHub work into a researched, scripted, recorded, and edited product
+video.
+
 | | |
 |---|---|
 | Track | Work and productivity |
 | Product | [tryproof.org](https://tryproof.org) |
+| Backup deployment | [proof-build2026.vercel.app](https://proof-build2026.vercel.app) |
+| No-signup demo | [Open the recording demo](https://proof-build2026.vercel.app/#demo) |
+| GPT-5.6-rendered output | [Watch on YouTube](https://www.youtube.com/shorts/5Q1ufojJ_f4) |
 | Repository | [abel123code/proof](https://github.com/abel123code/proof) |
-| Demo video | TODO: add the public link |
-| Codex `/feedback` session ID | TODO: add after the final feedback submission |
+| Eligibility base | [`adb92bc`](https://github.com/abel123code/proof/commit/adb92bcd9517fffaf875207d0da7be968ddc6c1e) |
 
-Proof turns a founder's GitHub work into a researched, scripted, recorded, and edited product
-video. The founder chooses the angle and records the take. Proof handles the research, brief,
-cut, captions, motion graphics, visual review, and final MP4.
+## The problem
 
-## Submission scope
+Technical founders can ship software faster than they can market it. A repository does not
+explain itself to customers, and turning it into consistent video content requires research,
+scripting, recording, editing, and visual review.
 
-Proof existed before this event and placed 1st Runner-Up at 'Sup Build2026. Judge the work in
-the Build Week commit window. The main additions are:
+Proof reduces that work to one guided flow. The founder chooses the project and angle, records
+the take, and keeps final control. Proof handles the research, brief, cutting, captions,
+generated graphics, visual QA, and MP4 delivery.
 
-- GPT-authored HyperFrames scenes driven by each brief's spoken line, visual cue, brand motif,
-  and uploaded assets.
-- A fail-closed GPT-5.6 vision gate that reviews rendered frames and sends concrete repair
-  reasons back to the scene author.
-- GPT-5.6 role migration with Sol for judgment and Luna for high-volume mechanical work.
-- Server-owned premium routing, so the normal user flow reaches the vision-reviewed pipeline.
-- A deterministic speaker and caption safety mask before visual review.
-- Asset inclusion checks, SVG rasterization, SSRF-hardened asset loading, and HTML
-  sanitization.
-- Durable render jobs, explicit ownership checks, credit refunds on failed starts, and bounded
-  render/model concurrency.
-- First-time onboarding and a no-signup landing demo on the default branch.
+This fits Work and productivity because it automates a real go-to-market workflow for founders
+and small product teams.
 
-The commit history is the source of truth for dates and exact diffs.
+## Eligibility boundary
+
+Proof existed before Build Week and previously placed 1st Runner-Up at 'Sup Build2026. The event
+permits existing projects when the submission separates the prior platform from work completed
+during the submission period.
+
+The eligibility base is commit
+[`adb92bc`](https://github.com/abel123code/proof/commit/adb92bcd9517fffaf875207d0da7be968ddc6c1e),
+committed on July 13 before the submission window opened.
+
+### Before the submission window
+
+The base already contained GitHub analysis, research, filming briefs, browser recording,
+Whisper transcription, cutting, captions, fixed overlays, and an optional GPT-authored
+HyperFrames path. Its initial visual QA parser failed closed and sent named issues back to the
+author.
+
+### Added or meaningfully extended during Build Week
+
+| Area | Build Week work | Evidence |
+|---|---|---|
+| Durable render v2 | Brief-driven visuals, persistent jobs, render confirmation, credit handling | `4bb7be2`, `914f125` |
+| Footage reliability | Multi-scene uploads, filename previews, browser fallback, playable MP4 storage | `5ac9339`, `2087bfa`, `331aa14` |
+| Asset security | HTTPS allowlisting, DNS checks, local-file rejection, redirect blocking, streaming caps | `a67c702`, `d020997`, `d0930b5`, `eaf4878` |
+| Product access | First-time onboarding and a no-signup landing demo | `9373a1b`, `c178d83` |
+| Premium quality | Brief anchoring, visual-first prompts, asset inclusion checks, SVG rasterization, parallel scenes | `67a73ac` through `2fe16cf` |
+| GPT-5.6 migration | Sol and Luna assigned by workload and verified against the live API | `39c270e` |
+| Original-detail QA | Five composited frames sent with explicit `detail: "auto"` | `9abbdc5` |
+| Normal user path | Web route and worker enforce the operator-selected render mode | `ec5c89f`, `21488b5` |
+| Speaker safety | Alpha mask clears generated pixels over the speaker and captions | `bb255e1` |
+| QA integrity | No runtime bypass, generic issues for unexplained rejection, repairable base layer | `21488b5` |
+| Reproducibility | Root lockfile repaired and setup verified with clean installs | `639f7c3` |
+
+Seven premium-engine commits were authored on July 15 and recovered onto this branch on July 21
+with their original author timestamps. They remain separate commits instead of being squashed
+into the migration.
+
+```bash
+git diff adb92bcd9517fffaf875207d0da7be968ddc6c1e..HEAD
+git log --format=fuller adb92bcd9517fffaf875207d0da7be968ddc6c1e..HEAD
+```
+
+## Submission evidence
+
+| Criterion | Evidence |
+|---|---|
+| Technological implementation | Adaptive render, inspect, and repair loop with 114 tests. Live GPT-5.6 checks and explicit trust boundaries. |
+| Design | Complete GitHub-to-MP4 workflow, no-signup recording demo, and public generated output |
+| Potential impact | Removes research, scripting, and video-editing work from founders without a content team |
+| Quality of the idea | Generated graphics are reviewed as rendered pixels and can be rejected or repaired before delivery |
 
 ## Where GPT-5.6 runs
 
-| Stage | Role | Default |
-|---|---|---|
-| Repository understanding, proof extraction, brief drafting | Structured mechanical work | `gpt-5.6-luna` |
-| Trend and reference research | Responses web search and extraction | `gpt-5.6-sol` |
-| Angle generation and scoring | High-judgment ranking | `gpt-5.6-sol` |
-| Brief-driven visual template selection | Small structured selection | `gpt-5.6-luna` |
-| Premium scene plan fallback | Storyboard judgment when the brief has no usable scenes | `gpt-5.6-sol` |
-| Premium scene author | HTML, layout, animation, and repairs | `gpt-5.6-sol` |
-| Rendered-frame QA | Vision verdict and concrete issues | `gpt-5.6-sol` |
+| Stage | Default | What it decides | Main code |
+|---|---|---|---|
+| Repository understanding and proof extraction | `gpt-5.6-luna` | Structured facts worth turning into content | `src/lib/openai.ts` |
+| Brief drafting and mechanical JSON work | `gpt-5.6-luna` | Scene structure and content fields | `src/lib/openai.ts` |
+| Trend and reference research | `gpt-5.6-sol` | Current sources and relevant patterns | `src/lib/openai.ts` |
+| Angle generation and scoring | `gpt-5.6-sol` | Which story is worth filming | `src/lib/openai.ts` |
+| Visual template selection | `gpt-5.6-luna` | Deterministic visual treatment | `render/src/visual-planner.ts` |
+| Premium scene planning | `gpt-5.6-sol` | Scene timing and visual intent | `render/src/premium/scenes.ts` |
+| Premium scene author | `gpt-5.6-sol` | HTML, layout, animation, and repairs | `render/src/premium/author.ts` |
+| Rendered-frame QA | `gpt-5.6-sol` | Approval and concrete visual issues | `render/src/premium/qa.ts` |
 
-`whisper-1` remains responsible for word-level transcription. The cutter and scene anchors need
-per-word timestamps. Proof also builds a vocabulary prompt from the script and keyword flags to
-reduce proper-noun errors.
+`whisper-1` remains responsible for per-word transcription because cuts, captions, and scene
+anchors need word timing. Invalid reasoning-effort values fail during configuration instead of
+silently falling back.
 
-The role names follow OpenAI's [GPT-5.6 model guidance](https://developers.openai.com/api/docs/guides/model-guidance?model=gpt-5.6).
-All model IDs remain environment-overridable.
+## Why GPT-5.6 specifically
 
-## The vision QA loop
+Proof's hardest model tasks are visual. The scene author writes a fresh HTML and animation
+composition for each brief. GPT-5.6 improves frontend aesthetics, layout, hierarchy, and design
+judgment, which directly affects that output.
+
+The QA model reviews the generated scene over the real speaker footage. GPT-5.6 preserves
+original image dimensions when detail is `auto` or `original`. Proof sends explicit
+`detail: "auto"` so QA can inspect small overlaps, clipped text, weak contrast, and malformed
+copy at the rendered resolution.
+
+Sources:
+
+- [GPT-5.6 model guidance](https://developers.openai.com/api/docs/guides/latest-model)
+- [OpenAI image input detail guide](https://developers.openai.com/api/docs/guides/images-vision#choose-an-image-detail-level)
+
+## The adaptive QA loop
 
 ```text
 brief + transcript
-      |
-      v
-Sol authors HTML -> sanitize -> HyperFrames render -> speaker-safe alpha mask
-      ^                                                    |
-      |                                                    v
-      +----------- concrete repair reasons <- Sol reviews five frames
+       |
+       v
+Sol authors scene HTML
+       |
+       v
+sanitize and verify assets
+       |
+       v
+HyperFrames transparent render
+       |
+       v
+speaker and caption alpha mask
+       |
+       v
+composite over real footage
+       |
+       v
+Sol reviews five rendered frames
+       |
+       +---- approved ----> final composite
+       |
+       +---- issues ------> author repair prompt
+       |
+       +---- exhausted ---> omit scene and preserve captioned base
 ```
 
-The reviewer sees entrance, early, middle, late, and exit frames composited over the actual
-speaker footage. Each image uses explicit `detail: "auto"`. On GPT-5.6, `auto` is equivalent
-to original detail according to the [OpenAI image input guide](https://developers.openai.com/api/docs/guides/images-vision#choose-an-image-detail-level).
+The five samples cover the entrance, early state, midpoint, late state, and exit. Approval
+requires:
 
-Approval requires explicit JSON with `ok: true` and an empty issues array. Empty output,
-malformed JSON, named issues, unsafe HTML, missing required assets, and exhausted retries all
-reject the scene. Rejected scenes stay out of the final composite. If no scene survives, the
-captioned base video is returned.
+```json
+{
+  "ok": true,
+  "issues": []
+}
+```
 
-The author prompt reserves a broad moving-speaker corridor. ffmpeg also clears authored alpha
-inside that corridor and the caption band before QA. The model judges the masked result, so it
-can still reject clipping, empty transitions, weak contrast, wrong text, or a meaningless
-composition.
+Empty output, malformed JSON, named issues, unsafe HTML, missing assets, and exhausted retries
+all reject the scene. `ok: false` without a reason receives a generic repair issue. The next
+author request gets the previous HTML and the concrete QA issues.
 
-## Why this is an adaptive loop
+Programmatic Tool Calling was evaluated and left out. Each review changes the next author
+request, so the sequence is intentionally data-dependent. Independent scenes still run
+concurrently behind a cap of two.
 
-Programmatic Tool Calling was evaluated and left out. Every vision verdict changes the next
-author request. The repair prompt exists only after the rendered frames have been judged. The
-current sequence is intentionally data-dependent:
+## Locally observed render verification
+
+The API and fixture results below were observed on July 21 during the Codex task that produced
+this branch. The test and build commands are reproducible. The public Short proves the final
+artifact, while the internal retry log remains local.
+
+Small live requests first confirmed:
+
+- Luna Chat Completions with JSON mode and `reasoning_effort: "none"`
+- Sol JSON planning and HTML authoring at low reasoning effort
+- Sol Responses API web search
+- Sol vision input with explicit `detail: "auto"`
+
+An eight-second 1080x1920 SUTD talking-head fixture then ran through the production code path:
 
 ```text
-author -> render -> inspect -> decide -> repair or accept
+Whisper transcription
+    -> cutting
+    -> Remotion captions
+    -> Sol scene author
+    -> HyperFrames render
+    -> alpha mask
+    -> five-frame Sol vision review
+    -> repair prompts
+    -> final ffmpeg composite
 ```
 
-Parallelism is used where decisions are independent. Separate scenes run through a semaphore
-with a measured cap of two.
+| Metric | Result |
+|---|---|
+| Source duration | 8 seconds |
+| Final duration | About 7.65 seconds |
+| Resolution | 1080x1920 |
+| Wall time | 397 seconds |
+| Initial scene | Rejected |
+| First repair | Rejected |
+| Second repair | Approved |
+| Final visual check | Headline above speaker, cards below face, captions unobstructed |
+| Public output | [Watch the rendered Short](https://www.youtube.com/shorts/5Q1ufojJ_f4) |
 
-## Live verification on 2026-07-21
-
-Small live requests confirmed these API shapes and returned the requested model IDs:
-
-- Luna Chat Completions, JSON mode, `reasoning_effort: "none"`
-- Sol Chat Completions for JSON planning and HTML authoring at low effort
-- Sol image input with explicit `detail: "auto"`
-- Sol Responses API with web search at low effort
-
-The known SUTD fixture then ran through the complete production path with QA enabled:
-
-- Source fixture: 8 seconds of real 1080x1920 talking-head footage
-- Final cut: 7.53 seconds
-- Wall time: 397 seconds on the local Windows verification machine
-- Vision result: first scene rejected twice, then approved after the second repair
-- Repair reasons: distinct deadline values, stronger entrance contrast, and exact headline copy
-- Final validation: 1080x1920 MP4 with audio
-- Composite check: final SHA-256 differed from the caption-only base
-- Visual check: headline stayed above the speaker, deadline cards stayed below the face, and
-  burned-in captions remained clear
-
-The 397-second runtime is a real limitation. The model loop supplied useful feedback and passed
-the corrected scene, but latency needs work before this can feel instant.
-
-## Trust boundaries
-
-Model-authored HTML is untrusted input. [`render/src/premium/sanitize.ts`](render/src/premium/sanitize.ts)
-rejects external URLs, traversal, embedded documents, network APIs, dynamic imports, and code
-evaluation before Chromium runs the scene.
-
-Remote assets pass through [`render/src/premium/asset-source.ts`](render/src/premium/asset-source.ts):
-HTTPS only, explicit host allowlist, private-address rejection after DNS resolution, no
-redirects, image content types only, and a streaming byte cap.
-
-The root render route authenticates the user, verifies brief ownership, reserves credits, and
-creates a durable job before calling Railway. Failure to start refunds the credits. The render
-service updates progress in `render_jobs` and uploads the completed MP4 to Supabase Storage.
-
-## Built with Codex
-
-Codex was used for the Build Week implementation and verification work:
-
-- recovered the measured premium-engine branch and retained QA
-- migrated model roles with tests before implementation
-- traced the real browser request that forced `brief-driven` mode
-- ran live Sol, Luna, web-search, vision, and full-render checks
-- found the base-layer keyword chip that made author repairs impossible
-- added regression tests for fail-closed QA, feedback handoff, mode ownership, request bounds,
-  keyword-cue isolation, and the deterministic safety mask
-
-Project guidance lives in `AGENTS.md`, `CLAUDE.md`, the dated ADRs, and the context notes under
-`docs/`. Codex session evidence and the `/feedback` ID will be attached to the final submission.
+QA caught duplicate deadline values, weak entrance contrast, and malformed headline copy. The
+second repair corrected the scene and passed the same five-frame review.
 
 ## Reproduce
 
 ```bash
 npm ci
-cp .env.example .env.local
-npm run verify              # 52 web tests
+npm run verify
 npm run build
 
 npm --prefix render ci
 npm --prefix render run check
-npm --prefix render run test:unit   # 62 render tests
+npm --prefix render run test:unit
 ```
 
-The repository's existing global lint run reports seven `react-hooks/set-state-in-effect`
-errors in admin and studio effects. The Build Week branch leaves those effect bodies unchanged.
+Expected results: 52 web tests, 62 render tests, and a successful Next.js production build. The
+render suite covers fail-closed QA, issue handoff, exhausted retries, GPT-5.6 parameters,
+original-detail payloads, mode ownership, fixed overlay removal, sanitizer bypasses, SSRF,
+streaming limits, and a real ffmpeg ProRes alpha-pixel check.
 
-Run migrations through `0014_onboarding_tour.sql`, start the web app with `npm run dev`, and
-start the render service with `npm --prefix render run server`. Full setup is in
-[`README.md`](README.md) and [`render/README.md`](render/README.md).
+## Trust boundaries
 
-## Remaining work
+Model-authored HTML is untrusted. [`render/src/premium/sanitize.ts`](render/src/premium/sanitize.ts)
+rejects external URLs, traversal, embedded documents, network APIs, dynamic imports, and code
+evaluation before Chromium runs the scene.
 
-- Add the public demo video link.
-- Submit Codex `/feedback` and add the session ID.
-- Verify this branch on the production Railway and Vercel deployments after review.
-- Reduce the six-minute local fixture latency.
-- Replace the fixed speaker corridor with tracked subject masks for off-center footage.
-- Run a production-hosted asset fixture through the full SVG-to-PNG and inclusion path.
+Remote assets pass through
+[`render/src/premium/asset-source.ts`](render/src/premium/asset-source.ts). They require HTTPS,
+an allowed hostname, public DNS results, an image content type, and a bounded streamed size.
+Redirects are disabled.
+
+The Next.js render route authenticates the user, verifies brief ownership, reserves credits,
+and creates a durable job before calling Railway. A failed worker start refunds the reservation.
+Railway updates progress in `render_jobs` and uploads the completed MP4 to Supabase Storage.
+
+Whole render jobs use a measured concurrency cap of two. Premium scene production has a separate
+cap of two. OpenAI render calls have a 90-second deadline per attempt with one transient retry.
+
+## How Codex contributed
+
+| Phase | Codex work | Human decision |
+|---|---|---|
+| Context recovery | Read branch history, docs, render code, and prior experiments | Keep Proof and preserve its real history |
+| Model migration | Located each model default, wrote role tests, and migrated Sol and Luna | Assign Sol to judgment and Luna to mechanical work |
+| QA activation | Traced the browser request that bypassed the premium path | Make vision review mandatory |
+| Visual debugging | Ran a real fixture and inspected rejected frames | Protect the speaker and captions deterministically |
+| Repair debugging | Found fixed base graphics the scene author could not repair | Remove non-caption graphics from the premium base |
+| API verification | Ran live Sol, Luna, web-search, and image-input checks | Keep only integrations that passed |
+| Reliability | Added request bounds, worker mode enforcement, and bypass tests | Fail safely to the captioned base |
+| Review | Used independent code and deliverable audits | Publish measured claims only |
+
+The required `/feedback` Session ID comes from the primary Codex task that produced this branch
+and is supplied through the Devpost submission.
+
+## Known limits
+
+- A premium render with two repairs took 397 seconds locally.
+- The fixed alpha mask assumes a broadly centered talking head.
+- A scene that never passes QA is omitted.
+- If every premium scene fails, Proof returns the captioned base video.
+- The no-signup experience covers recording. Full GitHub analysis and rendering require an
+  approved account and configured services.

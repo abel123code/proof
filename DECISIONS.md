@@ -6,11 +6,14 @@ Format: `## YYYY-MM-DD: Short title` → Context → Decision → Alternatives c
 
 For **what proof is** → [README.md](README.md)
 For **the render service** → [render/README.md](render/README.md)
-For **project rules** → [AGENTS.md](AGENTS.md) (imported by CLAUDE.md)
+For **project rules** → [AGENTS.md](AGENTS.md)
 
 ---
 
 ## 2026-07-10: Cap concurrent renders at 2 (env-tunable), don't run unbounded
+
+**Status:** The concurrency decision remains active. The original in-memory job-state caveat was
+superseded by durable `render_jobs` storage and restart recovery in `4bb7be2`.
 
 **Context:** the render service (`render/`) runs on a single Railway box (24 vCPU / 24 GB). `POST /render` fired `runJob` immediately with no queue or limit — so N simultaneous requests started N heavy renders at once. A render is CPU-bound (Remotion parallelizes frames across all cores) and holds a large transparent ProRes overlay in memory during the ffmpeg composite. Concern raised before the SUTD demo: if a room of students taps "render" in the same window, the box thrashes and renders fail live.
 
@@ -34,7 +37,10 @@ For **project rules** → [AGENTS.md](AGENTS.md) (imported by CLAUDE.md)
 - **Horizontal scale (multiple render replicas / autoscaling)** — the correct answer for real simultaneous scale, but real infra + cost. Overkill for a hackathon demo with dozens of users trickling in. Deferred.
 - **A real job queue (e.g. Trigger.dev, which the original stack used)** — heavier; the in-process semaphore is enough for one box. Deferred.
 
-**Consequences:** excess renders wait rather than crash; `queued` status is now meaningful (client already handles it). Server logs the cap at startup. **Caveat:** measured with 15s clips — longer clips hold more memory per job, so a 60s+ workload may need the cap dropped to 1. Retrying failed jobs is NOT implemented (an OOM'd or errored job stays `error`; client re-submits). Job state is still in-memory, so a redeploy mid-render still loses in-flight jobs (separate open issue).
+**Consequences:** excess renders wait rather than crash; `queued` status is meaningful. Server
+logs the cap at startup. The measurement used 15-second clips, so a 60-second workload may need
+the cap dropped to 1. Durable jobs now survive worker restarts, but an errored job still requires
+an explicit resubmission.
 
 **References:** `render/src/semaphore.ts`, `render/src/server.ts` (`renderGate`), `render/tests/semaphore.test.ts`, load test `render/tmp/loadtest.ts`; PR [#1](https://github.com/abel123code/proof/pull/1); related follow-up in memory `whisper-script-prompt` (transcription accuracy).
 
