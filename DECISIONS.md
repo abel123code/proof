@@ -37,3 +37,45 @@ For **project rules** → [AGENTS.md](AGENTS.md) (imported by CLAUDE.md)
 **Consequences:** excess renders wait rather than crash; `queued` status is now meaningful (client already handles it). Server logs the cap at startup. **Caveat:** measured with 15s clips — longer clips hold more memory per job, so a 60s+ workload may need the cap dropped to 1. Retrying failed jobs is NOT implemented (an OOM'd or errored job stays `error`; client re-submits). Job state is still in-memory, so a redeploy mid-render still loses in-flight jobs (separate open issue).
 
 **References:** `render/src/semaphore.ts`, `render/src/server.ts` (`renderGate`), `render/tests/semaphore.test.ts`, load test `render/tmp/loadtest.ts`; PR [#1](https://github.com/abel123code/proof/pull/1); related follow-up in memory `whisper-script-prompt` (transcription accuracy).
+
+---
+
+## 2026-07-21: Make vision-reviewed scenes the server-owned default
+
+**Context:** The browser sent `editMode: "brief-driven"`, which bypassed the premium author and
+vision gate even when the legacy `premium` boolean was enabled. A live SUTD fixture exposed a
+second failure: fixed keyword chips were already burned into the captioned base. Vision QA
+correctly rejected the chip for entering the protected head zone, then sent an impossible repair
+to the scene author because the author did not own that base layer.
+
+**Decision:** The Next.js route owns render mode and defaults to `generated-experimental`.
+Client mode fields are ignored. Operators can set `RENDER_EDIT_MODE` to `brief-driven` or
+`classic`. Premium mode omits fixed keyword chips, masks authored alpha over the moving-speaker
+and caption zones, then submits five composited frames to GPT-5.6 Sol at original detail.
+Rejected reasons feed the next author attempt. Parsing remains fail closed. Model-authored HTML
+still passes the sanitizer before rendering.
+
+Premium OpenAI requests use a 90-second per-attempt timeout and one retry. This gives one chance
+to recover from a connection reset while bounding the SDK retry window.
+
+Programmatic Tool Calling is excluded from this loop because each vision verdict changes the
+next author request. Independent scenes still run concurrently behind the cap of two.
+
+**Alternatives considered:**
+
+- Keep premium as a client flag. Rejected because stale clients can silently bypass QA.
+- Loosen or disable QA. Rejected after visual inspection confirmed the reported face overlap,
+  clipped wordmark, and empty transition.
+- Rely on coordinate instructions alone. Rejected after Sol repeated the same protected-zone
+  violation across two repair prompts.
+- Let QA review fixed keyword chips. Rejected because the author cannot repair a graphic already
+  present in the base video.
+
+**Consequences:** Premium mode has fewer fixed overlays, a deterministic face-safety floor, and a
+useful adaptive repair loop. Scenes can still be rejected for clipping, weak contrast, wrong
+copy, empty frames, or poor design after masking. Full rendering remains slow.
+
+**Evidence:** On 2026-07-21, an eight-second real fixture completed in 397 seconds. QA rejected
+two scene variants, approved the second repair, and the final 1080x1920 MP4 differed from the
+caption-only base. See `render/src/job.ts`, `render/src/ffmpeg.ts`,
+`render/src/premium/index.ts`, `render/src/premium/qa.ts`, and the tests in `render/tests/`.
