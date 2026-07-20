@@ -131,7 +131,6 @@ See [`.env.example`](.env.example) for the full secret-free configuration surfac
 ```bash
 # Web app
 npm run verify       # TypeScript + 52 tests
-npm run lint
 npm run build
 
 # Render service
@@ -143,6 +142,9 @@ The Build Week verification also exercised live `gpt-5.6-sol` and `gpt-5.6-luna`
 Responses web search, image input at original detail, and one real SUTD fixture through the
 complete render path. Sol rejected two scene variants, supplied repair reasons, approved the
 third, and the final 1080x1920 MP4 differed from the caption-only fallback.
+
+`npm run lint` currently reports seven pre-existing `react-hooks/set-state-in-effect` errors in
+the admin and studio UI. This branch leaves those effect bodies unchanged.
 
 ## Repository map
 

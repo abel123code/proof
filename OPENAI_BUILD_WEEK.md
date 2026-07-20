@@ -149,13 +149,15 @@ Project guidance lives in `AGENTS.md`, `CLAUDE.md`, the dated ADRs, and the cont
 npm ci
 cp .env.example .env.local
 npm run verify              # 52 web tests
-npm run lint
 npm run build
 
 npm --prefix render ci
 npm --prefix render run check
 npm --prefix render run test:unit   # 59 render tests
 ```
+
+The repository's existing global lint run reports seven `react-hooks/set-state-in-effect`
+errors in admin and studio effects. The Build Week branch leaves those effect bodies unchanged.
 
 Run migrations through `0014_onboarding_tour.sql`, start the web app with `npm run dev`, and
 start the render service with `npm --prefix render run server`. Full setup is in
