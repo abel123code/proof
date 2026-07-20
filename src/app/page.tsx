@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ProofMark } from "@/components/proof-mark";
+import { LandingDemo } from "@/components/landing-demo";
 import Link from "next/link";
 
 export const metadata: Metadata = {
@@ -49,7 +50,7 @@ export default function Landing() {
 
           <div className="flex items-center gap-2">
             <Link
-              href="/connect"
+              href="#demo"
               className="hidden rounded-full px-4 py-2 font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
             >
               Demo
@@ -102,7 +103,7 @@ export default function Landing() {
               </p>
             </div>
 
-            <div className="relative">
+            <div className="relative pb-8 md:pb-0">
               <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[2rem] bg-primary/5 blur-2xl" />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -110,6 +111,36 @@ export default function Landing() {
                 alt="A humanoid robot balancing TikTok and Instagram app icons"
                 className="mx-auto w-full max-w-md rounded-3xl"
               />
+              <a
+                href="#demo"
+                aria-label="Try the Proof recording demo with no sign-up, one scene in about 30 seconds"
+                className="group absolute -bottom-2 left-1/2 z-10 flex w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl border border-primary/30 bg-card/95 p-3.5 text-left shadow-[0_18px_45px_-20px_rgba(67,30,18,0.5)] backdrop-blur transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-[0_22px_55px_-20px_rgba(67,30,18,0.6)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto sm:min-w-72 md:bottom-6 md:left-0 md:-translate-x-6"
+              >
+                <span className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                  <span
+                    className="absolute size-3 rounded-full bg-primary/30 motion-safe:animate-ping"
+                    aria-hidden
+                  />
+                  <span className="relative size-2.5 rounded-full bg-primary" aria-hidden />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-mono text-[10px] uppercase tracking-[0.16em] text-primary">
+                    No-signup demo
+                  </span>
+                  <span className="mt-0.5 block font-display text-lg leading-tight tracking-tight text-foreground">
+                    Try Proof yourself
+                  </span>
+                  <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
+                    1 scene · about 30 sec
+                  </span>
+                </span>
+                <span
+                  className="font-mono text-lg text-primary transition-transform duration-200 group-hover:translate-x-1"
+                  aria-hidden
+                >
+                  ↓
+                </span>
+              </a>
             </div>
           </div>
         </section>
@@ -292,6 +323,8 @@ export default function Landing() {
                 </p>
               </div>
             </div>
+
+            <LandingDemo />
           </div>
         </section>
 

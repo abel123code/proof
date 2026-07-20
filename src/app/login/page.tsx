@@ -10,6 +10,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 function LoginInner() {
   const params = useSearchParams();
   const next = params.get("next") ?? "/connect";
+  const fromDemo = params.get("source") === "demo";
   const [loading, setLoading] = useState(false);
 
   async function signIn() {
@@ -30,11 +31,20 @@ function LoginInner() {
           <ProofMark className="size-10" />
         </Link>
         <h1 className="mt-6 font-display text-3xl leading-tight tracking-tight">
-          Sign in to Proof
+          {fromDemo ? "Ready to make your own?" : "Sign in to Proof"}
         </h1>
         <p className="mt-3 text-sm text-muted-foreground">
-          Proof is invite-only while we&apos;re in early access. Sign in with the Google
-          account (email) you were approved with.
+          {fromDemo ? (
+            <>
+              Sign in to start a real Proof project. Your demo take stays on your device and
+              will not be transferred. Proof is invite-only while we&apos;re in early access.
+            </>
+          ) : (
+            <>
+              Proof is invite-only while we&apos;re in early access. Sign in with the Google
+              account (email) you were approved with.
+            </>
+          )}
         </p>
         <Button onClick={signIn} disabled={loading} className="mt-6 w-full">
           {loading ? "Redirecting…" : "Continue with Google"}

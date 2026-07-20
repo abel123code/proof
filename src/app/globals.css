@@ -129,6 +129,7 @@
   }
   html {
     @apply font-sans;
+    scroll-behavior: smooth;
   }
   h1,
   h2,
@@ -156,5 +157,32 @@
     height: 1px;
     background: var(--primary);
     opacity: 0.6;
+  }
+}
+
+@keyframes demo-target-flash {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 28%, transparent);
+  }
+  35% {
+    box-shadow: 0 0 0 8px color-mix(in oklch, var(--primary) 18%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+#demo:target .demo-scene-card {
+  animation: demo-target-flash 1.4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  #demo:target .demo-scene-card {
+    animation: none;
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 16%, transparent);
   }
 }

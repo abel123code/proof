@@ -40,7 +40,10 @@ export function Teleprompter({
   startScene = 0,
   initialFootage = {},
   initialNames = {},
+  mode = "persisted",
+  maxRecordingSeconds,
   onFootageChange,
+  onLocalRecording,
   onClose,
 }: {
   doc: BriefDoc;
@@ -48,7 +51,10 @@ export function Teleprompter({
   startScene?: number;
   initialFootage?: Record<number, string>;
   initialNames?: Record<number, string>;
+  mode?: "persisted" | "local";
+  maxRecordingSeconds?: number;
   onFootageChange?: (sceneIndex: number, url: string | null, name?: string) => void;
+  onLocalRecording?: (blob: Blob | null) => void;
   onClose: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -58,6 +64,7 @@ export function Teleprompter({
   const trackRef = useRef<HTMLDivElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const localUrlsRef = useRef<Record<number, string>>({});
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastTsRef = useRef<number | null>(null);
@@ -93,8 +100,20 @@ export function Teleprompter({
   const pxPerSec = speed * 10;
   const busy = recording || countdown != null || uploading;
 
-  const uploadBlob = useCallback(
+  const saveBlob = useCallback(
     async (sceneIdx: number, blob: Blob) => {
+      if (mode === "local") {
+        const previousUrl = localUrlsRef.current[sceneIdx];
+        if (previousUrl) URL.revokeObjectURL(previousUrl);
+        const url = URL.createObjectURL(blob);
+        localUrlsRef.current[sceneIdx] = url;
+        setFootage((current) => ({ ...current, [sceneIdx]: url }));
+        setNames((current) => ({ ...current, [sceneIdx]: "Demo take" }));
+        setViewing(true);
+        onLocalRecording?.(blob);
+        toast.success("Take ready - nothing was uploaded");
+        return;
+      }
       if (!briefId) {
         toast.error("No brief to attach this footage to.");
         return;
@@ -121,13 +140,31 @@ export function Teleprompter({
         setUploading(false);
       }
     },
-    [briefId, onFootageChange],
+    [briefId, mode, onFootageChange, onLocalRecording],
   );
 
   const deleteCurrent = useCallback(async () => {
-    if (!briefId) return;
     const idx = active;
     setViewing(false);
+    if (mode === "local") {
+      const currentUrl = localUrlsRef.current[idx];
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
+      delete localUrlsRef.current[idx];
+      setFootage((current) => {
+        const next = { ...current };
+        delete next[idx];
+        return next;
+      });
+      setNames((current) => {
+        const next = { ...current };
+        delete next[idx];
+        return next;
+      });
+      onLocalRecording?.(null);
+      setElapsed(0);
+      return;
+    }
+    if (!briefId) return;
     try {
       const res = await fetch("/api/footage", {
         method: "DELETE",
@@ -154,7 +191,7 @@ export function Teleprompter({
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Delete failed");
     }
-  }, [briefId, active, onFootageChange]);
+  }, [briefId, active, mode, onFootageChange, onLocalRecording]);
 
   const resetScroll = useCallback(() => {
     offsetRef.current = 0;
@@ -223,11 +260,13 @@ export function Teleprompter({
     };
   }, [pxPerSec, applyOffset]);
 
-  useEffect(() => {
-    if (!recording) return;
-    const id = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => clearInterval(id);
-  }, [recording]);
+  useEffect(
+    () => () => {
+      Object.values(localUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+      localUrlsRef.current = {};
+    },
+    [],
+  );
 
   const setPlay = useCallback((v: boolean) => {
     playingRef.current = v;
@@ -279,6 +318,21 @@ export function Teleprompter({
     setRecording(false);
   }, [setPlay, stopCanvasDraw]);
 
+  useEffect(() => {
+    if (!recording) return;
+    const id = window.setInterval(() => {
+      setElapsed((current) => {
+        const next = current + 1;
+        if (maxRecordingSeconds && next >= maxRecordingSeconds) {
+          window.clearInterval(id);
+          window.setTimeout(stopRecording, 0);
+        }
+        return next;
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [maxRecordingSeconds, recording, stopRecording]);
+
   const beginRecord = useCallback(async () => {
     if (busy) return;
     setViewing(false);
@@ -318,15 +372,23 @@ export function Teleprompter({
         mr.onerror = () => {
           stopCanvasDraw();
           setRecording(false);
-          toast.error("Recording failed on this device. Try again or use Upload.");
+          toast.error(
+            mode === "local"
+              ? "Recording failed on this device. You can still preview the teleprompter."
+              : "Recording failed on this device. Try again or use Upload.",
+          );
         };
         mr.onstop = () => {
           if (chunksRef.current.length === 0) {
-            toast.error("No video was captured. Try again or use Upload instead.");
+            toast.error(
+              mode === "local"
+                ? "No video was captured. Check camera access and try again."
+                : "No video was captured. Try again or use Upload instead.",
+            );
             return;
           }
           const blob = new Blob(chunksRef.current, { type: mimeType || "video/webm" });
-          void uploadBlob(sceneIdx, blob);
+          void saveBlob(sceneIdx, blob);
         };
         // Timeslice so data flushes progressively (more robust on Safari/iOS than
         // a single flush at stop, which can drop the whole take).
@@ -335,11 +397,15 @@ export function Teleprompter({
         setRecording(true);
       } catch {
         stopCanvasDraw();
-        toast.error("Couldn't start recording on this device. Try Upload instead.");
+        toast.error(
+          mode === "local"
+            ? "Couldn't start recording on this device. You can still preview the teleprompter."
+            : "Couldn't start recording on this device. Try Upload instead.",
+        );
       }
     }
     setPlay(true);
-  }, [busy, active, resetScroll, startCanvasDraw, stopCanvasDraw, setPlay, uploadBlob]);
+  }, [busy, active, mode, resetScroll, saveBlob, startCanvasDraw, stopCanvasDraw, setPlay]);
 
   const goToScene = useCallback(
     (i: number) => {
@@ -368,7 +434,7 @@ export function Teleprompter({
   useEffect(() => () => stopCanvasDraw(), [stopCanvasDraw]);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-start gap-4 overflow-y-auto p-4 py-8 lg:flex-row lg:justify-center lg:gap-8 lg:py-4">
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-start gap-3 overflow-y-auto p-3 py-4 sm:gap-4 sm:p-4 sm:py-8 lg:flex-row lg:justify-center lg:gap-8 lg:py-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
 
       <canvas ref={canvasRef} width={720} height={1280} className="hidden" />
@@ -461,7 +527,7 @@ export function Teleprompter({
         )}
         {currentUrl && !recording && !uploading && (
           <div className="absolute left-3 top-3 z-20 rounded-full bg-[#e0533d] px-2 py-1 font-mono text-[10px] text-white">
-            ✓ uploaded
+            {mode === "local" ? "saved locally" : "uploaded"}
           </div>
         )}
 
@@ -529,16 +595,37 @@ export function Teleprompter({
           {scene?.label && (
             <p className="mt-1 font-display text-2xl tracking-tight text-white">{scene.label}</p>
           )}
+          {mode === "local" && (
+            <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-3">
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#e0533d]">
+                {currentUrl ? "Step 3 of 3" : recording ? "Step 2 of 3" : "Step 1 of 3"}
+              </p>
+              <p className="mt-1.5 text-sm leading-relaxed text-white/85">
+                {currentUrl
+                  ? "Preview your clip. If it looks good, choose Use this take."
+                  : recording
+                    ? "Read the script as it scrolls. Press the red stop button when you finish."
+                    : "Press the red circle below. You will get a 3-second countdown before recording starts."}
+              </p>
+            </div>
+          )}
+          {mode === "local" && (
+            <p className="mt-2 text-[11px] leading-relaxed text-white/40">
+              Nothing is uploaded or saved.
+            </p>
+          )}
         </div>
 
         <div className="flex items-center justify-center gap-3">
-          <button
-            onClick={() => goToScene(active - 1)}
-            disabled={busy || active === 0}
-            className="rounded-full border border-white/25 px-3 py-2 text-xs text-white/80 transition hover:bg-white/10 disabled:opacity-30"
-          >
-            ‹ Prev
-          </button>
+          {mode !== "local" && (
+            <button
+              onClick={() => goToScene(active - 1)}
+              disabled={busy || active === 0}
+              className="rounded-full border border-white/25 px-3 py-2 text-xs text-white/80 transition hover:bg-white/10 disabled:opacity-30"
+            >
+              ‹ Prev
+            </button>
+          )}
 
           {recording ? (
             <button
@@ -559,16 +646,22 @@ export function Teleprompter({
             </button>
           )}
 
-          <button
-            onClick={() => goToScene(active + 1)}
-            disabled={busy || active === sceneCount - 1}
-            className="rounded-full border border-white/25 px-3 py-2 text-xs text-white/80 transition hover:bg-white/10 disabled:opacity-30"
-          >
-            Next ›
-          </button>
+          {mode !== "local" && (
+            <button
+              onClick={() => goToScene(active + 1)}
+              disabled={busy || active === sceneCount - 1}
+              className="rounded-full border border-white/25 px-3 py-2 text-xs text-white/80 transition hover:bg-white/10 disabled:opacity-30"
+            >
+              Next ›
+            </button>
+          )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-white/60">
+        <div
+          className={`flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-white/60 ${
+            mode === "local" ? "hidden" : "flex"
+          }`}
+        >
           <button
             onClick={() => setPlay(!playing)}
             className="rounded-full border border-white/25 px-3 py-1 text-white/80 transition hover:bg-white/10"
@@ -633,12 +726,20 @@ export function Teleprompter({
               >
                 Delete
               </button>
+              {mode === "local" && (
+                <button
+                  onClick={onClose}
+                  className="rounded-full bg-[#e0533d] px-4 py-1.5 text-xs font-medium text-white transition hover:bg-[#c8472f]"
+                >
+                  Use this take
+                </button>
+              )}
             </div>
           </div>
         )}
 
         {/* Scene picker with recorded ticks */}
-        <div className="flex max-w-full flex-wrap justify-center gap-1.5">
+        <div className={`max-w-full flex-wrap justify-center gap-1.5 ${mode === "local" ? "hidden" : "flex"}`}>
           {doc.scenes.map((s, i) => {
             const has = !!footage[i];
             const isActive = i === active;
