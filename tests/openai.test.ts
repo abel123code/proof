@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { parseJSONLoose } from "@/lib/openai";
+import {
+  DEFAULT_OPENAI_MINI_MODEL,
+  DEFAULT_OPENAI_TEXT_MODEL,
+  chatReasoningForModel,
+  parseJSONLoose,
+} from "@/lib/openai";
+
+describe("OpenAI model roles", () => {
+  it("maps premium and mechanical work to the requested GPT-5.6 tiers", () => {
+    expect(DEFAULT_OPENAI_TEXT_MODEL).toBe("gpt-5.6-sol");
+    expect(DEFAULT_OPENAI_MINI_MODEL).toBe("gpt-5.6-luna");
+  });
+
+  it("preserves no-reasoning behavior for the mechanical Chat Completions tier", () => {
+    expect(chatReasoningForModel("gpt-5.6-luna", "gpt-5.6-luna")).toEqual({
+      reasoning_effort: "none",
+    });
+    expect(chatReasoningForModel("gpt-5.6-sol", "gpt-5.6-luna")).toEqual({});
+    expect(chatReasoningForModel("gpt-4o", "gpt-5.6-luna")).toEqual({});
+  });
+});
 
 describe("parseJSONLoose", () => {
   it("parses plain JSON", () => {

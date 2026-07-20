@@ -6,16 +6,19 @@ import { join } from "node:path";
 
 import { scriptToVocabPrompt } from "../src/transcribe.js";
 import {
+  DEFAULT_PREMIUM_PLAN_MODEL,
   normalizeScenes,
   planScenes,
   findAnchorMs,
   buildSceneIntent,
   scenesFromBrief,
 } from "../src/premium/scenes.js";
+import { DEFAULT_PREMIUM_AUTHOR_MODEL } from "../src/premium/author.js";
 import { validateComposition } from "../src/premium/sanitize.js";
 import { produceScene } from "../src/premium/index.js";
-import { parseQaVerdict } from "../src/premium/qa.js";
+import { DEFAULT_PREMIUM_QA_MODEL, parseQaVerdict } from "../src/premium/qa.js";
 import { isReasoningModel, normalizeEffort, chatTuning } from "../src/premium/model-params.js";
+import { DEFAULT_BRIEF_VISUAL_MODEL } from "../src/visual-planner.js";
 import type { SceneSpec, RenderBrief, Word } from "../src/types.js";
 
 const VALID_HTML = `<!doctype html><html><head></head><body>
@@ -247,6 +250,7 @@ test("isReasoningModel: gpt-5.x and o-series are reasoning models; gpt-4o is not
 });
 
 test("normalizeEffort: accepts low/medium/high, defaults everything else to low", () => {
+  assert.equal(normalizeEffort("none"), "none");
   assert.equal(normalizeEffort("medium"), "medium");
   assert.equal(normalizeEffort("HIGH"), "high");
   assert.equal(normalizeEffort("low"), "low");
@@ -258,8 +262,16 @@ test("normalizeEffort: accepts low/medium/high, defaults everything else to low"
 test("chatTuning: reasoning models get reasoning_effort and NO temperature; legacy models get neither", () => {
   assert.deepEqual(chatTuning("gpt-5.4", "medium"), { reasoning_effort: "medium" });
   assert.deepEqual(chatTuning("gpt-5.4", undefined), { reasoning_effort: "low" });
+  assert.deepEqual(chatTuning("gpt-5.6-luna", "none"), { reasoning_effort: "none" });
   assert.deepEqual(chatTuning("gpt-4o", "medium"), {}); // no temperature key at all
   assert.equal("temperature" in chatTuning("gpt-5.4", "low"), false);
+});
+
+test("premium model defaults use GPT-5.6 tiers by workload role", () => {
+  assert.equal(DEFAULT_PREMIUM_PLAN_MODEL, "gpt-5.6-sol");
+  assert.equal(DEFAULT_PREMIUM_AUTHOR_MODEL, "gpt-5.6-sol");
+  assert.equal(DEFAULT_PREMIUM_QA_MODEL, "gpt-5.6-sol");
+  assert.equal(DEFAULT_BRIEF_VISUAL_MODEL, "gpt-5.6-luna");
 });
 
 // ---- brief.scenes -> SceneSpec (Task 3) ----

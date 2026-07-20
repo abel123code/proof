@@ -2,7 +2,8 @@ import { getOpenAI } from "../openai.js";
 import { chatTuning } from "./model-params.js";
 import type { RenderBrief, Word, SceneSpec, RenderBriefScene } from "../types.js";
 
-const PLAN_MODEL = process.env.PREMIUM_PLAN_MODEL || "gpt-5.4-mini";
+export const DEFAULT_PREMIUM_PLAN_MODEL = "gpt-5.6-sol";
+const PLAN_MODEL = process.env.PREMIUM_PLAN_MODEL || DEFAULT_PREMIUM_PLAN_MODEL;
 const PLAN_EFFORT = process.env.PREMIUM_PLAN_EFFORT; // default "low" via chatTuning
 
 const MIN_SCENE_MS = 1500;

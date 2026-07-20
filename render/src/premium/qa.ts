@@ -5,7 +5,8 @@ import { buildCutVideo, overlayScenesAtOffsets, extractFrames } from "../ffmpeg.
 import type { SceneSpec, SceneQA } from "../types.js";
 import { chatTuning } from "./model-params.js";
 
-const QA_MODEL = process.env.PREMIUM_QA_MODEL || "gpt-5.4-mini";
+export const DEFAULT_PREMIUM_QA_MODEL = "gpt-5.6-sol";
+const QA_MODEL = process.env.PREMIUM_QA_MODEL || DEFAULT_PREMIUM_QA_MODEL;
 const QA_EFFORT = process.env.PREMIUM_QA_EFFORT; // default "low" via chatTuning
 
 const QA_SYSTEM = `You are a ruthless art director reviewing frames of a bespoke motion-graphic scene

@@ -2,7 +2,8 @@ import { getOpenAI } from "../openai.js";
 import { chatTuning } from "./model-params.js";
 import type { RenderBrief, SceneSpec } from "../types.js";
 
-const AUTHOR_MODEL = process.env.PREMIUM_AUTHOR_MODEL || "gpt-5.4";
+export const DEFAULT_PREMIUM_AUTHOR_MODEL = "gpt-5.6-sol";
+const AUTHOR_MODEL = process.env.PREMIUM_AUTHOR_MODEL || DEFAULT_PREMIUM_AUTHOR_MODEL;
 const AUTHOR_EFFORT = process.env.PREMIUM_AUTHOR_EFFORT; // default "low" via chatTuning
 
 /**
