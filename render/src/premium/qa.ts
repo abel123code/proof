@@ -17,15 +17,31 @@ burned-in captions along the bottom. Judge ONLY what you can see. FAIL the scene
 - reproducing the spoken sentence as on-screen subtitles / duplicating the bottom captions
 - misspelled or garbled on-screen text
 - text/graphics clipped at an edge, overlapping badly, or unreadable (too small / low contrast)
-- graphics covering the bottom caption band or burying the speaker's face in the center third
+- any text or graphic touching the speaker's face, forehead, eyes, or head, wherever the speaker appears
+- graphics covering the bottom caption band
 - empty/broken render (nothing meaningful on screen) or obvious AI-slop layout
 Respond with JSON: { "ok": boolean, "issues": string[] }. Each issue is a SHORT concrete fix
-("embed the actual screenshot, don't just name it", "move the title out of the center",
+("embed the actual screenshot, don't just name it", "move the title fully to the left rail",
 "fix 'Triger.dev' -> 'Trigger.dev'"). Return an empty issues array when the scene is good.`;
+
+export function qaSampleTimes(durationSec: number): number[] {
+  return [0.05, 0.2, 0.5, 0.85, 0.95].map((ratio) =>
+    Number((durationSec * ratio).toFixed(3)),
+  );
+}
+
+export function qaImagePart(dataUrl: string) {
+  return {
+    type: "image_url" as const,
+    // GPT-5.6 treats explicit auto as original detail. The Chat Completions SDK type
+    // currently exposes auto but not the equivalent original literal.
+    image_url: { url: dataUrl, detail: "auto" as const },
+  };
+}
 
 /**
  * Render→look→re-render QA for one scene. Composites the scene MOV onto just its window of the
- * base clip, samples 3 frames, and asks GPT-4o vision to approve or return concrete fixes. The
+ * base clip, samples 5 frames, and asks GPT-5.6 vision to approve or return concrete fixes. The
  * fixes feed back into authorScene for a re-render. This is the loop that kills the slop.
  */
 export async function qaScene(args: {
@@ -46,7 +62,7 @@ export async function qaScene(args: {
   // 2. Sample frames across the window.
   const frames = await extractFrames(
     qaComposite,
-    [durSec * 0.2, durSec * 0.5, durSec * 0.85],
+    qaSampleTimes(durSec),
     workDir,
     `${spec.id}-frame`,
   );
@@ -55,10 +71,7 @@ export async function qaScene(args: {
   const images = await Promise.all(
     frames.map(async (f) => {
       const b64 = (await readFile(f)).toString("base64");
-      return {
-        type: "image_url" as const,
-        image_url: { url: `data:image/png;base64,${b64}` },
-      };
+      return qaImagePart(`data:image/png;base64,${b64}`);
     }),
   );
 

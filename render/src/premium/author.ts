@@ -10,7 +10,7 @@ const AUTHOR_EFFORT = process.env.PREMIUM_AUTHOR_EFFORT; // default "low" via ch
  * The HyperFrames composition contract (verified against hyperframes@0.7.54 `render --help`
  * and the runtime docs). Baked into the system prompt so GPT authors renderable HTML.
  */
-function systemPrompt(durSec: number): string {
+export function authorSystemPrompt(durSec: number): string {
   return `You author a single HyperFrames HTML composition: a bespoke motion-graphic scene that overlays on top
 of talking-head footage in a 1080x1920 vertical video. Output ONE complete, self-contained HTML document. No
 markdown, no commentary — just the HTML.
@@ -33,9 +33,11 @@ HARD CONTRACT (the renderer fails if you break these):
    reference ANY external URL (no http/https/ws/ftp, no protocol-relative //). Inline small graphics as
    data: URIs if needed. Do NOT use fetch, XMLHttpRequest, WebSocket, EventSource, dynamic import(), eval,
    new Function(), or navigator.sendBeacon. The scene renders with no network.
-7. Keep type large and legible on mobile (min ~40px). The footage ALREADY has burned-in captions across the
-   BOTTOM ~22% of the frame — keep that band completely clear, and keep the center clear so you never cover the
-   speaker's face. Anchor graphics to the TOP third or the side edges.
+7. SPEAKER-SAFE LAYOUT. Keep the face/head corridor x=270..810, y=180..1080 completely empty. Keep the
+   burned-in caption band y=1450..1920 empty. Place opaque graphics in the header band y=48..180, the side
+   rails x=48..250 or x=830..1032, or the lower safe band y=1100..1420. A top-third graphic that enters the
+   face corridor still covers the speaker's forehead and will be rejected. On a repair, move every offending
+   element fully into a safe band. Keep type at least 40px and legible on mobile.
 8. BUILD A VISUAL, NOT A CAPTION. A bare headline/label on a background — a text card — is the #1
    failure mode and will be REJECTED. Every scene must SHOW something concrete: the product screenshot,
    the logos, a recreated UI element, a chart/number that animates, a diagram. Text is a label ON the
@@ -88,7 +90,7 @@ export async function authorScene(args: {
         : undefined,
   };
 
-  const system = systemPrompt(spec.durMs / 1000).replace(/\{\{ID\}\}/g, spec.id);
+  const system = authorSystemPrompt(spec.durMs / 1000).replace(/\{\{ID\}\}/g, spec.id);
   const client = getOpenAI();
   const resp = await client.chat.completions.create({
     model: AUTHOR_MODEL,

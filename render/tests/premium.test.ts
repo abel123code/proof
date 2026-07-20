@@ -13,10 +13,18 @@ import {
   buildSceneIntent,
   scenesFromBrief,
 } from "../src/premium/scenes.js";
-import { DEFAULT_PREMIUM_AUTHOR_MODEL } from "../src/premium/author.js";
+import {
+  DEFAULT_PREMIUM_AUTHOR_MODEL,
+  authorSystemPrompt,
+} from "../src/premium/author.js";
 import { validateComposition } from "../src/premium/sanitize.js";
 import { produceScene } from "../src/premium/index.js";
-import { DEFAULT_PREMIUM_QA_MODEL, parseQaVerdict } from "../src/premium/qa.js";
+import {
+  DEFAULT_PREMIUM_QA_MODEL,
+  parseQaVerdict,
+  qaImagePart,
+  qaSampleTimes,
+} from "../src/premium/qa.js";
 import { isReasoningModel, normalizeEffort, chatTuning } from "../src/premium/model-params.js";
 import { DEFAULT_BRIEF_VISUAL_MODEL } from "../src/visual-planner.js";
 import type { SceneSpec, RenderBrief, Word } from "../src/types.js";
@@ -208,6 +216,45 @@ test("produceScene returns a movPath when QA approves", async () => {
   }
 });
 
+test("produceScene sends concrete QA issues into the next author attempt", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "premium-"));
+  try {
+    const seen: Array<string[] | undefined> = [];
+    let reviews = 0;
+    const out = await produceScene(
+      {
+        spec: spec("scene-feedback"),
+        brief: { script: "", keywordFlags: [] },
+        assetHints: [],
+        assetsDir: dir,
+        premiumDir: dir,
+        basePath: "base.mp4",
+        fps: 30,
+        log: () => {},
+        skipQa: false,
+      },
+      {
+        author: async ({ priorIssues }) => {
+          seen.push(priorIssues);
+          return VALID_HTML;
+        },
+        render: async () => {},
+        qa: async () => {
+          reviews++;
+          return reviews === 1
+            ? { ok: false, issues: ["move the title away from the speaker's face"] }
+            : { ok: true, issues: [] };
+        },
+      },
+    );
+
+    assert.equal(out.movPath, join(dir, "scene-feedback.mov"));
+    assert.deepEqual(seen, [undefined, ["move the title away from the speaker's face"]]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("produceScene never renders unsafe model HTML (external script) and skips it", async () => {
   const dir = await mkdtemp(join(tmpdir(), "premium-"));
   try {
@@ -272,6 +319,19 @@ test("premium model defaults use GPT-5.6 tiers by workload role", () => {
   assert.equal(DEFAULT_PREMIUM_AUTHOR_MODEL, "gpt-5.6-sol");
   assert.equal(DEFAULT_PREMIUM_QA_MODEL, "gpt-5.6-sol");
   assert.equal(DEFAULT_BRIEF_VISUAL_MODEL, "gpt-5.6-luna");
+});
+
+test("vision QA sends explicit full-detail frames and samples scene boundaries", () => {
+  const image = qaImagePart("data:image/png;base64,AAAA");
+  assert.equal(image.type, "image_url");
+  assert.equal(image.image_url.detail, "auto");
+  assert.deepEqual(qaSampleTimes(4), [0.2, 0.8, 2, 3.4, 3.8]);
+});
+
+test("the author contract reserves a concrete speaker-safe corridor", () => {
+  const prompt = authorSystemPrompt(3);
+  assert.match(prompt, /x=270\.\.810, y=180\.\.1080/);
+  assert.match(prompt, /y=1450\.\.1920/);
 });
 
 // ---- brief.scenes -> SceneSpec (Task 3) ----
