@@ -1,5 +1,5 @@
 import { getOpenAI } from "../openai.js";
-import { chatTuning } from "./model-params.js";
+import { chatTuning, premiumRequestOptions } from "./model-params.js";
 import type { RenderBrief, SceneSpec } from "../types.js";
 
 export const DEFAULT_PREMIUM_AUTHOR_MODEL = "gpt-5.6-sol";
@@ -33,11 +33,12 @@ HARD CONTRACT (the renderer fails if you break these):
    reference ANY external URL (no http/https/ws/ftp, no protocol-relative //). Inline small graphics as
    data: URIs if needed. Do NOT use fetch, XMLHttpRequest, WebSocket, EventSource, dynamic import(), eval,
    new Function(), or navigator.sendBeacon. The scene renders with no network.
-7. SPEAKER-SAFE LAYOUT. Keep the face/head corridor x=270..810, y=180..1080 completely empty. Keep the
-   burned-in caption band y=1450..1920 empty. Place opaque graphics in the header band y=48..180, the side
-   rails x=48..250 or x=830..1032, or the lower safe band y=1100..1420. A top-third graphic that enters the
-   face corridor still covers the speaker's forehead and will be rejected. On a repair, move every offending
-   element fully into a safe band. Keep type at least 40px and legible on mobile.
+7. SPEAKER-SAFE LAYOUT. The speaker moves: keep x=160..920, y=180..1250 completely empty at every point,
+   including entrance and exit motion. Keep the burned-in caption band y=1450..1920 empty. Safe placement is
+   the header y=48..160, far gutters x=48..150 or x=930..1032, and lower band y=1260..1420. Keep every child
+   inside its safe parent; a chip flying through the protected zone or touching hair will be rejected. There is
+   no empty placeholder at any sampled frame: populate a card before revealing it and hide the whole card on
+   exit. On repair, move every offender fully into a safe band. Keep type at least 40px and never clip a wordmark.
 8. BUILD A VISUAL, NOT A CAPTION. A bare headline/label on a background — a text card — is the #1
    failure mode and will be REJECTED. Every scene must SHOW something concrete: the product screenshot,
    the logos, a recreated UI element, a chart/number that animates, a diagram. Text is a label ON the
@@ -106,7 +107,7 @@ export async function authorScene(args: {
           : `Author this scene:\n${JSON.stringify(payload)}`,
       },
     ],
-  });
+  }, premiumRequestOptions());
 
   const html = stripFences(resp.choices[0]?.message?.content || "");
   if (!html.toLowerCase().includes("id=\"stage\"") && !html.toLowerCase().includes("id='stage'")) {

@@ -1,9 +1,16 @@
 import { spawn } from "node:child_process";
+import { copyFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { KeepSegment } from "./types.js";
 
 const FFMPEG = process.env.FFMPEG_PATH || "ffmpeg";
 const FFPROBE = process.env.FFPROBE_PATH || "ffprobe";
+
+export const SPEAKER_SAFE_ALPHA_FILTER =
+  "format=rgba," +
+  "drawbox=x=160:y=180:w=760:h=1070:color=black@0:t=fill:replace=1," +
+  "drawbox=x=0:y=1450:w=iw:h=470:color=black@0:t=fill:replace=1," +
+  "format=yuva444p10le";
 
 function run(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -29,6 +36,29 @@ function runCapture(cmd: string, args: string[]): Promise<string> {
       code === 0 ? resolve(stdout) : reject(new Error(`${cmd} exited ${code}:\n${stderr.slice(-1200)}`)),
     );
   });
+}
+
+/**
+ * Clear authored pixels over the moving speaker and burned-in captions. Vision QA still
+ * reviews the masked composite and can reject clipped, empty, or otherwise broken scenes.
+ */
+export async function maskOverlaySafeZones(overlayPath: string): Promise<void> {
+  const maskedPath = `${overlayPath}.speaker-safe.mov`;
+  try {
+    await run(FFMPEG, [
+      "-y",
+      "-i", overlayPath,
+      "-vf", SPEAKER_SAFE_ALPHA_FILTER,
+      "-an",
+      "-c:v", "prores_ks",
+      "-profile:v", "4",
+      "-pix_fmt", "yuva444p10le",
+      maskedPath,
+    ]);
+    await copyFile(maskedPath, overlayPath);
+  } finally {
+    await rm(maskedPath, { force: true });
+  }
 }
 
 /** Extract mono 16kHz mp3 audio — small, fast, well under Whisper's 25MB limit. */

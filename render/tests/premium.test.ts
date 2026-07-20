@@ -25,8 +25,15 @@ import {
   qaImagePart,
   qaSampleTimes,
 } from "../src/premium/qa.js";
-import { isReasoningModel, normalizeEffort, chatTuning } from "../src/premium/model-params.js";
+import {
+  DEFAULT_PREMIUM_OPENAI_TIMEOUT_MS,
+  chatTuning,
+  isReasoningModel,
+  normalizeEffort,
+  premiumRequestOptions,
+} from "../src/premium/model-params.js";
 import { DEFAULT_BRIEF_VISUAL_MODEL } from "../src/visual-planner.js";
+import { SPEAKER_SAFE_ALPHA_FILTER } from "../src/ffmpeg.js";
 import type { SceneSpec, RenderBrief, Word } from "../src/types.js";
 
 const VALID_HTML = `<!doctype html><html><head></head><body>
@@ -182,6 +189,7 @@ test("produceScene skips (no movPath) when QA rejects through the final retry", 
         render: async () => {
           rendered++;
         },
+        mask: async () => {},
         qa: async () => ({ ok: false, issues: ["unreadable text"] }),
       },
     );
@@ -197,6 +205,7 @@ test("produceScene skips (no movPath) when QA rejects through the final retry", 
 test("produceScene returns a movPath when QA approves", async () => {
   const dir = await mkdtemp(join(tmpdir(), "premium-"));
   try {
+    const order: string[] = [];
     const out = await produceScene(
       {
         spec: spec("scene-2"),
@@ -208,9 +217,18 @@ test("produceScene returns a movPath when QA approves", async () => {
         fps: 30,
         log: () => {},
       },
-      { author: async () => VALID_HTML, render: async () => {}, qa: async () => ({ ok: true, issues: [] }) },
+      {
+        author: async () => VALID_HTML,
+        render: async () => { order.push("render"); },
+        mask: async () => { order.push("mask"); },
+        qa: async () => {
+          order.push("qa");
+          return { ok: true, issues: [] };
+        },
+      },
     );
     assert.equal(out.movPath, join(dir, "scene-2.mov"));
+    assert.deepEqual(order, ["render", "mask", "qa"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -239,6 +257,7 @@ test("produceScene sends concrete QA issues into the next author attempt", async
           return VALID_HTML;
         },
         render: async () => {},
+        mask: async () => {},
         qa: async () => {
           reviews++;
           return reviews === 1
@@ -275,6 +294,7 @@ test("produceScene never renders unsafe model HTML (external script) and skips i
         render: async () => {
           rendered++;
         },
+        mask: async () => {},
         qa: async () => ({ ok: true, issues: [] }),
       },
     );
@@ -321,6 +341,28 @@ test("premium model defaults use GPT-5.6 tiers by workload role", () => {
   assert.equal(DEFAULT_BRIEF_VISUAL_MODEL, "gpt-5.6-luna");
 });
 
+test("premium model calls have a bounded deadline and one transient retry", () => {
+  assert.equal(DEFAULT_PREMIUM_OPENAI_TIMEOUT_MS, 90_000);
+  assert.deepEqual(premiumRequestOptions(undefined), {
+    timeout: 90_000,
+    maxRetries: 1,
+  });
+  assert.deepEqual(premiumRequestOptions("45000"), {
+    timeout: 45_000,
+    maxRetries: 1,
+  });
+  assert.deepEqual(premiumRequestOptions("bad"), {
+    timeout: 90_000,
+    maxRetries: 1,
+  });
+});
+
+test("the deterministic overlay mask clears the moving-speaker and caption zones", () => {
+  assert.match(SPEAKER_SAFE_ALPHA_FILTER, /x=160:y=180:w=760:h=1070/);
+  assert.match(SPEAKER_SAFE_ALPHA_FILTER, /x=0:y=1450:w=iw:h=470/);
+  assert.match(SPEAKER_SAFE_ALPHA_FILTER, /black@0/);
+});
+
 test("vision QA sends explicit full-detail frames and samples scene boundaries", () => {
   const image = qaImagePart("data:image/png;base64,AAAA");
   assert.equal(image.type, "image_url");
@@ -330,7 +372,9 @@ test("vision QA sends explicit full-detail frames and samples scene boundaries",
 
 test("the author contract reserves a concrete speaker-safe corridor", () => {
   const prompt = authorSystemPrompt(3);
-  assert.match(prompt, /x=270\.\.810, y=180\.\.1080/);
+  assert.match(prompt, /x=160\.\.920, y=180\.\.1250/);
+  assert.match(prompt, /including entrance and exit motion/);
+  assert.match(prompt, /no empty placeholder/);
   assert.match(prompt, /y=1450\.\.1920/);
 });
 

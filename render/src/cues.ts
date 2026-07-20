@@ -1,4 +1,4 @@
-import type { KeywordCue, KeywordFlag, OverlayCue, OverlaySpec, Word } from "./types.js";
+import type { EditMode, KeywordCue, KeywordFlag, OverlayCue, OverlaySpec, Word } from "./types.js";
 
 function norm(word: string): string {
   return word.toLowerCase().replace(/[^a-z0-9']/g, "");
@@ -47,6 +47,15 @@ export function buildKeywordCues(words: Word[], flags: KeywordFlag[]): KeywordCu
     });
   }
   return cues;
+}
+
+/** Premium scenes own the visual layer; fixed keyword chips would be judged as part of scene QA. */
+export function buildKeywordCuesForMode(
+  words: Word[],
+  flags: KeywordFlag[],
+  editMode: EditMode,
+): KeywordCue[] {
+  return editMode === "generated-experimental" ? [] : buildKeywordCues(words, flags);
 }
 
 /** Big overlays (diagram / image / text card), anchored to a keyword hit or a ratio. */

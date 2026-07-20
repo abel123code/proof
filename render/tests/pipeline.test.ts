@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildKeywordCues, buildOverlayCues } from "../src/cues.js";
+import {
+  buildKeywordCues,
+  buildKeywordCuesForMode,
+  buildOverlayCues,
+} from "../src/cues.js";
 import { cleanTerms } from "../src/terms.js";
 import { remap } from "../src/remap.js";
 import type { KeepSegment, WhisperWord, Word } from "../src/types.js";
@@ -39,6 +43,14 @@ test("keyword cue still matches an ordinary multi-word phrase", () => {
 test("keyword cue does not match a partial prefix of a longer word", () => {
   const words = [w("aisle", 0, 300)];
   assert.equal(buildKeywordCues(words, [{ phrase: "ai" }]).length, 0);
+});
+
+test("premium mode removes fixed keyword chips before vision QA", () => {
+  const words = [w("eDimension", 0, 500)];
+  const flags = [{ phrase: "eDimension" }];
+  assert.deepEqual(buildKeywordCuesForMode(words, flags, "generated-experimental"), []);
+  assert.equal(buildKeywordCuesForMode(words, flags, "brief-driven").length, 1);
+  assert.equal(buildKeywordCuesForMode(words, flags, "classic").length, 1);
 });
 
 test("overlay cue anchored to a merged keyword resolves", () => {

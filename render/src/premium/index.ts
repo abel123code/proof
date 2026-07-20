@@ -11,6 +11,7 @@ import { validateComposition } from "./sanitize.js";
 import { fetchAssetBytes } from "./asset-source.js";
 import { assetsNamedInIntent, missingAssets } from "./assets-gate.js";
 import { createSemaphore } from "../semaphore.js";
+import { maskOverlaySafeZones } from "../ffmpeg.js";
 import sharp from "sharp";
 
 export { hyperframesAvailable };
@@ -47,9 +48,15 @@ function gsapMinPath(): string {
 export interface SceneDeps {
   author: typeof authorScene;
   render: typeof renderComposition;
+  mask: typeof maskOverlaySafeZones;
   qa: typeof qaScene;
 }
-const DEFAULT_DEPS: SceneDeps = { author: authorScene, render: renderComposition, qa: qaScene };
+const DEFAULT_DEPS: SceneDeps = {
+  author: authorScene,
+  render: renderComposition,
+  mask: maskOverlaySafeZones,
+  qa: qaScene,
+};
 
 function safeAssetName(src: string, i: number): string {
   const raw = basename(src.split("?")[0]) || `asset-${i}`;
@@ -150,6 +157,7 @@ export async function produceScene(
     }
 
     await deps.render({ html, sceneDir, outMovPath: movPath, fps });
+    await deps.mask(movPath);
     const qa = skipQa
       ? { ok: true as const, issues: [] as string[] }
       : await deps.qa({ spec, movPath, basePath, workDir: premiumDir });

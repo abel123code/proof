@@ -5,6 +5,7 @@
  * for models that accept it, so the same call site works across model tiers.
  */
 export type ReasoningEffort = "none" | "low" | "medium" | "high";
+export const DEFAULT_PREMIUM_OPENAI_TIMEOUT_MS = 90_000;
 
 export function isReasoningModel(model: string): boolean {
   return /^(gpt-5|o[0-9])/i.test(model.trim());
@@ -25,4 +26,13 @@ export function chatTuning(
   effort: string | undefined,
 ): { reasoning_effort?: ReasoningEffort } {
   return isReasoningModel(model) ? { reasoning_effort: normalizeEffort(effort) } : {};
+}
+
+/** Bound adaptive render calls so a slow model request cannot hold the job indefinitely. */
+export function premiumRequestOptions(rawTimeout: string | undefined = process.env.PREMIUM_OPENAI_TIMEOUT_MS) {
+  const parsed = Number(rawTimeout);
+  const timeout = Number.isFinite(parsed) && parsed >= 10_000 && parsed <= 300_000
+    ? Math.round(parsed)
+    : DEFAULT_PREMIUM_OPENAI_TIMEOUT_MS;
+  return { timeout, maxRetries: 1 } as const;
 }

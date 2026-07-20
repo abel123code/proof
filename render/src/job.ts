@@ -9,7 +9,7 @@ import { extractAudio, buildCutVideo, compositeOverlay, probeVideo, concatClips 
 import { transcribeWords, scriptToVocabPrompt } from "./transcribe.js";
 import { planCut } from "./cut.js";
 import { remap } from "./remap.js";
-import { buildKeywordCues, buildOverlayCues } from "./cues.js";
+import { buildKeywordCuesForMode, buildOverlayCues } from "./cues.js";
 import { cleanTerms } from "./terms.js";
 import {
   anchorVisualCuesToTranscript,
@@ -150,7 +150,7 @@ export async function runJob(
       editMode === "brief-driven"
         ? applyCaptionCopyAndEmphasis(cleanedWords, brief)
         : cleanedWords;
-    const keywordCues = buildKeywordCues(captionWords, brief.keywordFlags);
+    const keywordCues = buildKeywordCuesForMode(captionWords, brief.keywordFlags, editMode);
     const overlayCues =
       editMode === "brief-driven"
         ? []

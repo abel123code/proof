@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { getOpenAI } from "../openai.js";
 import { buildCutVideo, overlayScenesAtOffsets, extractFrames } from "../ffmpeg.js";
 import type { SceneSpec, SceneQA } from "../types.js";
-import { chatTuning } from "./model-params.js";
+import { chatTuning, premiumRequestOptions } from "./model-params.js";
 
 export const DEFAULT_PREMIUM_QA_MODEL = "gpt-5.6-sol";
 const QA_MODEL = process.env.PREMIUM_QA_MODEL || DEFAULT_PREMIUM_QA_MODEL;
@@ -93,7 +93,7 @@ export async function qaScene(args: {
         ],
       },
     ],
-  });
+  }, premiumRequestOptions());
 
   return parseQaVerdict(resp.choices[0]?.message?.content);
 }

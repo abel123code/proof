@@ -1,5 +1,5 @@
 import { getOpenAI } from "../openai.js";
-import { chatTuning } from "./model-params.js";
+import { chatTuning, premiumRequestOptions } from "./model-params.js";
 import type { RenderBrief, Word, SceneSpec, RenderBriefScene } from "../types.js";
 
 export const DEFAULT_PREMIUM_PLAN_MODEL = "gpt-5.6-sol";
@@ -179,7 +179,7 @@ export async function planScenes(args: {
       { role: "system", content: SYSTEM },
       { role: "user", content: user },
     ],
-  });
+  }, premiumRequestOptions());
 
   const content = resp.choices[0]?.message?.content;
   if (!content) throw new Error("planScenes: empty response");
