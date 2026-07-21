@@ -44,3 +44,26 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local agent instructions stay on developer machines.
+/CLAUDE.md
+
+# Local Build Week research, source media, and working artefacts.
+/.playwright-mcp/
+/Codex OpenAI Build Week Research.md
+/docs/codex-context-prompt.md
+/docs/superpowers/
+/PEEKABOO-DEMO.mp4
+/Proof Helps Developers Build in Public Videos.mp4
+/Proof demo trial/
+/SUTD Deadline Centre demo/
+/branding/
+/env
+/peekaboo-demo/
+/proof — Build2026 pitch.pdf
+/proof-render-prd.md
+/public/demo-output.mp4
+/render/scripts/task6-e2e.ts
+/ugc-proof.zip
+/ugc-proof/
+/weekend-build-log-making-peekaboo-less-l.json

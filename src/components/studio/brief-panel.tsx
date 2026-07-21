@@ -40,7 +40,7 @@ function readStored<T>(key: string): T | null {
 }
 
 // Demo insurance: set NEXT_PUBLIC_DEMO_RENDER_URL to a public path (e.g. /demo-render.mp4)
-// to SKIP the live Zo render and reveal a pre-rendered MP4. Leave it unset/empty to use
+// to skip the live render worker and reveal a pre-rendered MP4. Leave it unset to use
 // the real render pipeline.
 const DEMO_RENDER_URL: string | null =
   process.env.NEXT_PUBLIC_DEMO_RENDER_URL || null;

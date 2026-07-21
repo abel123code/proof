@@ -1,7 +1,7 @@
 # Proof render service
 
 The render package turns teleprompter footage plus a content brief into a vertical MP4. It
-runs as an Express service on Railway or Zo and keeps the heavy ffmpeg, Remotion, Chromium,
+runs as an Express service on Railway and keeps the heavy FFmpeg, Remotion, Chromium,
 HyperFrames, and vision work outside the Next.js process.
 
 ## Default pipeline
@@ -144,13 +144,10 @@ configure the same value in the Next.js deployment.
 
 `tmp/` and `out/` are ephemeral. DB-backed final videos are uploaded to Supabase Storage.
 
-## Zo alternative
+## Remote smoke test
+
+After deployment, run the same public request and polling path against the live worker:
 
 ```bash
-cd render
-bash zo-deploy.sh setup
-bash zo-deploy.sh start
+npm run test:remote -- <local-clip> https://proof-render-production.up.railway.app
 ```
-
-Expose port `8080` and point `RENDER_SERVICE_URL` at the proxy URL. Run as a non-root user so
-Chromium can use its sandbox.

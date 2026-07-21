@@ -9,14 +9,14 @@ export const runtime = "nodejs";
 // path without running the full Connect/Research pipeline. Hit via /brief?test=1.
 const TEST_DOC: BriefDoc = {
   title: "Render pipeline test",
-  hook: "Testing the Zo renderer end-to-end.",
+  hook: "Testing the Proof render worker end to end.",
   angle: "One scene: film it, send to editor, get a captioned cut back.",
   scenes: [
     {
       scene: 1,
       label: "Talk to camera",
       spokenLine:
-        "Hey, I built Proof. It turns your boring GitHub repos into viral TikTok videos. This is a quick test of the render pipeline running end to end.",
+        "Hey, I built Proof. It turns the work in your GitHub repository into a product video people will watch. This is a quick test of the render pipeline running end to end.",
       onScreenText: "Proof",
       brollCue: "Face to camera, upbeat energy.",
       durationSeconds: 12,

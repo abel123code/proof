@@ -1,5 +1,5 @@
-// The v2 virality engine. Replaces Exa + Apify + Gemini with a single OpenAI
-// web-search research agent. North star: engineer for algorithmic satisfaction
+// OpenAI web-search research and deterministic angle-ranking engine.
+// North star: engineer for algorithmic satisfaction
 // signals (completion, shares, saves, rewatches) - not likes. Every output is
 // scored against known virality drivers and ranked.
 //

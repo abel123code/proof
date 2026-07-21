@@ -8,8 +8,13 @@ import { extractAudio, buildCutVideo, probeVideo } from "../src/ffmpeg.js";
 import { transcribeWords } from "../src/transcribe.js";
 import { planCut } from "../src/cut.js";
 
-const SRC = process.argv[2] ?? "C:/Users/Abhis/Downloads/Yoda/footage/scene1.MOV";
+const SRC = process.argv[2];
 const OUT = process.argv[3] ?? join(process.cwd(), "out", "debug-base.mp4");
+
+if (!SRC) {
+  console.error("usage: tsx scripts/debug-cut.ts <source-video> [output-video]");
+  process.exit(1);
+}
 
 function sh(cmd: string, args: string[]): Promise<string> {
   return new Promise((res, rej) => {

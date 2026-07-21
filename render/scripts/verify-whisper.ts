@@ -6,9 +6,12 @@ import { join } from "node:path";
 import { extractAudio } from "../src/ffmpeg.js";
 import { transcribeWords } from "../src/transcribe.js";
 
-const SAMPLE =
-  process.argv[2] ??
-  "C:/Users/Abhis/OneDrive/Documents/SEO/lullaflex-site/hackathon/loom/out/final.mp4";
+const SAMPLE = process.argv[2];
+
+if (!SAMPLE) {
+  console.error("usage: npm run verify:whisper -- <path-to-media>");
+  process.exit(1);
+}
 
 async function main() {
   const dir = await mkdtemp(join(tmpdir(), "proof-whisper-"));

@@ -23,7 +23,7 @@ const mono = Geist_Mono({
 
 export const metadata: Metadata = {
   // Absolute base so the auto-generated OG/twitter image URLs resolve when shared.
-  metadataBase: new URL("https://proof-build2026.vercel.app"),
+  metadataBase: new URL("https://tryproof.org"),
   title: {
     default: "proof — get your github projects seen",
     template: "%s · proof",
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     "you built the thing. proof gets it watched. point it at your github repo, read the script off a teleprompter, and it edits the video for you.",
   openGraph: {
     type: "website",
-    url: "https://proof-build2026.vercel.app",
+    url: "https://tryproof.org",
     siteName: "proof",
     title: "proof — get your github projects seen",
     description:

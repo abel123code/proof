@@ -5,11 +5,14 @@ import { randomUUID } from "node:crypto";
 import { runJob } from "../src/job.js";
 import type { RenderBrief } from "../src/types.js";
 
-const SAMPLE =
-  process.argv[2] ??
-  "C:/Users/Abhis/OneDrive/Documents/SEO/lullaflex-site/hackathon/loom/out/final.mp4";
+const SAMPLE = process.argv[2];
 
-// Seeded brief stands in for the Exa/OpenAI half. Keyword flags that don't appear in the
+if (!SAMPLE) {
+  console.error("usage: npm run test:local -- <path-to-mp4>");
+  process.exit(1);
+}
+
+// A seeded brief isolates the render worker. Keyword flags that don't appear in the
 // recording simply produce no overlay — captions + cut still prove the pipeline.
 const brief: RenderBrief = {
   script: "",

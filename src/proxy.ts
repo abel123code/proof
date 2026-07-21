@@ -4,14 +4,14 @@ import { NextResponse, type NextRequest } from "next/server";
 // Refreshes the Supabase session on every request and gates the studio routes.
 // If the anon key isn't configured (local / pre-OAuth), auth is a no-op.
 
-const PUBLIC_PREFIXES = ["/", "/login", "/pending", "/auth", "/proof-deck.html"];
+const PUBLIC_PREFIXES = ["/", "/login", "/pending", "/auth"];
 
 export function isPublic(pathname: string): boolean {
   if (pathname === "/") return true;
   return PUBLIC_PREFIXES.some((p) => p !== "/" && pathname.startsWith(p));
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 

@@ -78,7 +78,7 @@ export interface RenderBriefScene {
   durationSeconds?: number;
 }
 
-/** The brief the render consumes (produced by the Exa/OpenAI half, or seeded for tests). */
+/** The brief the render worker consumes, produced by the web app or seeded for tests. */
 export interface RenderBrief {
   script: string;
   keywordFlags: KeywordFlag[];

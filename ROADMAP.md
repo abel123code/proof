@@ -2,49 +2,52 @@
 
 Last updated: 2026-07-21.
 
-## Current state
+## Shipped foundation
 
-Proof runs from GitHub analysis through research, filming, and final vertical MP4 delivery.
-The normal render path uses GPT-5.6 Sol for scene authoring and five-frame vision QA, with Luna
-handling structured high-volume work.
+Proof already runs one product path from repository analysis to a final vertical MP4:
 
-The current release includes:
+- GPT-5.6 Luna extracts repository proof and drafts structured briefs
+- GPT-5.6 Sol researches current demand, ranks angles, authors scenes, and reviews rendered frames
+- Whisper word timestamps drive cutting, captions, and scene anchors
+- HyperFrames creates bespoke transparent motion graphics
+- FFmpeg composes the real footage, captions, safety mask, and approved scenes
+- Supabase stores durable jobs, credits, progress, and final videos
+- Railway runs the resource-heavy rendering service
 
-- durable Supabase render jobs and final-video storage
-- script-informed `whisper-1` word timestamps
-- ffmpeg cutting and Remotion captions
-- HyperFrames scene authoring with asset inclusion checks
-- fail-closed, original-detail GPT-5.6 vision QA
-- concrete author repairs after rejection
-- deterministic speaker and caption alpha masking
-- sanitized model HTML and SSRF-hardened assets
-- operator-owned render mode at both web and worker boundaries
+The current verification baseline is recorded in `README.md` and `OPENAI_BUILD_WEEK.md`.
 
-## Verified baseline
+## Next quality bar
 
-- 52 web tests
-- 62 render tests
-- production Next.js build
-- live Sol and Luna Chat Completions
-- live Sol Responses web search
-- live Sol image input with `detail: "auto"`
-- full eight-second fixture through authoring, masking, two repairs, and final composition
+### 1. Brand-aware scene direction
 
-## Product priorities
+Let a founder attach a repository or assets folder, then extract its visual language: real
+screenshots, logos, typography, colour, spacing, interface patterns, and recurring motifs. Carry
+that design system into every authored scene instead of asking the model to invent one from text.
 
-1. Reduce premium latency. The measured eight-second fixture took 397 seconds with two repairs.
-2. Track the subject and derive the protected region per video instead of assuming a centered
-   talking head.
-3. Add hosted asset fixtures covering fetch, SVG rasterization, inclusion checks, QA, and final
-   composition.
-4. Record author latency, QA verdicts, repair count, fallback rate, and scene acceptance rate.
-5. Resume scene production after transient failures instead of rerunning the full job.
-6. Re-measure worker concurrency with 60-second clips before widening access.
+### 2. A stronger visual correction loop
 
-## Accepted limits
+Turn QA findings into explicit composition changes, compare repaired frames against the rejected
+candidate, and measure whether the issue was actually fixed. Track acceptance rate, repair count,
+fallback rate, and the defects that recur across projects.
 
-- Premium rendering currently takes minutes.
-- The safety mask assumes a broadly centered talking head.
-- A rejected generated scene is omitted.
-- If no generated scene passes QA, Proof returns the captioned base video.
-- Local and legacy `/out` files are ephemeral. Database-backed jobs and final videos are durable.
+### 3. Shot-aware composition
+
+Detect the subject and crop per clip, normalise framing before scene authoring, and derive the
+protected speaker region from the actual footage. Use that geometry when planning every layout.
+
+### 4. Agent-authored scene systems
+
+Move beyond caption-shaped overlays toward diagrams, product walkthroughs, UI reconstructions,
+timelines, comparisons, and recurring visual callbacks. Give the creative director a shot library
+and continuity state across the whole video.
+
+### 5. Resumable, observable rendering
+
+Checkpoint completed scenes, resume after transient failures, record author and QA latency, and
+surface the correction history in the product. Re-measure concurrency with full-length clips
+before widening access.
+
+## Product principle
+
+The model may propose a scene. Proof ships only rendered pixels that pass deterministic safety
+checks and visual review.

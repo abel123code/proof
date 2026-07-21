@@ -19,7 +19,7 @@ import { resolveRenderMode } from "@/lib/render-mode";
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-// The Zo-hosted render service. Set RENDER_SERVICE_URL in the deployed env.
+// The Railway render worker. Set RENDER_SERVICE_URL in the deployed environment.
 const RENDER_SERVICE_URL = process.env.RENDER_SERVICE_URL ?? "http://localhost:8080";
 const RENDER_TOKEN = process.env.RENDER_TOKEN;
 const FOOTAGE_BUCKET = "footage";
@@ -30,7 +30,7 @@ const EDIT_MODE = resolveRenderMode(process.env.RENDER_EDIT_MODE);
 
 /**
  * Kick off a render. Body: { briefId, videoUrls: string[], brief }.
- * Forwards the clips + brief to the Zo service and records the job on the brief.
+ * Forwards the clips and brief to the render worker and records the durable job.
  */
 export async function POST(req: Request) {
   const auth = await requireApprovedUser();
@@ -78,8 +78,8 @@ export async function POST(req: Request) {
       input: durableInput as Record<string, unknown>,
     });
 
-    // Send BOTH so it works regardless of whether the Zo box was redeployed:
-    // - updated box prefers `videoUrls` and concatenates all clips
+    // Send both forms for backwards compatibility with older worker deployments:
+    // - current workers prefer `videoUrls` and concatenate all clips
     // - old box ignores `videoUrls` and renders the single `videoUrl` (first clip)
     const res = await fetch(`${RENDER_SERVICE_URL}/render`, {
       method: "POST",
@@ -128,7 +128,7 @@ export async function POST(req: Request) {
 
 /**
  * Poll a render job: GET /api/render?jobId=...&briefId=...
- * When the job is done, the finished MP4 (served by the Zo box at /out) is downloaded
+ * When the job is done, the finished MP4 served by the worker is downloaded
  * and re-uploaded to our Storage so it persists, then saved on the brief.
  */
 export async function GET(req: Request) {
@@ -195,7 +195,7 @@ export async function GET(req: Request) {
         try {
           persistedUrl = await persistRender(briefId, sourceUrl);
         } catch (e) {
-          console.error("persistRender failed, falling back to Zo URL:", e);
+          console.error("persistRender failed, falling back to worker URL:", e);
           persistedUrl = sourceUrl;
         }
         await saveBriefRender(briefId, { status: "done", url: persistedUrl }).catch(() => {});
@@ -244,7 +244,7 @@ export async function DELETE(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
-/** Download the finished MP4 from the Zo box and re-upload to our Storage. */
+/** Download the finished MP4 from the render worker and re-upload to Storage. */
 async function persistRender(briefId: string, sourceUrl: string): Promise<string> {
   const res = await fetch(sourceUrl);
   if (!res.ok) throw new Error(`download edited.mp4 failed (${res.status})`);

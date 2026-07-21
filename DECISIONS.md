@@ -42,7 +42,8 @@ logs the cap at startup. The measurement used 15-second clips, so a 60-second wo
 the cap dropped to 1. Durable jobs now survive worker restarts, but an errored job still requires
 an explicit resubmission.
 
-**References:** `render/src/semaphore.ts`, `render/src/server.ts` (`renderGate`), `render/tests/semaphore.test.ts`, load test `render/tmp/loadtest.ts`; PR [#1](https://github.com/abel123code/proof/pull/1); related follow-up in memory `whisper-script-prompt` (transcription accuracy).
+**References:** `render/src/semaphore.ts`, `render/src/server.ts` (`renderGate`),
+`render/tests/semaphore.test.ts`, and PR [#1](https://github.com/abel123code/proof/pull/1).
 
 ---
 

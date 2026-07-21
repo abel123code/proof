@@ -5,21 +5,22 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   // Brand comes from the root layout's "%s · proof" template, so don't repeat it here.
-  title: "We turn boring github repos into viral tiktok videos.",
+  title: "Turn your GitHub work into a video people watch",
   description:
-    "Connect a repo. Get a video you'd actually post. Proof reverse-engineers what already works in your niche and turns your shipped project into recruiter-facing UGC.",
+    "Proof uses OpenAI GPT-5.6, Whisper, HyperFrames, and vision QA to research, script, cut, animate, and review product videos for founders.",
 };
 
 const teleprompterTags = ["teleprompter", "auto-edit", "captions + overlays"];
 
 const pipeline = [
   { label: "repo" },
-  { label: "Exa", key: true },
+  { label: "Luna", key: true },
+  { label: "Sol + web", key: true },
   { label: "brief" },
-  { label: "script" },
-  { label: "teleprompter" },
-  { label: "cut" },
-  { label: "Zo", key: true },
+  { label: "record" },
+  { label: "Whisper", key: true },
+  { label: "HyperFrames" },
+  { label: "Sol vision", key: true },
   { label: "mp4" },
 ];
 
@@ -70,15 +71,18 @@ export default function Landing() {
         <section className="relative overflow-hidden">
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 sm:px-8 md:grid-cols-[1.15fr_0.85fr] md:py-28 lg:py-32">
             <div>
+              <p className="mb-5 font-mono text-xs uppercase tracking-[0.18em] text-primary">
+                OpenAI Build Week · GPT-5.6 + Codex
+              </p>
               <h1 className="font-display text-5xl font-medium leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl">
-                We turn <span className="text-primary">boring</span> github
-                repos into <span className="text-primary">viral</span> tiktok
-                videos.
+                Turn your GitHub work into a video people
+                <span className="text-primary"> watch.</span>
               </h1>
 
               <p className="mt-7 max-w-md text-lg leading-relaxed text-muted-foreground">
-                Connect a repo. Get a video you&apos;d actually post. You film —
-                Proof does the rest.
+                Proof researches the angle, writes the brief, gives you a
+                teleprompter, cuts the take, authors the graphics, and reviews
+                the finished frames. You choose the story and record it.
               </p>
 
               <div className="mt-9 flex flex-wrap items-center gap-4">
@@ -97,24 +101,69 @@ export default function Landing() {
               </div>
 
               <p className="mt-10 font-mono text-sm text-muted-foreground">
-                recruiters spend{" "}
-                <span className="font-medium text-primary">11 seconds</span> on
-                your github.
+                your repo proves you built it.
+                <span className="font-medium text-primary"> nobody outside GitHub reads it.</span>
               </p>
             </div>
 
-            <div className="relative pb-8 md:pb-0">
-              <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[2rem] bg-primary/5 blur-2xl" />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/hero.png"
-                alt="A humanoid robot balancing TikTok and Instagram app icons"
-                className="mx-auto w-full max-w-md rounded-3xl"
-              />
+            <div className="relative mx-auto w-full max-w-sm pb-8 md:pb-0">
+              <div className="overflow-hidden rounded-[2rem] border border-border bg-[#171411] p-3 shadow-[0_26px_70px_-34px_rgba(46,24,12,0.7)]">
+                <div className="flex items-center justify-between px-2 py-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#b9afa5]">
+                  <span>Proof render</span>
+                  <span className="flex items-center gap-1.5 text-[#8ed1a8]">
+                    <span className="size-1.5 rounded-full bg-[#55b97b]" />
+                    Sol QA passed
+                  </span>
+                </div>
+
+                <div className="relative aspect-[9/13] overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0d0c0b] text-white">
+                  <div className="absolute inset-x-5 top-5 z-20">
+                    <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#c78b63]">
+                      scene 03 · proof from the repo
+                    </p>
+                    <p className="mt-2 max-w-[13ch] font-display text-3xl leading-[0.92] tracking-tight">
+                      One place for every deadline.
+                    </p>
+                  </div>
+
+                  <div className="absolute inset-x-4 top-[42%] z-20 grid grid-cols-2 gap-2 font-mono text-[9px]">
+                    <div className="rounded-xl border border-white/15 bg-[#221c18] p-3">
+                      <span className="text-[#c78b63]">01</span>
+                      <p className="mt-3 text-white/90">Canvas quiz</p>
+                      <p className="mt-1 text-white/45">tomorrow · 23:59</p>
+                    </div>
+                    <div className="rounded-xl border border-[#c78b63]/60 bg-[#332218] p-3">
+                      <span className="text-[#e3a97f]">02</span>
+                      <p className="mt-3 text-white/90">2D submission</p>
+                      <p className="mt-1 text-white/45">fri · 18:00</p>
+                    </div>
+                  </div>
+
+                  <div className="absolute bottom-12 left-1/2 h-36 w-28 -translate-x-1/2 rounded-t-[5rem] bg-[#6f4b39] opacity-80" />
+                  <div className="absolute bottom-6 left-1/2 z-20 w-[78%] -translate-x-1/2 rounded-md bg-white px-3 py-2 text-center font-mono text-[10px] font-semibold text-black">
+                    your deadlines should not live in six tabs
+                  </div>
+                </div>
+
+                <div className="mt-3 grid gap-2 px-1 pb-1 font-mono text-[9px] text-[#b9afa5]">
+                  <div className="grid grid-cols-[3rem_1fr] items-center gap-2">
+                    <span>speech</span>
+                    <span className="h-1.5 rounded-full bg-[#5b5149]" />
+                  </div>
+                  <div className="grid grid-cols-[3rem_1fr] items-center gap-2">
+                    <span>scene</span>
+                    <span className="h-1.5 w-[64%] rounded-full bg-[#c78b63]" />
+                  </div>
+                  <div className="grid grid-cols-[3rem_1fr] items-center gap-2">
+                    <span>vision</span>
+                    <span className="text-[#8ed1a8]">5 frames · approved</span>
+                  </div>
+                </div>
+              </div>
               <a
                 href="#demo"
                 aria-label="Try the Proof recording demo with no sign-up, one scene in about 30 seconds"
-                className="group absolute -bottom-2 left-1/2 z-10 flex w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl border border-primary/30 bg-card/95 p-3.5 text-left shadow-[0_18px_45px_-20px_rgba(67,30,18,0.5)] backdrop-blur transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-[0_22px_55px_-20px_rgba(67,30,18,0.6)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto sm:min-w-72 md:bottom-6 md:left-0 md:-translate-x-6"
+                className="group absolute -bottom-2 left-1/2 z-30 flex w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl border border-primary/30 bg-card/95 p-3.5 text-left shadow-[0_18px_45px_-20px_rgba(67,30,18,0.5)] backdrop-blur transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-[0_22px_55px_-20px_rgba(67,30,18,0.6)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto sm:min-w-72 md:left-0 md:-translate-x-6"
               >
                 <span className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
                   <span
@@ -307,19 +356,32 @@ export default function Landing() {
               ))}
             </div>
 
-            <div className="mt-10 grid gap-8 md:max-w-3xl md:grid-cols-2">
+            <div className="mt-10 grid gap-8 md:grid-cols-3">
               <div className="border-l-2 border-primary pl-4">
-                <p className="font-mono text-base font-bold text-primary">Exa</p>
+                <p className="font-mono text-base font-bold text-primary">
+                  OpenAI GPT-5.6
+                </p>
                 <p className="mt-1.5 text-base leading-relaxed text-muted-foreground">
-                  finds what&apos;s working in your niche — so the script is
-                  grounded, not generic.
+                  Luna handles structured extraction and drafting. Sol researches
+                  current demand, ranks angles, authors scenes, and reviews the result.
                 </p>
               </div>
               <div className="border-l-2 border-primary pl-4">
-                <p className="font-mono text-base font-bold text-primary">Zo</p>
+                <p className="font-mono text-base font-bold text-primary">
+                  Whisper + FFmpeg
+                </p>
                 <p className="mt-1.5 text-base leading-relaxed text-muted-foreground">
-                  renders on a real machine — the full Linux workload serverless
-                  can&apos;t hold.
+                  Word timestamps drive dead-space removal, cuts, captions, and
+                  scene anchors without chopping speech mid-word.
+                </p>
+              </div>
+              <div className="border-l-2 border-primary pl-4">
+                <p className="font-mono text-base font-bold text-primary">
+                  HyperFrames + Sol Vision
+                </p>
+                <p className="mt-1.5 text-base leading-relaxed text-muted-foreground">
+                  Bespoke motion graphics are rendered, composited over the real
+                  footage, inspected across five frames, and repaired or omitted.
                 </p>
               </div>
             </div>
@@ -341,7 +403,8 @@ export default function Landing() {
             <div className="mt-8 flex flex-wrap items-center gap-x-12 gap-y-3 font-mono text-base">
               <span className="text-primary">Abel</span>
               <span className="text-primary">Abhishek</span>
-              <span className="text-muted-foreground">built in 12 hours</span>
+              <span className="text-muted-foreground">built with Codex</span>
+              <span className="text-muted-foreground">powered by OpenAI</span>
             </div>
           </div>
         </section>

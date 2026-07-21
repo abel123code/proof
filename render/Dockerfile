@@ -1,6 +1,5 @@
 # proof render service — Express + Remotion (headless chromium) + ffmpeg.
-# System deps mirror render/zo-deploy.sh setup(): that apt list is the proven
-# reference set for chrome-headless-shell on a clean Debian box.
+# System dependencies for chrome-headless-shell and FFmpeg on a clean Debian worker.
 FROM node:22-bookworm-slim
 
 RUN apt-get update -y && apt-get install -y --no-install-recommends \

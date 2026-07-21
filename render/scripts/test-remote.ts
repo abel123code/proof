@@ -1,6 +1,6 @@
-// Remote test against a LIVE render service (e.g. on Zo): upload a local clip to a public
+// Remote test against a live render service: upload a local clip to a public
 // Supabase bucket, POST it to <baseUrl>/render, poll until done/error.
-// Usage: npm run test:zo -- <localClip> <baseUrl>
+// Usage: npm run test:remote -- <localClip> <baseUrl>
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { getSupabaseAdmin } from "../src/supabase.js";
@@ -8,7 +8,7 @@ import { getSupabaseAdmin } from "../src/supabase.js";
 const clip = process.argv[2];
 const baseUrl = (process.argv[3] || "").replace(/\/$/, "");
 if (!clip || !baseUrl) {
-  console.error("usage: tsx scripts/test-zo.ts <localClip> <baseUrl>");
+  console.error("usage: tsx scripts/test-remote.ts <localClip> <baseUrl>");
   process.exit(1);
 }
 
@@ -66,8 +66,8 @@ async function main() {
       const r = await fetch(dlUrl);
       if (r.ok) {
         const buf = Buffer.from(await r.arrayBuffer());
-        await writeFile("out/zo-result.mp4", buf);
-        console.log(`downloaded -> out/zo-result.mp4 (${buf.length} bytes)`);
+        await writeFile("out/remote-result.mp4", buf);
+        console.log(`downloaded -> out/remote-result.mp4 (${buf.length} bytes)`);
       } else {
         console.log(`(could not download from ${dlUrl}: ${r.status})`);
       }
@@ -83,6 +83,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error("test-zo FAILED:", e);
+  console.error("test-remote FAILED:", e);
   process.exit(1);
 });
