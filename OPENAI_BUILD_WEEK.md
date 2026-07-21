@@ -284,7 +284,6 @@ git diff adb92bcd9517fffaf875207d0da7be968ddc6c1e..HEAD
 git log --format=fuller adb92bcd9517fffaf875207d0da7be968ddc6c1e..HEAD
 ~~~
 
-The final Devpost submission will use the <code>/feedback</code> Session ID from the Codex task
-that finishes the improved render pipeline and production browser QA.
+The required <code>/feedback</code> Session ID is supplied through the Devpost submission form.
 
 </details>
