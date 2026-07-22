@@ -152,7 +152,7 @@ export async function produceScene(
 
     await deps.render({ html, sceneDir, outMovPath: movPath, fps });
     await deps.mask(movPath);
-    const qa = await deps.qa({ spec, movPath, basePath, workDir: premiumDir });
+    const qa = await deps.qa({ spec, movPath, basePath, workDir: premiumDir, assetHints });
     if (qa.ok) {
       const how = iter ? ` after ${iter} retr${iter === 1 ? "y" : "ies"}` : "";
       log(`  ${spec.id}: approved${how}`);

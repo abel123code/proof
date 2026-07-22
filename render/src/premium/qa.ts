@@ -9,20 +9,43 @@ export const DEFAULT_PREMIUM_QA_MODEL = "gpt-5.6-sol";
 const QA_MODEL = process.env.PREMIUM_QA_MODEL || DEFAULT_PREMIUM_QA_MODEL;
 const QA_EFFORT = process.env.PREMIUM_QA_EFFORT; // default "low" via chatTuning
 
-const QA_SYSTEM = `You are a ruthless art director reviewing frames of a bespoke motion-graphic scene
+/**
+ * The QA rubric, grounded in what was ACTUALLY staged for this scene.
+ *
+ * Why this is a function: with zero staged assets the reviewer demanded "a real GitHub commit-graph
+ * screenshot" / "the actual Proof screen recording" — materials that did not exist in the run, so no
+ * re-author could satisfy it and the scene burned every retry (verified on proof-live-c063e1e6:
+ * 5 scenes planned, 0 assets staged, 5/5 rejected, 3 of them for unstageable assets). QA may now only
+ * demand assets that are on disk, and the example fixes are conditional so they never suggest
+ * embedding a file that was never staged.
+ */
+export function qaSystemPrompt(assetHints: string[] = []): string {
+  const hasAssets = assetHints.length > 0;
+  const assetRule = hasAssets
+    ? `STAGED ASSETS for this scene: ${assetHints.join(", ")}. When the intent names one, the scene must embed
+  the real image — fail a scene that merely describes an asset instead of showing it. Demand ONLY assets from
+  that list, by filename.`
+    : `NO assets are staged for this scene. Judge it on layout, typography, motion and design craft. Do NOT
+  demand real screenshots, recordings, photos or logos, and do NOT fail the scene for using a recreated UI,
+  chart or diagram instead of a real capture — a well-built recreated visual is the CORRECT outcome here.`;
+  const examples = hasAssets
+    ? `("embed ./assets/${assetHints[0]} for real, don't just name it", "move the title fully into the left rail", "fix 'Triger.dev' -> 'Trigger.dev'")`
+    : `("move the strip off the speaker's chin into the header", "give the chart a real axis instead of bare labels", "fix 'Triger.dev' -> 'Trigger.dev'")`;
+  return `You are a ruthless art director reviewing frames of a bespoke motion-graphic scene
 composited over talking-head footage in a vertical (1080x1920) marketing video. The footage ALREADY has
 burned-in captions along the bottom. Judge ONLY what you can see. FAIL the scene for:
 - IT'S JUST TEXT. A headline/label on a background with no real visual is the #1 failure. A scene must
-  SHOW something concrete — the product screenshot, the logos, a UI element, a chart — not merely words.
+  SHOW something concrete — an embedded staged asset, a recreated UI element, a chart, a diagram — not merely words.
 - reproducing the spoken sentence as on-screen subtitles / duplicating the bottom captions
 - misspelled or garbled on-screen text
 - text/graphics clipped at an edge, overlapping badly, or unreadable (too small / low contrast)
-- any text or graphic touching the speaker's face, forehead, eyes, or head, wherever the speaker appears
+- any text or graphic touching the speaker's face, forehead, eyes, mouth, chin or head, wherever the speaker appears
 - graphics covering the bottom caption band
 - empty/broken render (nothing meaningful on screen) or obvious AI-slop layout
+${assetRule}
 Respond with JSON: { "ok": boolean, "issues": string[] }. Each issue is a SHORT concrete fix
-("embed the actual screenshot, don't just name it", "move the title fully to the left rail",
-"fix 'Triger.dev' -> 'Trigger.dev'"). Return an empty issues array when the scene is good.`;
+${examples}. Return an empty issues array when the scene is good.`;
+}
 
 export function qaSampleTimes(durationSec: number): number[] {
   return [0.05, 0.2, 0.5, 0.85, 0.95].map((ratio) =>
@@ -49,8 +72,10 @@ export async function qaScene(args: {
   movPath: string;
   basePath: string;
   workDir: string;
+  /** Filenames actually staged for this scene; QA may only demand these. */
+  assetHints?: string[];
 }): Promise<SceneQA> {
-  const { spec, movPath, basePath, workDir } = args;
+  const { spec, movPath, basePath, workDir, assetHints = [] } = args;
   const durSec = spec.durMs / 1000;
 
   // 1. Base window [anchor, anchor+dur] with the scene overlaid at offset 0.
@@ -81,7 +106,7 @@ export async function qaScene(args: {
     ...chatTuning(QA_MODEL, QA_EFFORT),
     response_format: { type: "json_object" },
     messages: [
-      { role: "system", content: QA_SYSTEM },
+      { role: "system", content: qaSystemPrompt(assetHints) },
       {
         role: "user",
         content: [

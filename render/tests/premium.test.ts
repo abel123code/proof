@@ -25,6 +25,7 @@ import {
   parseQaVerdict,
   qaImagePart,
   qaSampleTimes,
+  qaSystemPrompt,
 } from "../src/premium/qa.js";
 import {
   DEFAULT_PREMIUM_OPENAI_TIMEOUT_MS,
@@ -415,10 +416,33 @@ test("vision QA sends explicit full-detail frames and samples scene boundaries",
 
 test("the author contract reserves a concrete speaker-safe corridor", () => {
   const prompt = authorSystemPrompt(3);
-  assert.match(prompt, /x=160\.\.920, y=180\.\.1250/);
+  // The corridor must run all the way to the caption band. In close framing the mouth and chin
+  // sit around y=1250..1440, so the old "safe lower band y=1260..1420" told the author to place
+  // graphics directly on the speaker's face (proof-live-c063e1e6: 5/5 scenes QA-rejected, three
+  // of them naming the eyes/nose/mouth explicitly).
+  assert.match(prompt, /x=160\.\.920, y=180\.\.1440/);
+  assert.doesNotMatch(prompt, /lower band y=1260\.\.1420/);
+  assert.match(prompt, /NO safe strip between the speaker and the caption band/);
   assert.match(prompt, /including entrance and exit motion/);
   assert.match(prompt, /no empty placeholder/);
   assert.match(prompt, /y=1450\.\.1920/);
+});
+
+test("QA may only demand assets that were actually staged", () => {
+  const withAssets = qaSystemPrompt(["hero.png", "logo.png"]);
+  assert.match(withAssets, /hero\.png, logo\.png/);
+  assert.match(withAssets, /Demand ONLY assets from/);
+
+  // The zero-asset case is what broke the before-run: QA demanded a real GitHub commit-graph
+  // screenshot and the actual screen recording, neither of which was ever staged, so no
+  // re-author could satisfy it and the scene burned every retry.
+  const noAssets = qaSystemPrompt([]);
+  assert.match(noAssets, /NO assets are staged/);
+  assert.match(noAssets, /demand real screenshots, recordings, photos or logos/);
+  assert.match(noAssets, /recreated UI/);
+  // ...and the example fixes must not suggest embedding a file that does not exist
+  assert.doesNotMatch(noAssets, /\.\/assets\//);
+  assert.doesNotMatch(noAssets, /hero\.png/);
 });
 
 // ---- brief.scenes -> SceneSpec (Task 3) ----
