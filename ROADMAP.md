@@ -1,6 +1,6 @@
 # Proof roadmap
 
-Last updated: 2026-07-21.
+Last updated: 2026-07-23.
 
 ## Shipped foundation
 
@@ -10,7 +10,7 @@ Proof already runs one product path from repository analysis to a final vertical
 - GPT-5.6 Sol researches current demand, ranks angles, authors scenes, and reviews rendered frames
 - Whisper word timestamps drive cutting, captions, and scene anchors
 - HyperFrames creates bespoke transparent motion graphics
-- FFmpeg composes the real footage, captions, safety mask, and approved scenes
+- FFmpeg composes the real footage, captions, and bespoke scenes, each carrying an auditable QA verdict
 - Supabase stores durable jobs, credits, progress, and final videos
 - Railway runs the resource-heavy rendering service
 
@@ -32,8 +32,9 @@ fallback rate, and the defects that recur across projects.
 
 ### 3. Shot-aware composition
 
-Detect the subject and crop per clip, normalise framing before scene authoring, and derive the
-protected speaker region from the actual footage. Use that geometry when planning every layout.
+Detect the subject and crop per clip, and normalise framing before scene authoring. Feed the
+detected speaker position to the author as *guidance* for where a face is likely to sit — not as a
+hard geometry mask, which was tried and rejected (see DECISIONS.md 2026-07-23).
 
 ### 4. Agent-authored scene systems
 
@@ -49,5 +50,7 @@ before widening access.
 
 ## Product principle
 
-The model may propose a scene. Proof ships only rendered pixels that pass deterministic safety
-checks and visual review.
+The model may propose a scene, but it never self-approves. Deterministic safety checks and an
+editorial vision review judge every rendered scene; QA is an auditable advisor, so a scene may ship
+*flagged* — its unresolved issues surfaced to the user — rather than being silently dropped. The
+human decides what to re-render.

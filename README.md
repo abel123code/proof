@@ -51,7 +51,7 @@ GitHub repository
     -> browser teleprompter
     -> word-level transcription and cutting
     -> captions and bespoke motion graphics
-    -> five-frame visual review and repair
+    -> five-frame visual review, auto-patch, ship flagged (never dropped)
     -> 1080x1920 MP4
 ~~~
 
@@ -62,8 +62,11 @@ GitHub repository
    anchors.
 5. **Build the visuals.** GPT-5.6 Sol authors a fresh HyperFrames composition for each important
    beat.
-6. **Review the pixels.** Sol inspects five composited frames, returns concrete issues, and sends
-   rejected scenes back through the authoring loop.
+6. **Review the pixels.** Sol inspects five composited frames and tags each issue `safety` (a
+   graphic on a face feature or in the caption band, garbled text, a broken render) or `subjective`
+   (creative taste). Safety faults are patched — the prior HTML is edited, not rerolled — up to the
+   retry budget; a scene that still has one **ships flagged rather than being silently dropped**, and
+   every scene carries an auditable `SceneReport` the app can show the user.
 7. **Deliver.** Approved graphics are composited over the real footage and uploaded as a vertical
    MP4.
 
