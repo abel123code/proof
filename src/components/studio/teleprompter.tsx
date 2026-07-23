@@ -34,6 +34,27 @@ function fmt(s: number): string {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
+type TeleprompterPresentation = "modal" | "inline";
+
+export function shouldHandleGlobalPlaybackShortcut(
+  presentation: TeleprompterPresentation,
+  code: string,
+): boolean {
+  return presentation === "modal" && code === "Space";
+}
+
+export function discardActiveRecording(
+  recorder: MediaRecorder | null,
+  chunks: Blob[],
+): void {
+  if (recorder && recorder.state !== "inactive") {
+    recorder.ondataavailable = null;
+    recorder.onstop = null;
+    recorder.stop();
+  }
+  chunks.length = 0;
+}
+
 export function Teleprompter({
   doc,
   briefId,
@@ -41,6 +62,7 @@ export function Teleprompter({
   initialFootage = {},
   initialNames = {},
   mode = "persisted",
+  presentation = "modal",
   maxRecordingSeconds,
   onFootageChange,
   onLocalRecording,
@@ -52,6 +74,7 @@ export function Teleprompter({
   initialFootage?: Record<number, string>;
   initialNames?: Record<number, string>;
   mode?: "persisted" | "local";
+  presentation?: TeleprompterPresentation;
   maxRecordingSeconds?: number;
   onFootageChange?: (sceneIndex: number, url: string | null, name?: string) => void;
   onLocalRecording?: (blob: Blob | null) => void;
@@ -70,6 +93,7 @@ export function Teleprompter({
   const lastTsRef = useRef<number | null>(null);
   const offsetRef = useRef(0);
   const playingRef = useRef(false);
+  const cancelledRef = useRef(false);
 
   const sceneCount = doc.scenes.length;
   const [active, setActive] = useState(Math.min(Math.max(0, startScene), sceneCount - 1));
@@ -99,6 +123,7 @@ export function Teleprompter({
   const currentName = names[active];
   const pxPerSec = speed * 10;
   const busy = recording || countdown != null || uploading;
+  const inline = presentation === "inline";
 
   const saveBlob = useCallback(
     async (sceneIdx: number, blob: Blob) => {
@@ -234,6 +259,9 @@ export function Teleprompter({
     })();
     return () => {
       cancelled = true;
+      cancelledRef.current = true;
+      discardActiveRecording(recorderRef.current, chunksRef.current);
+      recorderRef.current = null;
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
@@ -309,6 +337,16 @@ export function Teleprompter({
     drawRafRef.current = null;
   }, []);
 
+  const closeTeleprompter = useCallback(() => {
+    cancelledRef.current = true;
+    discardActiveRecording(recorderRef.current, chunksRef.current);
+    recorderRef.current = null;
+    stopCanvasDraw();
+    setPlay(false);
+    setRecording(false);
+    onClose();
+  }, [onClose, setPlay, stopCanvasDraw]);
+
   const stopRecording = useCallback(() => {
     setPlay(false);
     const mr = recorderRef.current;
@@ -340,9 +378,11 @@ export function Teleprompter({
     setElapsed(0);
 
     for (let n = 3; n >= 1; n--) {
+      if (cancelledRef.current) return;
       setCountdown(n);
       await sleep(750);
     }
+    if (cancelledRef.current) return;
     setCountdown(null);
 
     const stream = streamRef.current;
@@ -367,7 +407,7 @@ export function Teleprompter({
         const sceneIdx = active;
         const mr = new MediaRecorder(recordStream, mimeType ? { mimeType } : undefined);
         mr.ondataavailable = (e) => {
-          if (e.data.size > 0) chunksRef.current.push(e.data);
+          if (!cancelledRef.current && e.data.size > 0) chunksRef.current.push(e.data);
         };
         mr.onerror = () => {
           stopCanvasDraw();
@@ -379,6 +419,10 @@ export function Teleprompter({
           );
         };
         mr.onstop = () => {
+          if (cancelledRef.current) {
+            chunksRef.current = [];
+            return;
+          }
           if (chunksRef.current.length === 0) {
             toast.error(
               mode === "local"
@@ -421,34 +465,54 @@ export function Teleprompter({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      else if (e.code === "Space") {
+      if (e.key === "Escape") closeTeleprompter();
+      else if (shouldHandleGlobalPlaybackShortcut(presentation, e.code)) {
         e.preventDefault();
         setPlay(!playingRef.current);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, setPlay]);
+  }, [closeTeleprompter, presentation, setPlay]);
 
   useEffect(() => () => stopCanvasDraw(), [stopCanvasDraw]);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-start gap-3 overflow-y-auto p-3 py-4 sm:gap-4 sm:p-4 sm:py-8 lg:flex-row lg:justify-center lg:gap-8 lg:py-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+    <div
+      className={
+        inline
+          ? "relative flex w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-[1.75rem] border border-black/10 bg-[#2d2d2a] p-4 shadow-[0_28px_70px_-36px_rgba(25,20,16,0.78)] lg:min-h-[34rem] lg:flex-row lg:gap-5"
+          : "fixed inset-0 z-50 flex flex-col items-center justify-start gap-3 overflow-y-auto p-3 py-4 sm:gap-4 sm:p-4 sm:py-8 lg:flex-row lg:justify-center lg:gap-8 lg:py-4"
+      }
+    >
+      {!inline && (
+        <div
+          className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+          onClick={closeTeleprompter}
+        />
+      )}
 
       <canvas ref={canvasRef} width={720} height={1280} className="hidden" />
 
       <button
-        onClick={onClose}
+        onClick={closeTeleprompter}
         aria-label="Close"
-        className="absolute right-5 top-5 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-lg text-white/80 backdrop-blur transition hover:bg-white/20 hover:text-white"
+        autoFocus={inline}
+        className={`absolute z-20 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-lg text-white/80 backdrop-blur transition hover:bg-white/20 hover:text-white ${
+          inline ? "right-3 top-20 sm:top-3" : "right-5 top-5"
+        }`}
       >
         ✕
       </button>
 
       {/* 9:16 phone frame */}
-      <div className="relative z-10 aspect-[9/16] h-[50vh] max-w-[92vw] shrink-0 overflow-hidden rounded-[2.4rem] border-[6px] border-neutral-800 bg-black shadow-2xl lg:h-[85vh]">
+      <div
+        className={`relative z-10 aspect-[9/16] shrink-0 overflow-hidden rounded-[2.4rem] border-[6px] border-neutral-800 bg-black shadow-2xl ${
+          inline
+            ? "h-[25rem] max-w-[82vw] lg:h-[29rem]"
+            : "h-[50vh] max-w-[92vw] lg:h-[85vh]"
+        }`}
+      >
         {/* Playback of the uploaded take for this scene */}
         {viewing && currentUrl ? (
           previewFailed ? (
@@ -586,7 +650,11 @@ export function Teleprompter({
       </div>
 
       {/* Controls (side panel) */}
-      <div className="relative z-10 flex w-full max-w-[320px] shrink-0 flex-col items-stretch gap-5 lg:w-[280px]">
+      <div
+        className={`relative z-10 flex w-full shrink-0 flex-col items-stretch ${
+          inline ? "max-w-[240px] gap-4" : "max-w-[320px] gap-5 lg:w-[280px]"
+        }`}
+      >
         {/* Scene heading */}
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/50">
