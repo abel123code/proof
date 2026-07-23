@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
-import type { JobState, RenderBrief, RenderJobInput, RenderProps } from "./types.js";
+import type { JobState, RenderBrief, RenderJobInput, RenderProps, SceneReport } from "./types.js";
 import { getCaptureWithScript, createTranscript, createRender, updateRender } from "./db.js";
 import { extractAudio, buildCutVideo, compositeOverlay, probeVideo, concatClips } from "./ffmpeg.js";
 import { transcribeWords, scriptToVocabPrompt } from "./transcribe.js";
@@ -200,6 +200,7 @@ export async function runJob(
     // 8b. Premium tier: layer bespoke GPT-authored scenes (storyboard -> HyperFrames HTML ->
     //     vision-QA loop) on top of the captioned base. Any failure or timeout falls back to
     //     the fixed-component output, so the user always gets a video.
+    let sceneReports: SceneReport[] = []; // auditable per-scene QA verdicts, surfaced to the studio
     if (editMode === "generated-experimental") {
       try {
         const pr = await runPremium({
@@ -211,7 +212,11 @@ export async function runJob(
           workDir,
           log: (m) => console.log(`[premium ${jobId}] ${m}`),
         });
-        console.log(`[premium ${jobId}] composited ${pr.sceneCount} bespoke scene(s)`);
+        sceneReports = pr.reports;
+        console.log(
+          `[premium ${jobId}] composited ${pr.sceneCount} bespoke scene(s); ` +
+            `${pr.reports.filter((r) => r.verdict === "flagged").length} flagged`,
+        );
       } catch (e) {
         console.warn(
           `[premium ${jobId}] failed, using fixed-component render: ${(e as Error).message}`,
@@ -245,7 +250,7 @@ export async function runJob(
       mp4Url = `${publicUrl}?v=${Date.now()}`;
       await supabase
         .from("briefs")
-        .update({ render_status: "done", render_url: mp4Url })
+        .update({ render_status: "done", render_url: mp4Url, scene_reports: sceneReports })
         .eq("id", input.briefId);
     } else if (renderId) {
       try {
