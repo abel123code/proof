@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 import { ProofMark } from "@/components/proof-mark";
 import { LandingDemo } from "@/components/landing-demo";
+import { Reveal } from "@/components/reveal";
 import Link from "next/link";
+
+/** Inline `--stagger` custom property for the entrance/reveal animations. */
+const stagger = (ms: number): CSSProperties => ({ "--stagger": `${ms}ms` } as CSSProperties);
 
 export const metadata: Metadata = {
   // Brand comes from the root layout's "%s · proof" template, so don't repeat it here.
@@ -69,23 +74,23 @@ export default function Landing() {
       <main>
         {/* ---------- Hero ---------- */}
         <section className="relative overflow-hidden">
-          <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 sm:px-8 md:grid-cols-[1.15fr_0.85fr] md:py-28 lg:py-32">
+          <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 sm:px-8 md:py-28 lg:grid-cols-[0.92fr_1.08fr] lg:py-32">
             <div>
-              <p className="mb-5 font-mono text-xs uppercase tracking-[0.18em] text-primary">
+              <p className="enter mb-5 font-mono text-xs uppercase tracking-[0.18em] text-primary" style={stagger(0)}>
                 OpenAI Build Week · GPT-5.6 + Codex
               </p>
-              <h1 className="font-display text-5xl font-medium leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl">
+              <h1 className="enter font-display text-5xl font-medium leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl" style={stagger(90)}>
                 Turn your GitHub work into a video people
                 <span className="text-primary"> watch.</span>
               </h1>
 
-              <p className="mt-7 max-w-md text-lg leading-relaxed text-muted-foreground">
+              <p className="enter mt-7 max-w-md text-lg leading-relaxed text-muted-foreground" style={stagger(190)}>
                 Proof researches the angle, writes the brief, gives you a
                 teleprompter, cuts the take, authors the graphics, and reviews
                 the finished frames. You choose the story and record it.
               </p>
 
-              <div className="mt-9 flex flex-wrap items-center gap-4">
+              <div className="enter mt-9 flex flex-wrap items-center gap-4" style={stagger(280)}>
                 <Link
                   href="/connect"
                   className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 font-mono text-sm font-medium text-primary-foreground transition-all hover:translate-x-0.5 hover:brightness-105"
@@ -93,103 +98,21 @@ export default function Landing() {
                   connect your repo <span aria-hidden>→</span>
                 </Link>
                 <Link
-                  href="/login"
+                  href="#demo"
                   className="inline-flex items-center gap-2 font-mono text-sm text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
                 >
-                  log in
+                  or try it yourself — no account
                 </Link>
               </div>
 
-              <p className="mt-10 font-mono text-sm text-muted-foreground">
+              <p className="enter mt-10 font-mono text-sm text-muted-foreground" style={stagger(360)}>
                 your repo proves you built it.
                 <span className="font-medium text-primary"> nobody outside GitHub reads it.</span>
               </p>
             </div>
 
-            <div className="relative mx-auto w-full max-w-sm pb-8 md:pb-0">
-              <div className="overflow-hidden rounded-[2rem] border border-border bg-[#171411] p-3 shadow-[0_26px_70px_-34px_rgba(46,24,12,0.7)]">
-                <div className="flex items-center justify-between px-2 py-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#b9afa5]">
-                  <span>Proof render</span>
-                  <span className="flex items-center gap-1.5 text-[#8ed1a8]">
-                    <span className="size-1.5 rounded-full bg-[#55b97b]" />
-                    Sol QA passed
-                  </span>
-                </div>
-
-                <div className="relative aspect-[9/13] overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0d0c0b] text-white">
-                  <div className="absolute inset-x-5 top-5 z-20">
-                    <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#c78b63]">
-                      scene 03 · proof from the repo
-                    </p>
-                    <p className="mt-2 max-w-[13ch] font-display text-3xl leading-[0.92] tracking-tight">
-                      One place for every deadline.
-                    </p>
-                  </div>
-
-                  <div className="absolute inset-x-4 top-[42%] z-20 grid grid-cols-2 gap-2 font-mono text-[9px]">
-                    <div className="rounded-xl border border-white/15 bg-[#221c18] p-3">
-                      <span className="text-[#c78b63]">01</span>
-                      <p className="mt-3 text-white/90">Canvas quiz</p>
-                      <p className="mt-1 text-white/45">tomorrow · 23:59</p>
-                    </div>
-                    <div className="rounded-xl border border-[#c78b63]/60 bg-[#332218] p-3">
-                      <span className="text-[#e3a97f]">02</span>
-                      <p className="mt-3 text-white/90">2D submission</p>
-                      <p className="mt-1 text-white/45">fri · 18:00</p>
-                    </div>
-                  </div>
-
-                  <div className="absolute bottom-12 left-1/2 h-36 w-28 -translate-x-1/2 rounded-t-[5rem] bg-[#6f4b39] opacity-80" />
-                  <div className="absolute bottom-6 left-1/2 z-20 w-[78%] -translate-x-1/2 rounded-md bg-white px-3 py-2 text-center font-mono text-[10px] font-semibold text-black">
-                    your deadlines should not live in six tabs
-                  </div>
-                </div>
-
-                <div className="mt-3 grid gap-2 px-1 pb-1 font-mono text-[9px] text-[#b9afa5]">
-                  <div className="grid grid-cols-[3rem_1fr] items-center gap-2">
-                    <span>speech</span>
-                    <span className="h-1.5 rounded-full bg-[#5b5149]" />
-                  </div>
-                  <div className="grid grid-cols-[3rem_1fr] items-center gap-2">
-                    <span>scene</span>
-                    <span className="h-1.5 w-[64%] rounded-full bg-[#c78b63]" />
-                  </div>
-                  <div className="grid grid-cols-[3rem_1fr] items-center gap-2">
-                    <span>vision</span>
-                    <span className="text-[#8ed1a8]">5 frames · approved</span>
-                  </div>
-                </div>
-              </div>
-              <a
-                href="#demo"
-                aria-label="Try the Proof recording demo with no sign-up, one scene in about 30 seconds"
-                className="group absolute -bottom-2 left-1/2 z-30 flex w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl border border-primary/30 bg-card/95 p-3.5 text-left shadow-[0_18px_45px_-20px_rgba(67,30,18,0.5)] backdrop-blur transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-[0_22px_55px_-20px_rgba(67,30,18,0.6)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto sm:min-w-72 md:left-0 md:-translate-x-6"
-              >
-                <span className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                  <span
-                    className="absolute size-3 rounded-full bg-primary/30 motion-safe:animate-ping"
-                    aria-hidden
-                  />
-                  <span className="relative size-2.5 rounded-full bg-primary" aria-hidden />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-mono text-[10px] uppercase tracking-[0.16em] text-primary">
-                    No-signup demo
-                  </span>
-                  <span className="mt-0.5 block font-display text-lg leading-tight tracking-tight text-foreground">
-                    Try Proof yourself
-                  </span>
-                  <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
-                    1 scene · about 30 sec
-                  </span>
-                </span>
-                <span
-                  className="font-mono text-lg text-primary transition-transform duration-200 group-hover:translate-x-1"
-                  aria-hidden
-                >
-                  ↓
-                </span>
-              </a>
+            <div className="enter" style={stagger(220)}>
+              <LandingDemo />
             </div>
           </div>
         </section>
@@ -199,7 +122,7 @@ export default function Landing() {
           id="problem"
           className="border-t border-border/60 bg-card/40"
         >
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
+          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
             <p className="kicker">the problem</p>
             <h2 className="mt-5 max-w-[16ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
               Good code <span className="text-primary">isn&apos;t enough.</span>
@@ -235,12 +158,12 @@ export default function Landing() {
               So the best work goes unseen —{" "}
               <span className="text-primary">and no one ever hears about you.</span>
             </p>
-          </div>
+          </Reveal>
         </section>
 
         {/* ---------- What it is ---------- */}
         <section className="border-t border-border/60">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
+          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
             <p className="kicker">what it is</p>
             <h2 className="mt-5 font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
               Connect a repo.
@@ -260,12 +183,12 @@ export default function Landing() {
                 </span>
               ))}
             </div>
-          </div>
+          </Reveal>
         </section>
 
         {/* ---------- Side by side ---------- */}
         <section id="compare" className="border-t border-border/60 bg-card/40">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
+          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
             <p className="kicker">side by side</p>
             <h2 className="mt-5 font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
               Same project. <span className="text-primary">One is slop.</span>
@@ -324,12 +247,12 @@ export default function Landing() {
                 </ul>
               </article>
             </div>
-          </div>
+          </Reveal>
         </section>
 
         {/* ---------- How it works ---------- */}
         <section id="how" className="border-t border-border/60">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
+          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
             <p className="kicker">how it works</p>
             <h2 className="mt-5 font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
               Repo in. <span className="text-primary">MP4 out.</span>
@@ -386,13 +309,12 @@ export default function Landing() {
               </div>
             </div>
 
-            <LandingDemo />
-          </div>
+          </Reveal>
         </section>
 
         {/* ---------- Why us ---------- */}
         <section className="border-t border-border/60 bg-card/40">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
+          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
             <p className="kicker">why us</p>
             <h2 className="mt-5 max-w-[20ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
               We&apos;re devs who never market our own work.
@@ -406,12 +328,12 @@ export default function Landing() {
               <span className="text-muted-foreground">built with Codex</span>
               <span className="text-muted-foreground">powered by OpenAI</span>
             </div>
-          </div>
+          </Reveal>
         </section>
 
         {/* ---------- Final CTA ---------- */}
         <section className="border-t border-border/60">
-          <div className="mx-auto max-w-6xl px-5 py-24 text-center sm:px-8 md:py-32">
+          <Reveal className="mx-auto max-w-6xl px-5 py-24 text-center sm:px-8 md:py-32">
             <p className="kicker justify-center">demo</p>
             <h2 className="mx-auto mt-5 max-w-[18ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-6xl">
               The best version of you.{" "}
@@ -431,7 +353,7 @@ export default function Landing() {
                 log in
               </Link>
             </div>
-          </div>
+          </Reveal>
         </section>
       </main>
 
