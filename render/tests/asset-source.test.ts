@@ -1,16 +1,24 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { Readable } from "node:stream";
+import type { IncomingMessage } from "node:http";
 import {
   allowedAssetHosts,
   assertDecodedRasterImage,
   fetchAssetBytesWithDeps,
   isPrivateAddress,
+  nodeResponseToWebResponse,
   parseMaxAssetBytes,
   readCapped,
   validateAssetSource,
   type AssetFetchDeps,
 } from "../src/premium/asset-source.js";
+
+/** A minimal IncomingMessage stand-in for the response converter. */
+function fakeIncoming(statusCode: number, chunks: Buffer[] = []): IncomingMessage {
+  return Object.assign(Readable.from(chunks), { statusCode, headers: {} }) as unknown as IncomingMessage;
+}
 
 /** A body that streams `chunks` of `size` bytes — like a host ignoring content-length. */
 function streamOf(chunkSize: number, chunks: number): ReadableStream<Uint8Array> {
@@ -165,6 +173,20 @@ test("isPrivateAddress catches ranges a naive regex misses", () => {
   assert.equal(isPrivateAddress("::ffff:169.254.169.254"), true, "IPv4-mapped metadata");
   assert.equal(isPrivateAddress("not-an-ip"), true, "non-IP literal is unsafe");
   assert.equal(isPrivateAddress("93.184.216.34"), false, "a real public host still passes");
+});
+
+test("nodeResponseToWebResponse gives null-body statuses a null body (no worker crash)", () => {
+  // `new Response(body, {status: 204})` throws — the source of the DoS codex flagged. These must
+  // convert to a null-body Response instead of throwing inside the async request callback.
+  for (const status of [204, 205, 304]) {
+    const resp = nodeResponseToWebResponse(fakeIncoming(status, [Buffer.from([1])]));
+    assert.equal(resp.status, status);
+    assert.equal(resp.body, null, `status ${status} must have a null body`);
+  }
+  // a normal 200 keeps its streamed body
+  const ok = nodeResponseToWebResponse(fakeIncoming(200, [Buffer.from([1, 2, 3])]));
+  assert.equal(ok.status, 200);
+  assert.ok(ok.body, "200 keeps its body");
 });
 
 test("assertDecodedRasterImage rejects SVG, spoofed types, and garbage bytes", async () => {

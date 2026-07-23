@@ -10,10 +10,9 @@ export interface WorkerSecurityConfiguration {
   /** Interface to bind. Tokenless mode is forced onto loopback. */
   host: string;
   renderToken?: string;
-  /** Only true in explicit local-dev mode (token unset + ALLOW_INSECURE_LOCAL_RENDER=true + loopback). */
+  /** Only true in explicit local-dev mode (token unset + ALLOW_INSECURE_LOCAL_RENDER=true + loopback).
+   *  When true the worker (including the /out download dir) is reachable without a token. */
   allowUnauthenticated: boolean;
-  /** Only expose the `/out` static render dir in that same local-dev mode. */
-  exposeLegacyOutput: boolean;
 }
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -35,14 +34,13 @@ export function resolveWorkerSecurityConfiguration(env: NodeJS.ProcessEnv): Work
     if (!LOOPBACK_HOSTS.has(host.toLowerCase())) {
       throw new Error("Tokenless render mode must bind to a loopback RENDER_HOST");
     }
-    return { host, allowUnauthenticated: true, exposeLegacyOutput: true };
+    return { host, allowUnauthenticated: true };
   }
 
   return {
     host: env.RENDER_HOST?.trim() || "0.0.0.0",
     renderToken,
     allowUnauthenticated: false,
-    exposeLegacyOutput: false,
   };
 }
 

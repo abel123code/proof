@@ -25,19 +25,21 @@ app.use((_req, res, next) => {
   next();
 });
 
-// The `/out` static render dir leaks finished MP4s + intermediate artifacts. Only expose it in the
-// explicit tokenless local-dev posture; in production nothing serves it.
-if (SECURITY.exposeLegacyOutput) {
-  app.use("/out", express.static(join(RENDER_ROOT, "out")));
-}
-
-app.use("/render", (req, res, next) => {
+// Fail-closed worker auth, applied to BOTH the job API and the /out download dir. The vulnerability
+// was that /out was served UNAUTHENTICATED (and /render auth failed OPEN with no token) — not that
+// /out exists — so gate /out behind the token rather than removing it, which would strand the
+// download for legacy non-briefId render jobs whose output only lives at /out. In the explicit
+// local-dev posture (allowUnauthenticated, bound to loopback) both are open.
+const requireWorkerAuth: express.RequestHandler = (req, res, next) => {
   if (req.method === "OPTIONS") return next();
   if (workerRequestAuthorized(req.headers["x-render-token"], SECURITY.renderToken, SECURITY.allowUnauthenticated)) {
     return next();
   }
   res.status(401).json({ error: "unauthorized" });
-});
+};
+
+app.use("/render", requireWorkerAuth);
+app.use("/out", requireWorkerAuth, express.static(join(RENDER_ROOT, "out")));
 
 const jobs = new Map<string, JobState>();
 const activeIds = new Set<string>();

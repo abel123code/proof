@@ -20,20 +20,18 @@ test("no RENDER_TOKEN fails closed unless the explicit local-dev escape hatch is
     /loopback/,
   );
 
-  // Escape hatch bound to loopback -> unauthenticated local dev, /out exposed there only.
+  // Escape hatch bound to loopback -> unauthenticated local dev (worker + /out open on loopback).
   const local = resolveWorkerSecurityConfiguration({
     ALLOW_INSECURE_LOCAL_RENDER: "true",
   } as NodeJS.ProcessEnv);
   assert.equal(local.allowUnauthenticated, true);
-  assert.equal(local.exposeLegacyOutput, true);
   assert.equal(local.host, "127.0.0.1");
 });
 
-test("a configured RENDER_TOKEN is the production posture: token required, no /out, public bind", () => {
+test("a configured RENDER_TOKEN is the production posture: token required, public bind", () => {
   const prod = resolveWorkerSecurityConfiguration({ RENDER_TOKEN: "s3cret" } as NodeJS.ProcessEnv);
   assert.equal(prod.renderToken, "s3cret");
   assert.equal(prod.allowUnauthenticated, false);
-  assert.equal(prod.exposeLegacyOutput, false);
   assert.equal(prod.host, "0.0.0.0");
 });
 

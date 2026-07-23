@@ -1,6 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
 import { request as httpsRequest } from "node:https";
+import type { IncomingMessage } from "node:http";
 import { Readable } from "node:stream";
 import sharp from "sharp";
 
@@ -36,6 +37,23 @@ export function parseMaxAssetBytes(env: NodeJS.ProcessEnv = process.env): number
 export const MAX_ASSET_BYTES = parseMaxAssetBytes();
 const MAX_ASSET_PIXELS = 40_000_000;
 const RASTER_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+/**
+ * Overall deadline for a single asset fetch (DNS is already done; this covers connect/TLS/headers
+ * and inactivity between body chunks). `fetch()` had Undici's bounded timeouts; the raw pinned
+ * `https.request` has none, so an allowlisted host that stalls could pin a render slot forever.
+ */
+const ASSET_FETCH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.PREMIUM_ASSET_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : 20_000;
+})();
+
+/**
+ * HTTP statuses whose WHATWG `Response` MUST have a null body — passing one throws (worker crash).
+ * (101/103 can't reach a GET's response callback and the constructor rejects them outright; the
+ * try/catch around the conversion is the backstop if one ever did.)
+ */
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
 /**
  * Every non-globally-routable IPv4/IPv6 range an asset host must never resolve to. Uses the kernel
@@ -200,6 +218,24 @@ export interface AssetFetchDeps {
  * `servername`/`host` keep TLS + routing correct for the original hostname. `https.request` does not
  * follow redirects, so a 302 to an internal host simply returns a non-2xx and is rejected below.
  */
+/**
+ * Convert a Node `IncomingMessage` to a WHATWG `Response`, SAFELY: a null-body status (204/304/…)
+ * makes `new Response(body, {status})` throw, and that TypeError — raised inside the async response
+ * callback — would escape and crash the worker. Drain and use a null body for those statuses.
+ */
+export function nodeResponseToWebResponse(response: IncomingMessage): Response {
+  const status = response.statusCode ?? 500;
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(response.headers)) {
+    if (value !== undefined) headers.set(name, Array.isArray(value) ? value.join(", ") : value);
+  }
+  if (NULL_BODY_STATUSES.has(status)) {
+    response.resume(); // drain so the socket can be reused/closed
+    return new Response(null, { status, headers });
+  }
+  return new Response(Readable.toWeb(response) as ReadableStream<Uint8Array>, { status, headers });
+}
+
 async function pinnedHttpsRequest(url: URL, pinnedAddress: string): Promise<Response> {
   return new Promise((resolve, reject) => {
     const request = httpsRequest(
@@ -207,20 +243,22 @@ async function pinnedHttpsRequest(url: URL, pinnedAddress: string): Promise<Resp
       {
         servername: url.hostname,
         headers: { host: url.host },
+        timeout: ASSET_FETCH_TIMEOUT_MS,
         lookup: (_hostname, _options, callback) => callback(null, pinnedAddress, isIP(pinnedAddress)),
       },
       (response) => {
-        const headers = new Headers();
-        for (const [name, value] of Object.entries(response.headers)) {
-          if (value !== undefined) headers.set(name, Array.isArray(value) ? value.join(", ") : value);
+        try {
+          resolve(nodeResponseToWebResponse(response));
+        } catch (err) {
+          response.destroy();
+          reject(err);
         }
-        resolve(
-          new Response(Readable.toWeb(response) as ReadableStream<Uint8Array>, {
-            status: response.statusCode ?? 500,
-            headers,
-          }),
-        );
       },
+    );
+    // Inactivity deadline: an allowlisted host that stalls before headers or between body chunks
+    // must not hold a render slot indefinitely — abort and let readCapped/fetch reject.
+    request.on("timeout", () =>
+      request.destroy(new Error(`asset request timed out after ${ASSET_FETCH_TIMEOUT_MS}ms`)),
     );
     request.once("error", reject);
     request.end();
