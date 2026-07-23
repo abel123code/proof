@@ -9,6 +9,8 @@ import { createSemaphore } from "./semaphore.js";
 import { loadRecoverableJobs, updateDurableJob } from "./durable.js";
 import { enforceWorkerEditMode, resolveWorkerEditMode } from "./edit-mode.js";
 import { resolveWorkerSecurityConfiguration, workerRequestAuthorized } from "./server-auth.js";
+import { hyperframesAvailable } from "./premium/hyperframes.js";
+import { premiumEngineWarning } from "./premium/fallback.js";
 
 // Resolve the security posture ONCE at startup. With no RENDER_TOKEN this throws (unless the
 // explicit local-dev escape hatch is set) so a misconfigured box refuses to boot rather than
@@ -137,8 +139,12 @@ const PORT = Number(process.env.PORT ?? 8080);
 app.listen(PORT, SECURITY.host, () => {
   const auth = SECURITY.allowUnauthenticated ? "UNAUTHENTICATED local-dev" : "token-required";
   console.log(
-    `proof render service listening on ${SECURITY.host}:${PORT} (${auth}, max ${RENDER_CONCURRENCY} concurrent renders)`,
+    `proof render service listening on ${SECURITY.host}:${PORT} (${auth}, max ${RENDER_CONCURRENCY} concurrent renders, mode ${WORKER_EDIT_MODE})`,
   );
+  // If premium is selected but the engine can't run, EVERY render silently ships the caption-only base.
+  // Say so at boot instead of leaving each render to fail into a fallback nobody sees.
+  const engineWarning = premiumEngineWarning(WORKER_EDIT_MODE, hyperframesAvailable());
+  if (engineWarning) console.error(engineWarning);
   void recoverJobs().catch((error) => console.warn("durable render recovery unavailable:", error));
 });
 

@@ -19,6 +19,7 @@ import {
 import { planBriefVisuals } from "./visual-planner.js";
 import { renderOverlay, RENDER_ROOT } from "./render.js";
 import { runPremium } from "./premium/index.js";
+import { premiumFallbackReport } from "./premium/fallback.js";
 import { FOOTAGE_BUCKET, getSupabaseAdmin, RENDER_BUCKET } from "./supabase.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -218,9 +219,17 @@ export async function runJob(
             `${pr.reports.filter((r) => r.verdict === "flagged").length} flagged`,
         );
       } catch (e) {
-        console.warn(
-          `[premium ${jobId}] failed, using fixed-component render: ${(e as Error).message}`,
+        // The whole bespoke-scene tier fell back to the caption-only base. This used to be a silent
+        // console.warn — the job still shipped "done" and nobody could tell a premium render from the
+        // old base (the "why is my output the old one?" report). Make it LOUD and record the reason as
+        // an auditable report so it persists on the brief and shows in the studio.
+        const reason = (e as Error).message;
+        console.error(
+          `\n[premium ${jobId}] ‼ BESPOKE SCENES FELL BACK to the captioned base.\n` +
+            `[premium ${jobId}]   reason: ${reason}\n` +
+            `[premium ${jobId}]   the output is the caption-only base video, NOT the premium render.\n`,
         );
+        sceneReports = [premiumFallbackReport(reason)];
         await copyFile(captionedAbs, outAbs);
       }
     } else {
