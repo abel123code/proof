@@ -5,43 +5,36 @@
 // extract + vision call (~2.6 min), and a rejected scene burns 3 of them. When the thing under
 // test is the author/QA contract, that loop is the wrong tool: this runs one scene in ~2-3 min.
 //
+// Each RENDERED attempt is snapshotted to tmp/probe-<n>/attempt-<k>/ (index.html, scene.mov, the 5
+// QA frames, hashes) and summarised in run.json — so patch-vs-reroll and the retry count are
+// provable after the run, not overwritten.
+//
 // Usage:
 //   npx tsx scripts/probe-scene.ts <captioned.mp4> <props.json> <fixture.json> [sceneIndex]
-//
-// props.json supplies the real word timeline + duration (so anchors match production).
-// fixture.json supplies the real brief. Frames + verdict land in render/tmp/probe-<n>/.
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile, copyFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { planScenes } from "../src/premium/scenes.js";
-import { produceScene } from "../src/premium/index.js";
+import { produceScene, type SceneAttemptRecord } from "../src/premium/index.js";
 import type { RenderBrief, Word } from "../src/types.js";
 
 const [basePathArg, propsPathArg, fixturePathArg, sceneIndexArg] = process.argv.slice(2);
 
 if (!basePathArg || !propsPathArg || !fixturePathArg) {
-  console.error(
-    "usage: npx tsx scripts/probe-scene.ts <captioned.mp4> <props.json> <fixture.json> [sceneIndex]",
-  );
+  console.error("usage: npx tsx scripts/probe-scene.ts <captioned.mp4> <props.json> <fixture.json> [sceneIndex]");
   process.exit(1);
 }
 
 const sceneIndex = Number(sceneIndexArg ?? 0);
+const sha12 = (buf: Buffer | string) => createHash("sha256").update(buf).digest("hex").slice(0, 12);
 
 async function main() {
   const basePath = resolve(basePathArg);
-  const props = JSON.parse(await readFile(propsPathArg, "utf8")) as {
-    words: Word[];
-    durationMs: number;
-  };
+  const props = JSON.parse(await readFile(propsPathArg, "utf8")) as { words: Word[]; durationMs: number };
   const { brief } = JSON.parse(await readFile(fixturePathArg, "utf8")) as { brief: RenderBrief };
 
   const assetHints: string[] = []; // frozen zero-asset condition
-  const specs = await planScenes({
-    brief,
-    words: props.words,
-    durationMs: props.durationMs,
-    assetHints,
-  });
+  const specs = await planScenes({ brief, words: props.words, durationMs: props.durationMs, assetHints });
 
   console.log(`\n=== scene probe ===`);
   console.log(`base    : ${basePath}`);
@@ -53,30 +46,61 @@ async function main() {
   console.log(`intent  : ${spec.intent.slice(0, 160)}...\n`);
 
   const premiumDir = join(process.cwd(), "tmp", `probe-${sceneIndex}`);
+  await rm(premiumDir, { recursive: true, force: true }); // clear stale attempt-* dirs
   const assetsDir = join(premiumDir, "assets");
   await mkdir(assetsDir, { recursive: true });
 
   const started = Date.now();
+  const attempts: Array<{
+    attempt: number; iter: number; outcome: string; issues: string[]; htmlSha: string; movSha: string | null; frames: number;
+  }> = [];
+
+  const onAttempt = async (rec: SceneAttemptRecord) => {
+    const n = attempts.length + 1;
+    const dir = join(premiumDir, `attempt-${n}`);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "index.html"), rec.html);
+    const htmlSha = sha12(rec.html);
+    let movSha: string | null = null;
+    try {
+      movSha = sha12(await readFile(rec.movPath));
+      await copyFile(rec.movPath, join(dir, "scene.mov"));
+    } catch {
+      /* no mov (shouldn't happen post-render) */
+    }
+    let frames = 0;
+    for (let k = 0; k < 5; k++) {
+      try {
+        await copyFile(join(premiumDir, `${spec.id}-frame-${k}.png`), join(dir, `frame-${k}.png`));
+        frames++;
+      } catch {
+        /* caption_reject runs before QA extracts frames */
+      }
+    }
+    attempts.push({ attempt: n, iter: rec.attempt, outcome: rec.outcome, issues: rec.issues, htmlSha, movSha, frames });
+    console.log(`  [attempt ${n}] ${rec.outcome} — html ${htmlSha}, mov ${movSha ?? "n/a"}, ${frames} frames`);
+  };
+
   const scene = await produceScene({
-    spec,
-    brief,
-    assetHints,
-    assetsDir,
-    premiumDir,
-    basePath,
-    fps: 30,
+    spec, brief, assetHints, assetsDir, premiumDir, basePath, fps: 30,
     log: (m) => console.log(`${((Date.now() - started) / 1000).toFixed(1).padStart(6)}s ${m}`),
+    onAttempt,
   });
 
   const approved = Boolean(scene.movPath);
+  const editorialEdits = attempts.filter((a) => a.outcome === "editorial_reject" || a.outcome === "caption_reject").length;
   await writeFile(
-    join(premiumDir, "verdict.json"),
-    JSON.stringify({ sceneId: spec.id, approved, movPath: scene.movPath ?? null, spec }, null, 2),
+    join(premiumDir, "run.json"),
+    JSON.stringify(
+      { sceneId: spec.id, approved, movPath: scene.movPath ?? null, editorialEdits, attempts, spec, elapsedSec: (Date.now() - started) / 1000 },
+      null,
+      2,
+    ),
   );
 
-  console.log(`\n=== ${approved ? "APPROVED" : "REJECTED"} in ${((Date.now() - started) / 1000 / 60).toFixed(1)} min ===`);
-  console.log(`  qa frames : ${premiumDir}/${spec.id}-frame-*.png`);
-  console.log(`  composite : ${premiumDir}/${spec.id}-qa.mp4`);
+  console.log(`\n=== ${approved ? "APPROVED" : "OMITTED"} in ${((Date.now() - started) / 1000 / 60).toFixed(1)} min (${attempts.length} rendered attempts, ${editorialEdits} edits) ===`);
+  console.log(`  attempts  : ${premiumDir}/attempt-*/`);
+  console.log(`  run.json  : ${premiumDir}/run.json`);
   if (!approved) process.exitCode = 2;
 }
 

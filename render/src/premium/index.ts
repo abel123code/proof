@@ -1,7 +1,7 @@
 import { mkdir, copyFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { createRequire } from "node:module";
-import type { RenderBrief, Word, AuthoredScene, SceneSpec } from "../types.js";
+import type { RenderBrief, Word, AuthoredScene, SceneSpec, SceneQAOutcome } from "../types.js";
 import { planScenes } from "./scenes.js";
 import { authorScene } from "./author.js";
 import { qaScene } from "./qa.js";
@@ -93,6 +93,16 @@ async function fetchAsset(src: string, destPath: string): Promise<void> {
  * unsanitized scene as if it succeeded. Throws only on hard author/render errors, which the
  * caller treats as a skipped beat too.
  */
+/** One rendered attempt, for observability/measurement (e.g. the probe's per-attempt artifacts). */
+export interface SceneAttemptRecord {
+  attempt: number;
+  outcome: SceneQAOutcome | "caption_reject";
+  issues: string[];
+  html: string;
+  /** The overlay MOV as it stood for this attempt (overwritten by the next attempt). */
+  movPath: string;
+}
+
 export async function produceScene(
   args: {
     spec: SceneSpec;
@@ -103,6 +113,9 @@ export async function produceScene(
     basePath: string;
     fps: number;
     log: (m: string) => void;
+    /** Called after each RENDERED attempt (awaited) so a caller can snapshot artifacts before the
+     *  next attempt overwrites the MOV/frames. */
+    onAttempt?: (rec: SceneAttemptRecord) => Promise<void> | void;
   },
   deps: SceneDeps = DEFAULT_DEPS,
 ): Promise<AuthoredScene> {
@@ -167,12 +180,14 @@ export async function produceScene(
       // Deterministic caption protection (NOT an erase): if the rendered graphic reaches into the fixed
       // caption band, send it back to move up. Runs before the paid vision QA.
       if (await captionCheck(movPath)) {
+        const capIssue = captionIntrusionIssue();
+        await args.onAttempt?.({ attempt: iter, outcome: "caption_reject", issues: [capIssue], html, movPath });
         if (last) {
           log(`  ${spec.id}: rejected (intrudes caption band after ${iter} edit${iter === 1 ? "" : "s"}) — omitting`);
           return { spec, html };
         }
         priorHtml = html;
-        issues = [captionIntrusionIssue()];
+        issues = [capIssue];
         log(`  ${spec.id}: re-edit ${iter + 1} — graphic intrudes the caption band`);
         continue;
       }
@@ -180,6 +195,7 @@ export async function produceScene(
     retryQaOnly = false;
 
     const qa = await deps.qa({ spec, movPath, basePath, workDir: premiumDir, assetHints });
+    await args.onAttempt?.({ attempt: iter, outcome: qa.outcome, issues: qa.issues, html, movPath });
     if (qa.outcome === "approved") {
       log(`  ${spec.id}: approved${iter ? ` after ${iter} edit${iter === 1 ? "" : "s"}` : ""}`);
       return { spec, html, movPath };

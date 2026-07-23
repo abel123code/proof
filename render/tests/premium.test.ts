@@ -543,6 +543,30 @@ test("operational_error retries QA on the same render — no re-author, no re-re
   }
 });
 
+test("onAttempt fires once per rendered attempt with the tagged outcome", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "onatt-"));
+  try {
+    const outcomes: string[] = [];
+    let n = 0;
+    await produceScene(
+      {
+        spec: spec("scene-1"), brief: { script: "s", keywordFlags: [] }, assetHints: [],
+        assetsDir: dir, premiumDir: dir, basePath: "b.mp4", fps: 30, log: () => {},
+        onAttempt: async (r) => { outcomes.push(r.outcome); },
+      },
+      {
+        author: async () => VALID_HTML,
+        render: async () => {},
+        captionCheck: async () => false,
+        qa: async () => (++n === 1 ? { outcome: "editorial_reject", issues: ["move it"] } : { outcome: "approved", issues: [] }),
+      },
+    );
+    assert.deepEqual(outcomes, ["editorial_reject", "approved"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("QA may only demand assets that were actually staged", () => {
   const withAssets = qaSystemPrompt(["hero.png", "logo.png"]);
   assert.match(withAssets, /hero\.png, logo\.png/);
