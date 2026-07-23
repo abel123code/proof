@@ -17,8 +17,13 @@ export function assetsNamedInIntent(intent: string, assetHints: string[]): strin
   return assetHints.filter((name) => hay.includes("assets/" + name.toLowerCase()));
 }
 
-/** Of the required asset filenames, those NOT referenced anywhere in the HTML (case-insensitive). */
+/**
+ * Of the required asset filenames, those NOT embedded via an actual `assets/<name>` path reference
+ * in the HTML (case-insensitive). Requiring the path — not a bare filename mention — means a comment
+ * (`<!-- logo.png -->`) or stray text can no longer satisfy the gate; only a real `src="./assets/…"`
+ * (or `url(assets/…)`) counts.
+ */
 export function missingAssets(html: string, required: string[]): string[] {
   const hay = html.toLowerCase();
-  return required.filter((name) => !hay.includes(name.toLowerCase()));
+  return required.filter((name) => !hay.includes("assets/" + name.toLowerCase()));
 }

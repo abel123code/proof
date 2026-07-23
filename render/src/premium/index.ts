@@ -146,8 +146,13 @@ export async function produceScene(
 
       // Asset-inclusion gate: if the intent names specific assets, the HTML must embed them. Catches
       // the "described the logo but drew a generic icon" failure BEFORE a wasted render + vision call.
+      // Fails CLOSED on the final attempt: a scene still missing a required asset is omitted, not shipped.
       const missing = missingAssets(html, assetsNamedInIntent(spec.intent, assetHints));
-      if (missing.length && !last) {
+      if (missing.length) {
+        if (last) {
+          log(`  ${spec.id}: rejected (missing required asset(s) ${missing.join(", ")} on the final attempt) — omitting`);
+          return { spec, html };
+        }
         issues = [
           `MUST FIX: the intent requires featuring ${missing.join(", ")}, but your HTML never references ` +
             `${missing.length > 1 ? "them" : "it"}. Embed each with <img src="./assets/<file>" style="..."> ` +

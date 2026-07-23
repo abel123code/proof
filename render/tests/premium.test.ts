@@ -20,6 +20,7 @@ import {
   buildAuthorMessages,
 } from "../src/premium/author.js";
 import { validateComposition } from "../src/premium/sanitize.js";
+import { missingAssets } from "../src/premium/assets-gate.js";
 import { produceScene } from "../src/premium/index.js";
 import {
   DEFAULT_PREMIUM_QA_MODEL,
@@ -151,6 +152,30 @@ test("validateComposition catches parser-level bypasses (unquoted, srcset, srcdo
     const v = validateComposition(html, []);
     assert.ok(v.some((x) => re.test(x)), `expected ${re} for: ${html}\n got: ${JSON.stringify(v)}`);
   }
+});
+
+test("sanitizer rejects executable data: URLs and non-gsap <script src> (allows media data:)", () => {
+  // Executable data: URL in a <script src> ran in the render page before this fix.
+  assert.ok(
+    validateComposition(`<div id="stage"></div><script src="data:text/javascript,alert(1)"></script>`, []).length > 0,
+    "executable data: script must be rejected",
+  );
+  assert.ok(
+    validateComposition(`<div id="stage"></div><script src="./assets/evil.js"></script>`, []).length > 0,
+    "a non-gsap <script src> must be rejected",
+  );
+  // Inline media data: and the local gsap script stay allowed.
+  assert.deepEqual(
+    validateComposition(`<div id="stage"></div><img src="data:image/png;base64,iVBOR"><script src="./gsap.min.js"></script>`, []),
+    [],
+  );
+});
+
+test("missingAssets requires an assets/<name> reference, not a bare filename mention", () => {
+  assert.deepEqual(missingAssets(`<img src="./assets/logo.png">`, ["logo.png"]), []);
+  assert.deepEqual(missingAssets(`<div style="background:url(assets/logo.png)"></div>`, ["logo.png"]), []);
+  assert.deepEqual(missingAssets(`<!-- logo.png -->`, ["logo.png"]), ["logo.png"]); // comment does NOT satisfy
+  assert.deepEqual(missingAssets(`<div>logo.png</div>`, ["logo.png"]), ["logo.png"]); // text does NOT satisfy
 });
 
 test("parseQaVerdict tags outcomes; empty/unparseable are operational, not editorial", () => {

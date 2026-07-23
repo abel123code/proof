@@ -62,7 +62,14 @@ export function validateComposition(html: string, assetHints: string[]): string[
 
   const checkUrl = (raw: string | undefined, where: string): void => {
     const url = (raw || "").trim();
-    if (url === "" || url.startsWith("#") || url.startsWith("data:")) return; // fragment / inline
+    if (url === "" || url.startsWith("#")) return; // fragment / empty
+    if (/^data:/i.test(url)) {
+      // Inline MEDIA only. An executable data: URL (e.g. `data:text/javascript,…` in a <script src>)
+      // runs in the render page; allow only image/font media, reject everything else.
+      if (/^data:(?:image|font)\//i.test(url)) return;
+      violations.push(`non-media data: URL not allowed (${where}): ${url.slice(0, 60)}`);
+      return;
+    }
     if (isExternal(url)) {
       violations.push(`external URL not allowed (${where}): ${url.slice(0, 80)}`);
       return;
@@ -90,6 +97,14 @@ export function validateComposition(html: string, assetHints: string[]): string[
     if ("srcdoc" in attrs) violations.push("srcdoc not allowed");
     if (tag === "meta" && /refresh/i.test(el.getAttribute("http-equiv") || "")) {
       violations.push("meta refresh not allowed");
+    }
+    // A <script> may only load the locally-staged GSAP; any other src (external, data:, or another
+    // local file) is rejected outright — belt-and-suspenders over checkUrl for the executable path.
+    if (tag === "script") {
+      const src = (el.getAttribute("src") || "").trim();
+      if (src && !/^\.?\/?gsap\.min\.js$/i.test(src)) {
+        violations.push(`<script src> other than ./gsap.min.js not allowed: ${src.slice(0, 60)}`);
+      }
     }
 
     for (const a of URL_ATTRS) {
