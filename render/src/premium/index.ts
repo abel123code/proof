@@ -11,7 +11,7 @@ import { validateComposition } from "./sanitize.js";
 import { fetchAssetBytes } from "./asset-source.js";
 import { assetsNamedInIntent, missingAssets } from "./assets-gate.js";
 import { createSemaphore } from "../semaphore.js";
-import { maskOverlaySafeZones } from "../ffmpeg.js";
+import { captionIntrusionIssue, overlayIntrudesCaptionBand } from "./caption-guard.js";
 import sharp from "sharp";
 
 export { hyperframesAvailable };
@@ -41,18 +41,19 @@ function gsapMinPath(): string {
   return join(dirname(require.resolve("gsap/package.json")), "dist", "gsap.min.js");
 }
 
-/** Injectable per-scene steps so produceScene is unit-testable without OpenAI/HyperFrames. */
+/** Injectable per-scene steps so produceScene is unit-testable without OpenAI/HyperFrames/ffmpeg. */
 export interface SceneDeps {
   author: typeof authorScene;
   render: typeof renderComposition;
-  mask: typeof maskOverlaySafeZones;
   qa: typeof qaScene;
+  /** Deterministic caption-band intrusion check (not an erase). Stubbed to a constant in unit tests. */
+  captionCheck?: typeof overlayIntrudesCaptionBand;
 }
 const DEFAULT_DEPS: SceneDeps = {
   author: authorScene,
   render: renderComposition,
-  mask: maskOverlaySafeZones,
   qa: qaScene,
+  captionCheck: overlayIntrudesCaptionBand,
 };
 
 function safeAssetName(src: string, i: number): string {
@@ -120,52 +121,83 @@ export async function produceScene(
   }
 
   const movPath = join(premiumDir, `${spec.id}.mov`);
+  const captionCheck = deps.captionCheck ?? overlayIntrudesCaptionBand;
   let issues: string[] | undefined;
+  let priorHtml: string | undefined; // the last rendered draft — fed back so an edit patches, not rerolls
+  let html = "";
+  let retryQaOnly = false; // set after an operational QA error: re-judge the SAME render, don't re-author
   for (let iter = 0; iter <= MAX_QA_ITERS; iter++) {
     const last = iter === MAX_QA_ITERS;
-    const html = await deps.author({ spec, brief, assetHints, priorIssues: issues });
 
-    // Trust boundary: never render model HTML that references the network or eval's.
-    const violations = validateComposition(html, assetHints);
-    if (violations.length) {
-      if (last) {
-        log(`  ${spec.id}: rejected (unsafe/invalid HTML) — skipping: ${violations.slice(0, 2).join("; ")}`);
-        return { spec, html };
+    if (!retryQaOnly) {
+      html = await deps.author({ spec, brief, assetHints, priorIssues: issues, priorHtml });
+
+      // Trust boundary: never render model HTML that references the network or eval's.
+      const violations = validateComposition(html, assetHints);
+      if (violations.length) {
+        if (last) {
+          log(`  ${spec.id}: rejected (unsafe/invalid HTML) — skipping: ${violations.slice(0, 2).join("; ")}`);
+          return { spec, html };
+        }
+        issues = violations.map((v) => `MUST FIX (contract/security): ${v}`);
+        log(`  ${spec.id}: re-author ${iter + 1} — ${violations.slice(0, 2).join("; ")}`);
+        continue;
       }
-      issues = violations.map((v) => `MUST FIX (contract/security): ${v}`);
-      log(`  ${spec.id}: re-author ${iter + 1} — ${violations.slice(0, 2).join("; ")}`);
-      continue;
-    }
 
-    // Asset-inclusion gate: if the intent names specific assets, the HTML must embed them. Catches
-    // the "described the logo but drew a generic icon" failure BEFORE a wasted render + vision call.
-    const missing = missingAssets(html, assetsNamedInIntent(spec.intent, assetHints));
-    if (missing.length && !last) {
-      issues = [
-        `MUST FIX: the intent requires featuring ${missing.join(", ")}, but your HTML never references ` +
-          `${missing.length > 1 ? "them" : "it"}. Embed each with <img src="./assets/<file>" style="..."> ` +
-          `as a real, visible element — not a generic icon, emoji, or CSS placeholder.`,
-      ];
-      log(`  ${spec.id}: re-author ${iter + 1} — missing required asset(s): ${missing.join(", ")}`);
-      continue;
-    }
+      // Asset-inclusion gate: if the intent names specific assets, the HTML must embed them. Catches
+      // the "described the logo but drew a generic icon" failure BEFORE a wasted render + vision call.
+      const missing = missingAssets(html, assetsNamedInIntent(spec.intent, assetHints));
+      if (missing.length && !last) {
+        issues = [
+          `MUST FIX: the intent requires featuring ${missing.join(", ")}, but your HTML never references ` +
+            `${missing.length > 1 ? "them" : "it"}. Embed each with <img src="./assets/<file>" style="..."> ` +
+            `as a real, visible element — not a generic icon, emoji, or CSS placeholder.`,
+        ];
+        log(`  ${spec.id}: re-author ${iter + 1} — missing required asset(s): ${missing.join(", ")}`);
+        continue;
+      }
 
-    await deps.render({ html, sceneDir, outMovPath: movPath, fps });
-    await deps.mask(movPath);
+      await deps.render({ html, sceneDir, outMovPath: movPath, fps });
+
+      // Deterministic caption protection (NOT an erase): if the rendered graphic reaches into the fixed
+      // caption band, send it back to move up. Runs before the paid vision QA.
+      if (await captionCheck(movPath)) {
+        if (last) {
+          log(`  ${spec.id}: rejected (intrudes caption band after ${iter} edit${iter === 1 ? "" : "s"}) — omitting`);
+          return { spec, html };
+        }
+        priorHtml = html;
+        issues = [captionIntrusionIssue()];
+        log(`  ${spec.id}: re-edit ${iter + 1} — graphic intrudes the caption band`);
+        continue;
+      }
+    }
+    retryQaOnly = false;
+
     const qa = await deps.qa({ spec, movPath, basePath, workDir: premiumDir, assetHints });
-    if (qa.ok) {
-      const how = iter ? ` after ${iter} retr${iter === 1 ? "y" : "ies"}` : "";
-      log(`  ${spec.id}: approved${how}`);
+    if (qa.outcome === "approved") {
+      log(`  ${spec.id}: approved${iter ? ` after ${iter} edit${iter === 1 ? "" : "s"}` : ""}`);
       return { spec, html, movPath };
     }
+    if (qa.outcome === "operational_error") {
+      if (last) {
+        log(`  ${spec.id}: QA operational error on the final attempt — omitting`);
+        return { spec, html };
+      }
+      log(`  ${spec.id}: QA operational error — retrying the review on the same render`);
+      retryQaOnly = true;
+      continue;
+    }
+    // editorial_reject: patch the existing scene against the concrete issues.
     if (last) {
-      log(`  ${spec.id}: QA-rejected after ${iter} retr${iter === 1 ? "y" : "ies"} — skipping: ${qa.issues.slice(0, 2).join("; ")}`);
+      log(`  ${spec.id}: QA-rejected after ${iter} edit${iter === 1 ? "" : "s"} — omitting: ${qa.issues.slice(0, 2).join("; ")}`);
       return { spec, html };
     }
+    priorHtml = html;
     issues = qa.issues;
-    log(`  ${spec.id}: retry ${iter + 1} — ${qa.issues.slice(0, 2).join("; ")}`);
+    log(`  ${spec.id}: re-edit ${iter + 1} — ${qa.issues.slice(0, 2).join("; ")}`);
   }
-  return { spec, html: "" };
+  return { spec, html };
 }
 
 /**

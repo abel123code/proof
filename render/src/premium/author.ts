@@ -1,5 +1,6 @@
 import { getOpenAI } from "../openai.js";
 import { chatTuning, premiumRequestOptions } from "./model-params.js";
+import { CAPTION_ZONE_TOP_Y } from "./caption-guard.js";
 import type { RenderBrief, SceneSpec } from "../types.js";
 
 export const DEFAULT_PREMIUM_AUTHOR_MODEL = "gpt-5.6-sol";
@@ -41,9 +42,11 @@ HARD CONTRACT (the renderer fails if you break these):
      band) — an editor/timeline/waveform strip or a labelled bar — WHEN the shot has room below the chin.
    - Transparent, non-blocking accents (a thin connector line, one arrow, a faint annotation) MAY cross the
      centre near the speaker; they frame, they don't block.
-   HARD LIMITS: keep the burned-in caption band y=1450..1920 empty, and NEVER cover the eyes, nose or mouth with
-   an OPAQUE block. Grazing the hair or shoulders is fine. Do NOT build two narrow vertical side rails hugging the
-   edges — that reads as a cramped HUD and is wrong; use wide top/bottom bands like a real lower-third.
+   HARD LIMITS: keep the burned-in caption band y=${CAPTION_ZONE_TOP_Y}..1920 empty (a deterministic check
+   rejects any graphic that reaches into it), and NEVER cover a face feature — an eye, the glasses, the nose, the
+   mouth or the chin — with an OPAQUE block. Grazing the hair or shoulders is fine. Do NOT build two narrow
+   vertical side rails hugging the edges — that reads as a cramped HUD and is wrong; use wide top/bottom bands
+   like a real lower-third.
    There is no empty placeholder at any sampled frame: populate a card before revealing it and hide it on exit.
    On repair, move opaque offenders into the top band or the lower chest panel. Keep type at least 40px and never
    clip a wordmark at the frame edge.
@@ -70,18 +73,57 @@ function stripFences(s: string): string {
   return (m ? m[1] : t).trim();
 }
 
+export interface AuthorMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
 /**
- * Author (or re-author) one scene's HyperFrames composition. On a re-render, `priorIssues`
- * (from the vision-QA pass) are fed back so the model fixes concrete problems instead of
- * starting blind.
+ * Build the chat messages for one author call.
+ *
+ * With `priorHtml` + `priorIssues` this is a PATCH: the model's previous draft is supplied as a real
+ * ASSISTANT turn, so it edits *its own* output in place and preserves what works, instead of re-rolling
+ * from scratch. The immutable brief rides in the final user message so a patch can't drift off-brief or
+ * off-brand. Best-effort (no diff/schema enforcement) — whether it patches vs rerolls is MEASURED via
+ * the probe's per-attempt artifacts, not enforced here.
+ */
+export function buildAuthorMessages(args: {
+  system: string;
+  payload: Record<string, unknown>;
+  priorHtml?: string;
+  priorIssues?: string[];
+}): AuthorMessage[] {
+  const { system, payload, priorHtml, priorIssues } = args;
+  if (priorHtml && priorIssues?.length) {
+    return [
+      { role: "system", content: system },
+      { role: "user", content: "You are EDITING a scene you already authored — it follows as your previous message. Apply ONLY the edits in the message after it." },
+      { role: "assistant", content: priorHtml },
+      { role: "user", content:
+          "Apply these edits to the scene above and return the COMPLETE edited HTML document. Preserve unaffected " +
+          "elements — do NOT rebuild or restyle what is not called out.\n" +
+          `STAY TRUE TO THIS BRIEF (unchanged): ${JSON.stringify(payload)}\n` +
+          `EDITS TO APPLY: ${JSON.stringify(priorIssues)}` },
+    ];
+  }
+  return [
+    { role: "system", content: system },
+    { role: "user", content: `Author this scene:\n${JSON.stringify(payload)}` },
+  ];
+}
+
+/**
+ * Author (or edit) one scene's HyperFrames composition. On a QA rejection, `priorHtml` + `priorIssues`
+ * are fed back as a patch (see buildAuthorMessages) so the model edits its prior draft in place.
  */
 export async function authorScene(args: {
   spec: SceneSpec;
   brief: RenderBrief;
   assetHints: string[];
   priorIssues?: string[];
+  priorHtml?: string;
 }): Promise<string> {
-  const { spec, brief, assetHints, priorIssues } = args;
+  const { spec, brief, assetHints, priorIssues, priorHtml } = args;
 
   const payload = {
     id: spec.id,
@@ -93,10 +135,6 @@ export async function authorScene(args: {
     brandColor: brief.assets?.brandColor || brief.accentColor || "#d9ff45",
     brandVoice: brief.assets?.brandVoice || null,
     assets: assetHints,
-    fixThese:
-      priorIssues && priorIssues.length
-        ? priorIssues
-        : undefined,
   };
 
   const system = authorSystemPrompt(spec.durMs / 1000).replace(/\{\{ID\}\}/g, spec.id);
@@ -104,17 +142,7 @@ export async function authorScene(args: {
   const resp = await client.chat.completions.create({
     model: AUTHOR_MODEL,
     ...chatTuning(AUTHOR_MODEL, AUTHOR_EFFORT),
-    messages: [
-      { role: "system", content: system },
-      {
-        role: "user",
-        content: priorIssues?.length
-          ? `Re-author this scene, FIXING these issues found by visual review:\n${JSON.stringify(
-              payload,
-            )}`
-          : `Author this scene:\n${JSON.stringify(payload)}`,
-      },
-    ],
+    messages: buildAuthorMessages({ system, payload, priorHtml, priorIssues }),
   }, premiumRequestOptions());
 
   const html = stripFences(resp.choices[0]?.message?.content || "");

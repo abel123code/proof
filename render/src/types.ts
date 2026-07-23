@@ -117,10 +117,14 @@ export interface AuthoredScene {
   movPath?: string;
 }
 
-/** Result of the vision-QA pass on one rendered scene. */
+/** Tagged result of the vision-QA pass on one rendered scene. */
+export type SceneQAOutcome =
+  | "approved" // ship it
+  | "editorial_reject" // real quality problem: patch the scene against `issues`
+  | "operational_error"; // empty/unparseable QA response: retry the JUDGMENT on the same render
 export interface SceneQA {
-  ok: boolean;
-  /** Concrete, fixable issues to feed back to the author on a re-render (empty when ok). */
+  outcome: SceneQAOutcome;
+  /** Concrete, fixable edits to feed back to the author on an editorial_reject (empty when approved). */
   issues: string[];
 }
 

@@ -17,6 +17,7 @@ import {
 import {
   DEFAULT_PREMIUM_AUTHOR_MODEL,
   authorSystemPrompt,
+  buildAuthorMessages,
 } from "../src/premium/author.js";
 import { validateComposition } from "../src/premium/sanitize.js";
 import { produceScene } from "../src/premium/index.js";
@@ -152,21 +153,23 @@ test("validateComposition catches parser-level bypasses (unquoted, srcset, srcdo
   }
 });
 
-test("parseQaVerdict fails CLOSED on empty or unparseable responses", () => {
-  assert.equal(parseQaVerdict(undefined).ok, false);
-  assert.equal(parseQaVerdict("").ok, false);
-  assert.equal(parseQaVerdict("not json {").ok, false);
-  assert.deepEqual(parseQaVerdict(JSON.stringify({ ok: false, issues: [] })).issues, [
-    "QA rejected the scene without reasons",
-  ]);
-  // valid but rejecting
+test("parseQaVerdict tags outcomes; empty/unparseable are operational, not editorial", () => {
+  // Transport/parse failures are OPERATIONAL (re-judge the same render), not a scene verdict.
+  assert.equal(parseQaVerdict(undefined).outcome, "operational_error");
+  assert.equal(parseQaVerdict("").outcome, "operational_error");
+  assert.equal(parseQaVerdict("not json {").outcome, "operational_error");
+  // A valid rejection with no reasons still carries a fallback edit.
+  const noReasons = parseQaVerdict(JSON.stringify({ ok: false, issues: [] }));
+  assert.equal(noReasons.outcome, "editorial_reject");
+  assert.deepEqual(noReasons.issues, ["QA rejected the scene without reasons"]);
+  // valid editorial rejection
   const rejected = parseQaVerdict(JSON.stringify({ ok: false, issues: ["clipped title"] }));
-  assert.equal(rejected.ok, false);
+  assert.equal(rejected.outcome, "editorial_reject");
   assert.deepEqual(rejected.issues, ["clipped title"]);
-  // ok:true but with issues -> still not approved
-  assert.equal(parseQaVerdict(JSON.stringify({ ok: true, issues: ["tiny text"] })).ok, false);
+  // ok:true but with issues -> still an editorial reject (not a clean approval)
+  assert.equal(parseQaVerdict(JSON.stringify({ ok: true, issues: ["tiny text"] })).outcome, "editorial_reject");
   // clean approval
-  assert.equal(parseQaVerdict(JSON.stringify({ ok: true, issues: [] })).ok, true);
+  assert.equal(parseQaVerdict(JSON.stringify({ ok: true, issues: [] })).outcome, "approved");
 });
 
 test("produceScene skips (no movPath) when QA rejects through the final retry", async () => {
@@ -193,13 +196,13 @@ test("produceScene skips (no movPath) when QA rejects through the final retry", 
         render: async () => {
           rendered++;
         },
-        mask: async () => {},
-        qa: async () => ({ ok: false, issues: ["unreadable text"] }),
+        captionCheck: async () => false,
+        qa: async () => ({ outcome: "editorial_reject", issues: ["unreadable text"] }),
       },
     );
     assert.equal(out.movPath, undefined, "a QA-rejected scene must not carry a movPath");
-    // MAX_QA_ITERS defaults to 2 -> initial attempt + 2 retries.
-    assert.equal(authored, 3, "author runs for the initial attempt + 2 retries");
+    // MAX_QA_ITERS defaults to 2 -> initial attempt + 2 edits.
+    assert.equal(authored, 3, "author runs for the initial attempt + 2 edits");
     assert.equal(rendered, 3);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -224,15 +227,16 @@ test("produceScene returns a movPath when QA approves", async () => {
       {
         author: async () => VALID_HTML,
         render: async () => { order.push("render"); },
-        mask: async () => { order.push("mask"); },
+        captionCheck: async () => { order.push("caption"); return false; },
         qa: async () => {
           order.push("qa");
-          return { ok: true, issues: [] };
+          return { outcome: "approved", issues: [] };
         },
       },
     );
     assert.equal(out.movPath, join(dir, "scene-2.mov"));
-    assert.deepEqual(order, ["render", "mask", "qa"]);
+    // No mask: render -> deterministic caption check -> vision QA.
+    assert.deepEqual(order, ["render", "caption", "qa"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -260,12 +264,12 @@ test("produceScene sends concrete QA issues into the next author attempt", async
           return VALID_HTML;
         },
         render: async () => {},
-        mask: async () => {},
+        captionCheck: async () => false,
         qa: async () => {
           reviews++;
           return reviews === 1
-            ? { ok: false, issues: ["move the title away from the speaker's face"] }
-            : { ok: true, issues: [] };
+            ? { outcome: "editorial_reject", issues: ["move the title away from the speaker's face"] }
+            : { outcome: "approved", issues: [] };
         },
       },
     );
@@ -297,8 +301,8 @@ test("produceScene never renders unsafe model HTML (external script) and skips i
         render: async () => {
           rendered++;
         },
-        mask: async () => {},
-        qa: async () => ({ ok: true, issues: [] }),
+        captionCheck: async () => false,
+        qa: async () => ({ outcome: "approved", issues: [] }),
       },
     );
     assert.equal(out.movPath, undefined, "unsafe HTML must never get a movPath");
@@ -421,12 +425,97 @@ test("the author contract composes in wide top/bottom bands, not narrow side rai
   // cramped HUD and were the thing the first fix wrongly prescribed.
   assert.match(prompt, /top band above the head/);
   assert.match(prompt, /FULL-WIDTH panel in the lower band/);
-  assert.match(prompt, /Do NOT build two narrow vertical side rails/);
-  // The face must never be covered by an OPAQUE block, but transparent accents may cross it.
-  assert.match(prompt, /NEVER cover the eyes, nose or mouth with\s+an OPAQUE block/);
+  assert.match(prompt, /Do NOT build two narrow\s+vertical side rails/);
+  // No OPAQUE block on any face feature, but transparent accents may cross.
+  assert.match(prompt, /NEVER cover a face feature[\s\S]*with\s*[\s\S]*an OPAQUE block/);
   assert.match(prompt, /Transparent, non-blocking accents/);
-  // Caption band stays protected.
+  // Caption band stays protected, and the number comes from the shared constant (1450).
   assert.match(prompt, /y=1450\.\.1920/);
+});
+
+test("QA is an editorial pass with a precise face-feature rule (no 'partial overlap is fine')", () => {
+  const p = qaSystemPrompt([]);
+  assert.match(p, /AI SLOP|generic template/i);
+  assert.match(p, /supplements/i);
+  // Opaque graphic across a face feature fails; grazing hair/shoulders passes.
+  assert.match(p, /OPAQUE graphic sitting ACROSS a face feature/);
+  assert.match(p, /graz(e|es) the HAIR or the\s+SHOULDERS/i);
+  assert.match(p, /covering even ONE eye counts/);
+  assert.match(p, /FULL-SCREEN TAKEOVER/);
+  assert.match(p, /never\s+shrink it into a corner/);
+  // The old blanket "any pixel touching the head = fail" gate is gone.
+  assert.doesNotMatch(p, /touching the speaker's face, forehead, eyes, mouth, chin or head/);
+  assert.doesNotMatch(p, /partial overlap is fine/i);
+  // Feedback is concrete edits, not "start over".
+  assert.match(p, /CONCRETE EDIT/);
+  assert.match(p, /never .start over/i);
+});
+
+test("buildAuthorMessages: fresh author is one user turn; patch puts prior HTML as an assistant turn", () => {
+  const fresh = buildAuthorMessages({ system: "S", payload: { intent: "x" } });
+  assert.deepEqual(fresh.map((m) => m.role), ["system", "user"]);
+  assert.match(fresh[1].content, /Author this scene/);
+
+  const patch = buildAuthorMessages({
+    system: "S",
+    payload: { intent: "show repo graph", motif: "lime chip", brandColor: "#d9ff45", assets: ["hero.png"] },
+    priorHtml: "<div id=stage>PRIOR</div>",
+    priorIssues: ["move the panel up"],
+  });
+  assert.deepEqual(patch.map((m) => m.role), ["system", "user", "assistant", "user"]);
+  assert.match(patch[2].content, /PRIOR/); // the model's prior draft is a real assistant turn
+  const last = patch[3].content;
+  assert.match(last, /preserve unaffected elements/i);
+  assert.doesNotMatch(last, /preserve the layout/i);
+  assert.match(last, /move the panel up/);
+  assert.match(last, /show repo graph/);
+  assert.match(last, /#d9ff45/);
+  assert.match(last, /hero\.png/);
+  assert.doesNotMatch(last, /Author this scene/);
+});
+
+test("produceScene chains the EXACT prior HTML into the edit (undefined -> V1 -> V1)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "chain-"));
+  try {
+    const V1 = VALID_HTML.replace("</body>", "<!--V1--></body>");
+    const priors: Array<string | undefined> = [];
+    let n = 0;
+    await produceScene(
+      { spec: spec("scene-1"), brief: { script: "s", keywordFlags: [] }, assetHints: [], assetsDir: dir, premiumDir: dir, basePath: "base.mp4", fps: 30, log: () => {} },
+      {
+        author: async ({ priorHtml }) => { priors.push(priorHtml); return V1; },
+        render: async () => {},
+        captionCheck: async () => false,
+        qa: async () => (++n === 1 ? { outcome: "editorial_reject", issues: ["move the panel up"] } : { outcome: "approved", issues: [] }),
+      },
+    );
+    assert.equal(priors[0], undefined, "first author is fresh");
+    assert.equal(priors[1], V1, "the edit receives the EXACT prior render");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("operational_error retries QA on the same render — no re-author, no re-render", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "op-"));
+  try {
+    let a = 0, r = 0, q = 0;
+    const out = await produceScene(
+      { spec: spec("scene-1"), brief: { script: "s", keywordFlags: [] }, assetHints: [], assetsDir: dir, premiumDir: dir, basePath: "base.mp4", fps: 30, log: () => {} },
+      {
+        author: async () => { a++; return VALID_HTML; },
+        render: async () => { r++; },
+        captionCheck: async () => false,
+        qa: async () => (++q === 1 ? { outcome: "operational_error", issues: ["unparseable"] } : { outcome: "approved", issues: [] }),
+      },
+    );
+    assert.ok(out.movPath, "approved after the QA retry");
+    assert.equal(a, 1, "a transport error must NOT re-author");
+    assert.equal(r, 1, "a transport error must NOT re-render");
+    assert.equal(q, 2, "QA was retried against the same render");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("QA may only demand assets that were actually staged", () => {
