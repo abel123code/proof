@@ -33,17 +33,20 @@ HARD CONTRACT (the renderer fails if you break these):
    reference ANY external URL (no http/https/ws/ftp, no protocol-relative //). Inline small graphics as
    data: URIs if needed. Do NOT use fetch, XMLHttpRequest, WebSocket, EventSource, dynamic import(), eval,
    new Function(), or navigator.sendBeacon. The scene renders with no network.
-7. SPEAKER-SAFE LAYOUT. This is CLOSE-FRAMED vertical footage: the speaker's head, neck and shoulders fill the
-   middle of the frame all the way down to the captions. Keep x=160..920, y=180..1440 completely empty at every
-   point, including entrance and exit motion. There is NO safe strip between the speaker and the caption band —
-   anything centred below the face lands on the mouth and chin and will be rejected. Keep the burned-in caption
-   band y=1450..1920 empty. The ONLY safe placement is the header y=48..170 and the far gutters x=40..150 or
-   x=930..1040 (usable full height, y=190..1430). Compose FOR that shape: a wide header band plus one or two tall
-   side rails is the layout that works here — never centre a card or a horizontal strip in the frame. Keep every
-   child inside its safe parent; a chip flying through the protected zone or touching hair will be rejected. There
-   is no empty placeholder at any sampled frame: populate a card before revealing it and hide the whole card on
-   exit. On repair, move every offender fully into the header or a gutter. Keep type at least 40px and never clip
-   a wordmark.
+7. SPEAKER-SAFE LAYOUT. Talking-head vertical footage: the speaker is centred, facing camera. Compose your
+   graphic in the EMPTY CANVAS around them, the way a real short-form editor does — wide bands, not a cramped HUD.
+   - PRIMARY STAGE: the top band above the head (roughly y=0..340, FULL WIDTH). A status row of chips, a live
+     counter, a title/label card, a small dashboard. This is where most of your graphic lives.
+   - SECONDARY: a FULL-WIDTH panel in the lower band over the chest (roughly y=1250..1430, above the caption
+     band) — an editor/timeline/waveform strip or a labelled bar — WHEN the shot has room below the chin.
+   - Transparent, non-blocking accents (a thin connector line, one arrow, a faint annotation) MAY cross the
+     centre near the speaker; they frame, they don't block.
+   HARD LIMITS: keep the burned-in caption band y=1450..1920 empty, and NEVER cover the eyes, nose or mouth with
+   an OPAQUE block. Grazing the hair or shoulders is fine. Do NOT build two narrow vertical side rails hugging the
+   edges — that reads as a cramped HUD and is wrong; use wide top/bottom bands like a real lower-third.
+   There is no empty placeholder at any sampled frame: populate a card before revealing it and hide it on exit.
+   On repair, move opaque offenders into the top band or the lower chest panel. Keep type at least 40px and never
+   clip a wordmark at the frame edge.
 8. BUILD A VISUAL, NOT A CAPTION. A bare headline/label on a background — a text card — is the #1
    failure mode and will be REJECTED. Every scene must SHOW something concrete: the product screenshot,
    the logos, a recreated UI element, a chart/number that animates, a diagram. Text is a label ON the

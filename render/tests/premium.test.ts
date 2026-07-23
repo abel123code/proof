@@ -414,17 +414,18 @@ test("vision QA sends explicit full-detail frames and samples scene boundaries",
   assert.deepEqual(qaSampleTimes(4), [0.2, 0.8, 2, 3.4, 3.8]);
 });
 
-test("the author contract reserves a concrete speaker-safe corridor", () => {
+test("the author contract composes in wide top/bottom bands, not narrow side rails", () => {
   const prompt = authorSystemPrompt(3);
-  // The corridor must run all the way to the caption band. In close framing the mouth and chin
-  // sit around y=1250..1440, so the old "safe lower band y=1260..1420" told the author to place
-  // graphics directly on the speaker's face (proof-live-c063e1e6: 5/5 scenes QA-rejected, three
-  // of them naming the eyes/nose/mouth explicitly).
-  assert.match(prompt, /x=160\.\.920, y=180\.\.1440/);
-  assert.doesNotMatch(prompt, /lower band y=1260\.\.1420/);
-  assert.match(prompt, /NO safe strip between the speaker and the caption band/);
-  assert.match(prompt, /including entrance and exit motion/);
-  assert.match(prompt, /no empty placeholder/);
+  // Gold-standard layout language (proof-demo-FINAL): a wide top band above the head and a
+  // full-width lower panel over the chest — NOT two narrow vertical rails, which read as a
+  // cramped HUD and were the thing the first fix wrongly prescribed.
+  assert.match(prompt, /top band above the head/);
+  assert.match(prompt, /FULL-WIDTH panel in the lower band/);
+  assert.match(prompt, /Do NOT build two narrow vertical side rails/);
+  // The face must never be covered by an OPAQUE block, but transparent accents may cross it.
+  assert.match(prompt, /NEVER cover the eyes, nose or mouth with\s+an OPAQUE block/);
+  assert.match(prompt, /Transparent, non-blocking accents/);
+  // Caption band stays protected.
   assert.match(prompt, /y=1450\.\.1920/);
 });
 
