@@ -40,11 +40,12 @@ test("CAPTION_ZONE_TOP_Y stays at or above the caption pill top (derived from to
   assert.ok(CAPTION_ZONE_TOP_Y >= 1200, "not absurdly high (would waste the frame)");
 });
 
-test("captionIntrusionIssue is a concrete 'move it up' edit naming the zone", () => {
+test("captionIntrusionIssue is a SAFETY-tagged, concrete 'move it up' edit naming the zone", () => {
   const i = captionIntrusionIssue();
-  assert.match(i, /caption/i);
-  assert.match(i, /move|raise|clear/i);
-  assert.match(i, new RegExp(String(CAPTION_ZONE_TOP_Y)));
+  assert.equal(i.kind, "safety", "covering the captions is objective, not a matter of taste");
+  assert.match(i.text, /caption/i);
+  assert.match(i.text, /move|raise|clear/i);
+  assert.match(i.text, new RegExp(String(CAPTION_ZONE_TOP_Y)));
 });
 
 test("overlay fully above the caption zone does NOT intrude", { skip: !hasFfmpeg }, async () => {

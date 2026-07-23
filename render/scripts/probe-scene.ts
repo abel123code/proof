@@ -16,7 +16,7 @@ import { mkdir, readFile, writeFile, copyFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { planScenes } from "../src/premium/scenes.js";
 import { produceScene, type SceneAttemptRecord } from "../src/premium/index.js";
-import type { RenderBrief, Word } from "../src/types.js";
+import type { RenderBrief, Word, SceneIssue } from "../src/types.js";
 
 const [basePathArg, propsPathArg, fixturePathArg, sceneIndexArg] = process.argv.slice(2);
 
@@ -52,7 +52,7 @@ async function main() {
 
   const started = Date.now();
   const attempts: Array<{
-    attempt: number; iter: number; outcome: string; issues: string[]; htmlSha: string; movSha: string | null; frames: number;
+    attempt: number; iter: number; outcome: string; issues: SceneIssue[]; htmlSha: string; movSha: string | null; frames: number;
   }> = [];
 
   const onAttempt = async (rec: SceneAttemptRecord) => {

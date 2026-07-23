@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getOpenAI } from "../openai.js";
 import { buildCutVideo, overlayScenesAtOffsets, extractFrames } from "../ffmpeg.js";
-import type { SceneSpec, SceneQA } from "../types.js";
+import type { SceneSpec, SceneQA, SceneIssue } from "../types.js";
 import { chatTuning, premiumRequestOptions } from "./model-params.js";
 
 export const DEFAULT_PREMIUM_QA_MODEL = "gpt-5.6-sol";
@@ -33,24 +33,29 @@ export function qaSystemPrompt(assetHints: string[] = []): string {
     : `("move the strip off the speaker's chin into the header", "give the chart a real axis instead of bare labels", "fix 'Triger.dev' -> 'Trigger.dev'")`;
   return `You are the SECOND-PASS creative director for a bespoke motion-graphic scene composited over
 talking-head footage in a vertical (1080x1920) marketing video, captions already burned in at the bottom. You
-are NOT a geometry checker — you are the anti-slop, pro-craft review that decides if this scene is GOOD ENOUGH
-TO SHIP. FAIL ONLY for a real quality problem:
-- AI SLOP / generic template: a bare headline on a background, a generic card montage, or filler with no idea.
-  A shippable scene SHOWS a specific real visual (an embedded staged asset, a recreated UI element, a chart, a
-  diagram) that SUPPLEMENTS what the speaker is saying — it earns its place on screen.
+are an ADVISOR, not a gatekeeper: the scene WILL ship regardless of your verdict. Your job is to report every
+issue AND tag each one as "safety" or "subjective", because the two are handled completely differently:
+
+SAFETY = an OBJECTIVE defect a reasonable person calls broken. These get auto-repaired. Only these:
+- an OPAQUE graphic sitting ACROSS a face feature — an eye, the glasses, the nose, the mouth, or the chin.
+  Covering even ONE eye counts. A graphic that only grazes the HAIR or SHOULDERS, or a thin/translucent accent
+  passing near the face, is FINE — never flag those.
+- any element reaching into the bottom caption band and covering the burned-in captions.
+- MISSPELLED or garbled on-screen text, or a CLIPPED / cut-off wordmark (e.g. "Compositin" for "Compositing").
 - reproducing the spoken sentence as on-screen subtitles / duplicating the bottom captions.
-- misspelled or garbled on-screen text, or a clipped wordmark.
-- broken render: empty, elements overlapping into illegibility, or text too small / too low-contrast to read.
-- an OPAQUE graphic sitting ACROSS a face feature — an eye, the glasses, the nose, the mouth, or the chin. This
-  breaks the talking head, and covering even ONE eye counts. A graphic that only grazes the HAIR or the
-  SHOULDERS, or a thin/translucent accent passing near the face, is fine — do NOT fail those. The failure is an
-  opaque panel or text ON a face feature. The fix is to move it, or commit to a FULL-SCREEN TAKEOVER — never
-  shrink it into a corner.
+- a genuinely broken render: empty, elements overlapping into illegibility, or text too small / low-contrast to read.
+
+SUBJECTIVE = a matter of TASTE. NEVER a reason to block — the HUMAN decides. Tag, don't fix. These:
+- the scene is a bit generic, or could show a more specific/real visual (still legible and correctly spelled).
+- a creative beat wasn't fully realized (e.g. "the chip could have morphed into a nameplate").
+- a COPY / WORDING preference on text that is already correct and correctly spelled (e.g. word ORDER like
+  "PROOF EDITED BY" vs "EDITED BY PROOF"), phrasing, or a pacing/aesthetic polish suggestion.
 ${assetRule}
-On failure, every issue is a CONCRETE EDIT to the EXISTING scene ("move the timeline panel up into the header
-row", "give the chart a real axis") — never "start over". Do not nitpick a scene that is already good enough to
-ship. Respond with JSON: { "ok": boolean, "issues": string[] }. Each issue is one short edit
-${examples}. Return an empty issues array when the scene is good enough to ship.`;
+Every issue is one CONCRETE EDIT to the EXISTING scene ("move the timeline panel up into the header row",
+"fix 'Triger.dev' -> 'Trigger.dev'") — never "start over". Do NOT invent safety issues; when unsure whether
+something is safety or subjective, tag it "subjective". A clean, legible, face-clear, caption-clear scene has
+NO issues at all. Respond with JSON: { "issues": [ { "text": string, "kind": "safety" | "subjective" } ] }.
+Each text is one short edit ${examples}. Return an EMPTY issues array when the scene is good to ship as-is.`;
 }
 
 export function qaSampleTimes(durationSec: number): number[] {
@@ -130,24 +135,40 @@ export async function qaScene(args: {
 }
 
 /**
- * Parse the vision model's JSON verdict into a tagged outcome. The wire format stays a simple
- * `{ ok, issues }` (what the model emits); the tag is internal.
+ * Parse the vision model's JSON verdict into a tagged outcome. Wire format:
+ * `{ issues: [{ text, kind: "safety" | "subjective" }] }`. Each issue is normalized to a
+ * {@link SceneIssue}; a missing/invalid kind defaults to "subjective" (fail toward showing the
+ * human, never toward a wrong auto-repair — matches the prompt's "when unsure, subjective").
  *
- * - `operational_error` — empty or unparseable response. FAILS CLOSED but distinctly: the caller
- *   retries the JUDGMENT on the SAME render rather than re-authoring, so a transient OpenAI/JSON
- *   hiccup costs a cheap re-review, not a wasted re-render.
- * - `approved` — explicit ok:true with no issues.
- * - `editorial_reject` — a real quality verdict; `issues` are concrete edits for the author.
+ * - `operational_error` — empty or unparseable response. FAILS toward a cheap re-review: the caller
+ *   retries the JUDGMENT on the SAME render rather than re-authoring, so a transient hiccup costs a
+ *   re-review, not a wasted re-render.
+ * - `approved` — no issues.
+ * - `editorial_reject` — one or more tagged issues (safety and/or subjective).
  */
 export function parseQaVerdict(content: string | null | undefined): SceneQA {
-  if (!content) return { outcome: "operational_error", issues: ["QA returned an empty response"] };
+  if (!content) {
+    return { outcome: "operational_error", issues: [{ text: "QA returned an empty response", kind: "subjective" }] };
+  }
   try {
-    const parsed = JSON.parse(content) as { ok?: boolean; issues?: unknown };
-    const reported = Array.isArray(parsed.issues) ? parsed.issues.map(String).filter(Boolean) : [];
-    if (parsed.ok === true && reported.length === 0) return { outcome: "approved", issues: [] };
-    const issues = reported.length ? reported : ["QA rejected the scene without reasons"];
+    const parsed = JSON.parse(content) as { issues?: unknown };
+    const issues: SceneIssue[] = Array.isArray(parsed.issues)
+      ? parsed.issues
+          .map((raw): SceneIssue | null => {
+            if (typeof raw === "string") return raw.trim() ? { text: raw.trim(), kind: "subjective" } : null;
+            if (raw && typeof raw === "object") {
+              const text = String((raw as { text?: unknown }).text ?? "").trim();
+              if (!text) return null;
+              const kind = (raw as { kind?: unknown }).kind === "safety" ? "safety" : "subjective";
+              return { text, kind };
+            }
+            return null;
+          })
+          .filter((x): x is SceneIssue => x !== null)
+      : [];
+    if (issues.length === 0) return { outcome: "approved", issues: [] };
     return { outcome: "editorial_reject", issues };
   } catch {
-    return { outcome: "operational_error", issues: ["QA returned unparseable JSON"] };
+    return { outcome: "operational_error", issues: [{ text: "QA returned unparseable JSON", kind: "subjective" }] };
   }
 }

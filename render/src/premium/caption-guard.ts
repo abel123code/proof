@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { SceneIssue } from "../types.js";
 
 const FFMPEG = process.env.FFMPEG_PATH || "ffmpeg";
 const COMPOSITION_HEIGHT = 1920;
@@ -17,13 +18,16 @@ export const CAPTION_ZONE_TOP_Y = 1450;
 // catches semi-transparent panels while ignoring sub-pixel anti-alias fringe.
 const ALPHA_INTRUSION_THRESHOLD = 26;
 
-/** The concrete edit handed to the author when a scene reaches into the caption band. */
-export function captionIntrusionIssue(): string {
-  return (
-    `MUST FIX: part of the graphic reaches into the bottom caption band (below y=${CAPTION_ZONE_TOP_Y}) ` +
-    `and would cover the burned-in captions. Move that element UP so nothing renders below ` +
-    `y=${CAPTION_ZONE_TOP_Y}; keep the caption band fully clear.`
-  );
+/** The concrete edit handed to the author when a scene reaches into the caption band. This is an
+ *  OBJECTIVE (safety) fault — covering the burned-in captions is broken, not a matter of taste. */
+export function captionIntrusionIssue(): SceneIssue {
+  return {
+    kind: "safety",
+    text:
+      `MUST FIX: part of the graphic reaches into the bottom caption band (below y=${CAPTION_ZONE_TOP_Y}) ` +
+      `and would cover the burned-in captions. Move that element UP so nothing renders below ` +
+      `y=${CAPTION_ZONE_TOP_Y}; keep the caption band fully clear.`,
+  };
 }
 
 /**

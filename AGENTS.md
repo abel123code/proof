@@ -35,7 +35,12 @@ API usage.
 - FFmpeg owns source footage. Remotion and HyperFrames produce overlays.
 - Model-authored HTML is untrusted and must pass validation before Chromium renders it.
 - The normal generated path cannot bypass five-frame vision QA.
-- Rejected scenes are repaired or omitted. The captioned base must remain deliverable.
+- Scenes are never silently omitted. QA is an auditable advisor: objective SAFETY faults (graphic on
+  a face feature / in the caption band, garbled or clipped text, missing required asset) are auto-repaired
+  up to the retry budget, then the scene SHIPS FLAGGED; SUBJECTIVE notes (creative/copy/polish) never
+  block and never drive a re-author. Every scene carries a `SceneReport` (verdict + reasons + tags) so the
+  app can show the user why and ask whether to re-render. The captioned base is the per-scene fallback
+  (verdict `base_fallback`) only when a scene cannot be rendered safely at all.
 - The web route and render worker own `RENDER_EDIT_MODE`; callers cannot select a weaker mode.
 - Never commit credentials, local media paths, generated videos, or `.env` files.
 

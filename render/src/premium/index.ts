@@ -1,7 +1,15 @@
 import { mkdir, copyFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { createRequire } from "node:module";
-import type { RenderBrief, Word, AuthoredScene, SceneSpec, SceneQAOutcome } from "../types.js";
+import type {
+  RenderBrief,
+  Word,
+  AuthoredScene,
+  SceneSpec,
+  SceneQAOutcome,
+  SceneIssue,
+  SceneReport,
+} from "../types.js";
 import { planScenes } from "./scenes.js";
 import { authorScene } from "./author.js";
 import { qaScene } from "./qa.js";
@@ -84,20 +92,25 @@ async function fetchAsset(src: string, destPath: string): Promise<void> {
 }
 
 /**
- * Produce one scene: author -> validate -> render -> vision-QA, re-authoring against feedback
- * up to MAX_QA_ITERS times.
+ * Produce one scene: author -> validate -> render -> vision-QA, patching against feedback up to
+ * MAX_QA_ITERS times. This is an AUDITABLE ADVISOR, not a gatekeeper.
  *
- * Returns the scene WITH a movPath only when it is approved. If it can't be made safe/valid or
- * QA keeps rejecting it through the final retry, it returns WITHOUT a movPath so composeScenes
- * skips that beat (the base shows through) — a premium job never ships a QA-rejected or
- * unsanitized scene as if it succeeded. Throws only on hard author/render errors, which the
- * caller treats as a skipped beat too.
+ * The scene ALWAYS ships (returns a movPath) carrying a {@link SceneReport} — the verdict plus the
+ * exact reasoning — so the app can show the user why and ask whether to re-render. Behaviour:
+ * - OBJECTIVE (safety) faults — a graphic on a face feature, a caption-band intrusion, garbled/clipped
+ *   text, a missing required asset — drive an auto-patch each round; if still unresolved at the last
+ *   attempt the scene SHIPS FLAGGED (never omitted).
+ * - SUBJECTIVE notes (creative/copy/polish) NEVER block and NEVER drive a re-author; they ride along
+ *   as flags for the human.
+ * The ONE non-ship case is `base_fallback`: the HTML never cleared the security validator, so it
+ * cannot be rendered at all and that beat shows the captioned base (reported, not silently dropped).
+ * Throws only on a hard author/render crash, which the caller records as a base_fallback beat.
  */
 /** One rendered attempt, for observability/measurement (e.g. the probe's per-attempt artifacts). */
 export interface SceneAttemptRecord {
   attempt: number;
   outcome: SceneQAOutcome | "caption_reject";
-  issues: string[];
+  issues: SceneIssue[];
   html: string;
   /** The overlay MOV as it stood for this attempt (overwritten by the next attempt). */
   movPath: string;
@@ -135,90 +148,160 @@ export async function produceScene(
 
   const movPath = join(premiumDir, `${spec.id}.mov`);
   const captionCheck = deps.captionCheck ?? overlayIntrudesCaptionBand;
-  let issues: string[] | undefined;
+
+  // --- audit-report builders: a scene ALWAYS returns a report ---
+  const report = (over: Partial<SceneReport>): SceneReport => ({
+    sceneId: spec.id,
+    anchorMs: spec.anchorMs,
+    durMs: spec.durMs,
+    intent: spec.intent,
+    verdict: "clean",
+    shipped: true,
+    issues: [],
+    attempts: 0,
+    ...over,
+  });
+  /** Ship the current render, carrying any unresolved issues as flags (clean when none). */
+  const ship = (issues: SceneIssue[], attempts: number): AuthoredScene => ({
+    spec,
+    html,
+    movPath,
+    report: report({ verdict: issues.length ? "flagged" : "clean", shipped: true, issues, attempts }),
+  });
+  /** The ONLY non-ship path: no safe render exists, so this beat shows the base. */
+  const baseFallback = (issues: SceneIssue[], attempts: number): AuthoredScene => ({
+    spec,
+    html,
+    report: report({ verdict: "base_fallback", shipped: false, issues, attempts }),
+  });
+  const texts = (issues: SceneIssue[]) => issues.map((i) => i.text);
+
+  let safetyIssues: SceneIssue[] = []; // the safety faults the next patch must fix (subjective never patches)
   let priorHtml: string | undefined; // the last rendered draft — fed back so an edit patches, not rerolls
   let html = "";
+  let hasRender = false; // a validated render exists at movPath (used if the final HTML turns unsafe)
   let retryQaOnly = false; // set after an operational QA error: re-judge the SAME render, don't re-author
+
   for (let iter = 0; iter <= MAX_QA_ITERS; iter++) {
     const last = iter === MAX_QA_ITERS;
+    const attempts = iter + 1;
+    // Deterministic safety flags we're SHIPPING WITH this round (only ever populated on `last`,
+    // since earlier attempts patch-and-continue instead).
+    let deterministicFlags: SceneIssue[] = [];
 
     if (!retryQaOnly) {
-      html = await deps.author({ spec, brief, assetHints, priorIssues: issues, priorHtml });
+      html = await deps.author({
+        spec,
+        brief,
+        assetHints,
+        priorIssues: safetyIssues.length ? texts(safetyIssues) : undefined,
+        priorHtml,
+      });
 
-      // Trust boundary: never render model HTML that references the network or eval's.
+      // Trust boundary: never render model HTML that references the network or eval's. This is the
+      // one fault we can't ship around — unrenderable HTML means the beat shows the base.
       const violations = validateComposition(html, assetHints);
       if (violations.length) {
+        const vIssues: SceneIssue[] = violations.map((v) => ({ kind: "safety", text: `MUST FIX (security): ${v}` }));
         if (last) {
-          log(`  ${spec.id}: rejected (unsafe/invalid HTML) — skipping: ${violations.slice(0, 2).join("; ")}`);
-          return { spec, html };
+          if (hasRender) {
+            log(`  ${spec.id}: final HTML unsafe — shipping the last safe render, flagged`);
+            return ship(vIssues, attempts);
+          }
+          log(`  ${spec.id}: no safe render — base shows for this beat: ${violations.slice(0, 2).join("; ")}`);
+          return baseFallback(vIssues, attempts);
         }
-        issues = violations.map((v) => `MUST FIX (contract/security): ${v}`);
-        log(`  ${spec.id}: re-author ${iter + 1} — ${violations.slice(0, 2).join("; ")}`);
+        safetyIssues = vIssues;
+        priorHtml = html;
+        log(`  ${spec.id}: re-author ${attempts} — unsafe HTML: ${violations.slice(0, 2).join("; ")}`);
         continue;
       }
 
-      // Asset-inclusion gate: if the intent names specific assets, the HTML must embed them. Catches
-      // the "described the logo but drew a generic icon" failure BEFORE a wasted render + vision call.
-      // Fails CLOSED on the final attempt: a scene still missing a required asset is omitted, not shipped.
+      // Asset-inclusion (objective): if the intent names assets, the HTML must embed them. Drives a
+      // patch; on the final attempt the scene still RENDERS and SHIPS FLAGGED (never omitted).
       const missing = missingAssets(html, assetsNamedInIntent(spec.intent, assetHints));
       if (missing.length) {
-        if (last) {
-          log(`  ${spec.id}: rejected (missing required asset(s) ${missing.join(", ")} on the final attempt) — omitting`);
-          return { spec, html };
-        }
-        issues = [
-          `MUST FIX: the intent requires featuring ${missing.join(", ")}, but your HTML never references ` +
+        const mIssue: SceneIssue = {
+          kind: "safety",
+          text:
+            `MUST FIX: the intent requires featuring ${missing.join(", ")}, but the HTML never references ` +
             `${missing.length > 1 ? "them" : "it"}. Embed each with <img src="./assets/<file>" style="..."> ` +
             `as a real, visible element — not a generic icon, emoji, or CSS placeholder.`,
-        ];
-        log(`  ${spec.id}: re-author ${iter + 1} — missing required asset(s): ${missing.join(", ")}`);
-        continue;
+        };
+        if (!last) {
+          safetyIssues = [mIssue];
+          priorHtml = html;
+          log(`  ${spec.id}: re-author ${attempts} — missing required asset(s): ${missing.join(", ")}`);
+          continue;
+        }
+        deterministicFlags.push(mIssue); // last attempt: render + ship flagged
       }
 
       await deps.render({ html, sceneDir, outMovPath: movPath, fps });
+      hasRender = true;
 
-      // Deterministic caption protection (NOT an erase): if the rendered graphic reaches into the fixed
-      // caption band, send it back to move up. Runs before the paid vision QA.
+      // Deterministic caption protection (safety, NOT an erase): if the graphic reaches into the fixed
+      // caption band, patch it up. On the last attempt, ship flagged (the human decides).
       if (await captionCheck(movPath)) {
         const capIssue = captionIntrusionIssue();
         await args.onAttempt?.({ attempt: iter, outcome: "caption_reject", issues: [capIssue], html, movPath });
-        if (last) {
-          log(`  ${spec.id}: rejected (intrudes caption band after ${iter} edit${iter === 1 ? "" : "s"}) — omitting`);
-          return { spec, html };
+        if (!last) {
+          safetyIssues = [capIssue];
+          priorHtml = html;
+          log(`  ${spec.id}: re-edit ${attempts} — graphic intrudes the caption band`);
+          continue;
         }
-        priorHtml = html;
-        issues = [capIssue];
-        log(`  ${spec.id}: re-edit ${iter + 1} — graphic intrudes the caption band`);
-        continue;
+        deterministicFlags.push(capIssue);
       }
     }
     retryQaOnly = false;
 
     const qa = await deps.qa({ spec, movPath, basePath, workDir: premiumDir, assetHints });
     await args.onAttempt?.({ attempt: iter, outcome: qa.outcome, issues: qa.issues, html, movPath });
-    if (qa.outcome === "approved") {
-      log(`  ${spec.id}: approved${iter ? ` after ${iter} edit${iter === 1 ? "" : "s"}` : ""}`);
-      return { spec, html, movPath };
-    }
+
     if (qa.outcome === "operational_error") {
       if (last) {
-        log(`  ${spec.id}: QA operational error on the final attempt — omitting`);
-        return { spec, html };
+        // Rendered fine but no verdict — ship it, flag that QA couldn't review (subjective note).
+        log(`  ${spec.id}: QA unavailable on the final attempt — shipping, flagged for review`);
+        return ship(
+          [...deterministicFlags, { kind: "subjective", text: "QA review was unavailable for this scene." }],
+          attempts,
+        );
       }
       log(`  ${spec.id}: QA operational error — retrying the review on the same render`);
       retryQaOnly = true;
       continue;
     }
-    // editorial_reject: patch the existing scene against the concrete issues.
-    if (last) {
-      log(`  ${spec.id}: QA-rejected after ${iter} edit${iter === 1 ? "" : "s"} — omitting: ${qa.issues.slice(0, 2).join("; ")}`);
-      return { spec, html };
+
+    const safety = [...deterministicFlags, ...qa.issues.filter((i) => i.kind === "safety")];
+    const subjective = qa.issues.filter((i) => i.kind === "subjective");
+
+    if (safety.length === 0) {
+      // No objective fault -> ship. Subjective notes ride along as flags; they never blocked.
+      log(
+        `  ${spec.id}: ${subjective.length ? `shipping with ${subjective.length} subjective note(s)` : "clean"}` +
+          `${iter ? ` after ${iter} edit${iter === 1 ? "" : "s"}` : ""}`,
+      );
+      return ship(subjective, attempts);
     }
+
+    if (last) {
+      // Budget spent with unresolved safety faults -> SHIP FLAGGED (never omit; the human decides).
+      log(
+        `  ${spec.id}: shipping FLAGGED after ${iter} edit${iter === 1 ? "" : "s"} — unresolved: ` +
+          `${texts(safety).slice(0, 2).join("; ")}`,
+      );
+      return ship([...safety, ...subjective], attempts);
+    }
+
+    // Patch against the safety faults only; subjective notes never drive a re-author.
     priorHtml = html;
-    issues = qa.issues;
-    log(`  ${spec.id}: re-edit ${iter + 1} — ${qa.issues.slice(0, 2).join("; ")}`);
+    safetyIssues = safety;
+    log(`  ${spec.id}: re-edit ${attempts} — ${texts(safety).slice(0, 2).join("; ")}`);
   }
-  return { spec, html };
+
+  // Unreachable: the loop always returns. Ship whatever last rendered, unflagged, as a safe default.
+  return ship([], MAX_QA_ITERS + 1);
 }
 
 /**
@@ -235,7 +318,7 @@ export async function runPremium(args: {
   workDir: string;
   fps?: number;
   log?: (m: string) => void;
-}): Promise<{ outPath: string; sceneCount: number }> {
+}): Promise<{ outPath: string; sceneCount: number; reports: SceneReport[] }> {
   const { basePath, outPath, brief, words, durationMs, workDir } = args;
   const fps = args.fps ?? 30;
   const log = args.log ?? (() => {});
@@ -282,6 +365,8 @@ export async function runPremium(args: {
   log(`premium: ${specs.length} scenes planned, ${assetHints.length} assets`);
 
   // 3. Author -> render -> QA each scene, up to PREMIUM_CONCURRENCY at a time (order preserved).
+  //    Every scene returns an auditable report; a hard crash becomes a reported base_fallback, never
+  //    a silent drop.
   const sem = createSemaphore(PREMIUM_CONCURRENCY);
   const authored: AuthoredScene[] = await Promise.all(
     specs.map((spec) =>
@@ -289,18 +374,46 @@ export async function runPremium(args: {
         try {
           return await produceScene({ spec, brief, assetHints, assetsDir, premiumDir, basePath, fps, log });
         } catch (e) {
-          log(`premium: scene ${spec.id} failed, skipping — ${(e as Error).message}`);
-          return { spec, html: "" } as AuthoredScene; // no movPath -> skipped in compose
+          const msg = (e as Error).message;
+          log(`premium: scene ${spec.id} crashed — base shows for this beat: ${msg}`);
+          return {
+            spec,
+            html: "",
+            report: {
+              sceneId: spec.id,
+              anchorMs: spec.anchorMs,
+              durMs: spec.durMs,
+              intent: spec.intent,
+              verdict: "base_fallback",
+              shipped: false,
+              issues: [{ kind: "safety", text: `Scene render crashed: ${msg}` }],
+              attempts: 0,
+            },
+          } satisfies AuthoredScene;
         }
       }),
     ),
   );
 
-  const rendered = authored.filter((s) => s.movPath).length;
-  if (rendered === 0) throw new Error("premium: no scenes rendered");
-  log(`premium: ${rendered}/${specs.length} scenes rendered`);
+  const reports = authored.map((s) => s.report);
+  const shipped = authored.filter((s) => s.movPath).length;
+  const flagged = reports.filter((r) => r.verdict === "flagged").length;
+  log(
+    `premium: ${shipped}/${specs.length} scenes shipped (${flagged} flagged), ` +
+      `${specs.length - shipped} base-fallback`,
+  );
 
-  // 4. Composite bespoke scenes over the captioned base.
-  const sceneCount = await composeScenes(basePath, authored, outPath);
-  return { outPath, sceneCount };
+  // Emit the auditable per-scene report next to the render so job.ts can persist it and the app can
+  // show the user each scene's verdict + reasoning and ask whether to re-render.
+  await writeFile(join(premiumDir, "scene-report.json"), JSON.stringify(reports, null, 2)).catch(() => {});
+
+  // 4. Composite the shipped scenes over the captioned base. If none shipped, the base IS the output
+  //    (still a valid video) — the reports explain why, rather than the job just failing.
+  let sceneCount = 0;
+  if (shipped > 0) {
+    sceneCount = await composeScenes(basePath, authored, outPath);
+  } else {
+    await copyFile(basePath, outPath);
+  }
+  return { outPath, sceneCount, reports };
 }

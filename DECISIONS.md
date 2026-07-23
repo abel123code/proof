@@ -88,3 +88,50 @@ copy, empty frames, or poor design after masking. Full rendering remains slow.
 two scene variants, approved the second repair, and the final 1080x1920 MP4 differed from the
 caption-only base. See `render/src/job.ts`, `render/src/ffmpeg.ts`,
 `render/src/premium/index.ts`, `render/src/premium/qa.ts`, and the tests in `render/tests/`.
+
+---
+
+## 2026-07-23: QA is an auditable advisor — scenes ship flagged, never silently omitted
+
+**Status:** Active. Supersedes the "rejected scenes are repaired or omitted" behaviour of the
+2026-07-22 editorial-QA entry above (which is otherwise unchanged: no erase-mask, deterministic
+caption check, editorial vision QA, patch-not-reroll retries).
+
+**Context:** A frozen-fixture retest (2026-07-23) shipped only 2 of 5 scenes. Eyeballing the three
+omitted scenes showed the omissions were mostly *wrong*: scene-2 and scene-5 were face-clear,
+caption-clear and shippable but were deleted for **subjective** reasons — an unrealized creative
+beat, and a two-word badge copy ORDER ("PROOF EDITED BY" vs "EDITED BY PROOF"). Worse, the pipeline
+ran ~30 min and then showed the user *nothing* for those beats, with no reason surfaced — a black box
+that silently drops work. The product bar (stated by the founder, citing Voltade's auditable-agent
+model): every agent action must be auditable — the user must see *why*, and *the human* decides
+whether to re-render, especially for anything subjective.
+
+**Decision:** QA becomes an **auditable advisor**, not a silent gatekeeper.
+- Each QA finding is tagged `safety` (objective: graphic on a face feature / in the caption band,
+  garbled or clipped text, duplicated captions, broken render, missing required asset) or
+  `subjective` (creative/copy/polish — a matter of taste). When unsure, default to `subjective`.
+- **A scene is never silently omitted.** `safety` faults drive an auto-patch up to the retry budget;
+  if still unresolved, the scene **ships FLAGGED** (the founder chose ship-it-flagged over base
+  fallback). `subjective` notes NEVER block and NEVER drive a re-author — they ride along as flags.
+- Every scene carries a `SceneReport` (`verdict` clean|flagged|base_fallback, `shipped`, tagged
+  `issues`, `attempts`). `runPremium` returns the reports and writes `scene-report.json`; the app
+  surfaces each scene's verdict + reasoning and asks the user, per scene, whether to re-render.
+- The captioned base is the per-scene fallback (`base_fallback`) only when a scene cannot be
+  rendered safely at all (HTML fails the security validator) — the one true non-ship case.
+- Bumping the retry budget was explicitly REJECTED as the fix: it adds latency to a black box the
+  user already can't see into. The fix is auditability + human control, not more silent retries.
+
+**Alternatives considered:**
+- Keep omitting, just loosen the QA rubric. Rejected — still silent, still no reasoning, and a
+  loosened bar ships genuine safety faults unflagged.
+- Fall back to captions-only for a failed beat. Rejected as the default (the founder chose
+  ship-it-flagged) but kept as the `base_fallback` for the unrenderable-HTML case.
+- Bump `PREMIUM_MAX_QA_ITERS`. Rejected (see above).
+
+**Consequences:** Every scene ships with a machine-readable audit record; nothing is dropped without
+a visible reason. The web app can render a per-scene "here's what QA flagged — re-render?" review
+step. A flagged scene may ship with an unresolved safety issue (by design — the human decides), so
+the flag MUST be surfaced. Remaining work: persist `SceneReport` with the render job and build the
+studio review UI + a per-scene re-render endpoint. See `render/src/types.ts` (`SceneIssue`,
+`SceneReport`), `render/src/premium/index.ts` (`produceScene`, `runPremium`),
+`render/src/premium/qa.ts`, and `render/tests/premium.test.ts`.
