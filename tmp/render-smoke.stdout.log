@@ -1,0 +1,19 @@
+
+> server
+> tsx src/server.ts
+
+proof render service listening on 0.0.0.0:8080 (token-required, max 2 concurrent renders, mode generated-experimental)
+[90mDownloading Chrome Headless Shell https://www.remotion.dev/chrome-headless-shell[39m
+Downloading from: https://storage.googleapis.com/chrome-for-testing-public/149.0.7790.0/win64/chrome-headless-shell-win64.zip
+Getting Headless Shell - 9.5 Mb/113.3 Mb
+Getting Headless Shell - 19.1 Mb/113.3 Mb
+Getting Headless Shell - 28.6 Mb/113.3 Mb
+Getting Headless Shell - 38.2 Mb/113.3 Mb
+Getting Headless Shell - 47.7 Mb/113.3 Mb
+Getting Headless Shell - 57.3 Mb/113.3 Mb
+Getting Headless Shell - 66.8 Mb/113.3 Mb
+Getting Headless Shell - 76.4 Mb/113.3 Mb
+Getting Headless Shell - 85.9 Mb/113.3 Mb
+Getting Headless Shell - 95.5 Mb/113.3 Mb
+Getting Headless Shell - 105 Mb/113.3 Mb
+Got Headless Shell

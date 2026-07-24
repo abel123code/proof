@@ -15,6 +15,7 @@ import {
 } from "@/lib/db";
 import { CREDIT_COSTS } from "@/lib/pricing";
 import { resolveRenderMode } from "@/lib/render-mode";
+import { resolveRenderPoll } from "@/lib/render-poll";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -77,6 +78,7 @@ export async function POST(req: Request) {
       userId: auth.userId,
       input: durableInput as Record<string, unknown>,
     });
+    await saveBriefRender(briefId, { jobId, status: "queued", url: null });
 
     // Send both forms for backwards compatibility with older worker deployments:
     // - current workers prefer `videoUrls` and concatenate all clips
@@ -99,6 +101,10 @@ export async function POST(req: Request) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       await failRenderJob(jobId, data?.error ?? `render service returned ${res.status}`).catch(() => {});
+      await saveBriefRender(briefId, {
+        status: "error",
+        expectedJobId: jobId,
+      }).catch(() => {});
       await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
       return NextResponse.json(
         { error: data?.error ?? `render service returned ${res.status}` },
@@ -110,15 +116,24 @@ export async function POST(req: Request) {
     if (!queuedJobId || queuedJobId !== jobId) {
       // Nothing was queued - don't charge for a no-op.
       await failRenderJob(jobId, "Render service did not accept the durable job id.").catch(() => {});
+      await saveBriefRender(briefId, {
+        status: "error",
+        expectedJobId: jobId,
+      }).catch(() => {});
       await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
       return NextResponse.json({ jobId: null, creditsRemaining: spend.remaining + CREDIT_COSTS.render });
     }
-    await saveBriefRender(briefId, { jobId, status: "queued", url: "" }).catch(() => {});
     return NextResponse.json({ jobId, creditsRemaining: spend.remaining });
   } catch (err) {
     await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
     const message = err instanceof Error ? err.message : "Unknown error";
-    if (durableJobId) await failRenderJob(durableJobId, message).catch(() => {});
+    if (durableJobId) {
+      await failRenderJob(durableJobId, message).catch(() => {});
+      await saveBriefRender(briefId, {
+        status: "error",
+        expectedJobId: durableJobId,
+      }).catch(() => {});
+    }
     return NextResponse.json(
       { error: `render service unreachable: ${message}` },
       { status: 502 },
@@ -151,28 +166,25 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Not your brief." }, { status: 403 });
     }
 
-    // If we already persisted this brief's render, short-circuit.
-    if (briefId) {
-      const existing = await getBriefById(briefId).catch(() => null);
-      if (existing?.renderUrl) {
-        return NextResponse.json({ status: "done", url: existing.renderUrl });
+    const durable = await getRenderJob({ id: jobId, briefId, userId: auth.userId });
+    const durableResult = resolveRenderPoll({ durable });
+    if (durableResult) {
+      if ("url" in durableResult) {
+        const finalized = await saveBriefRender(briefId, {
+          status: "done",
+          url: durableResult.url,
+          expectedJobId: jobId,
+        });
+        if (!finalized) {
+          return NextResponse.json({ status: "superseded" }, { status: 409 });
+        }
+      } else if (durableResult.status === "error") {
+        await saveBriefRender(briefId, {
+          status: "error",
+          expectedJobId: jobId,
+        });
       }
-    }
-
-    const durable = await getRenderJob({ id: jobId, briefId, userId: auth.userId }).catch(() => null);
-    if (durable) {
-      if (durable.status === "done" && durable.outputUrl) {
-        await saveBriefRender(briefId, { status: "done", url: durable.outputUrl }).catch(() => {});
-        return NextResponse.json({ status: "done", url: durable.outputUrl, progress: 100 });
-      }
-      if (durable.status === "error") {
-        await saveBriefRender(briefId, { status: "error" }).catch(() => {});
-        return NextResponse.json({ status: "error", error: durable.error, progress: durable.progress });
-      }
-      return NextResponse.json({
-        status: durable.phase || durable.status,
-        progress: durable.progress,
-      });
+      return NextResponse.json(durableResult);
     }
 
     const res = await fetch(`${RENDER_SERVICE_URL}/render/${encodeURIComponent(jobId)}`, {
@@ -198,13 +210,20 @@ export async function GET(req: Request) {
           console.error("persistRender failed, falling back to worker URL:", e);
           persistedUrl = sourceUrl;
         }
-        await saveBriefRender(briefId, { status: "done", url: persistedUrl }).catch(() => {});
+        const finalized = await saveBriefRender(briefId, {
+          status: "done",
+          url: persistedUrl,
+          expectedJobId: jobId,
+        });
+        if (!finalized) {
+          return NextResponse.json({ status: "superseded" }, { status: 409 });
+        }
       }
       return NextResponse.json({ status: "done", url: persistedUrl ?? sourceUrl });
     }
 
     if (briefId) {
-      await saveBriefRender(briefId, { status }).catch(() => {});
+      await saveBriefRender(briefId, { status, expectedJobId: jobId }).catch(() => {});
     }
     return NextResponse.json({ status, error: data?.error });
   } catch (err) {
@@ -233,12 +252,16 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "Not your brief." }, { status: 403 });
   }
 
-  // Best-effort remove the persisted file; the brief-state wipe is the source of truth.
-  try {
-    const supabase = getSupabaseAdmin();
-    await supabase.storage.from(FOOTAGE_BUCKET).remove([`renders/${briefId}.mp4`]);
-  } catch (e) {
-    console.error("failed to remove stored render (continuing):", e);
+  const existing = await getBriefById(briefId);
+  const storagePaths = [`renders/${briefId}.mp4`];
+  if (existing?.renderJobId) storagePaths.push(`renders/${briefId}/${existing.renderJobId}.mp4`);
+  const supabase = getSupabaseAdmin();
+  const { error: removeError } = await supabase.storage.from(FOOTAGE_BUCKET).remove(storagePaths);
+  if (removeError) {
+    return NextResponse.json(
+      { error: `Could not delete the stored video: ${removeError.message}` },
+      { status: 502 },
+    );
   }
   await clearBriefRender(briefId);
   return NextResponse.json({ ok: true });

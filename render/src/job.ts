@@ -250,17 +250,22 @@ export async function runJob(
     if (input.briefId) {
       const supabase = getSupabaseAdmin();
       const fileBuf = await readFile(outAbs);
-      const storagePath = `renders/${input.briefId}.mp4`;
+      if (!input.jobId) throw new Error("DB-backed render is missing its durable job id");
+      const storagePath = `renders/${input.briefId}/${input.jobId}.mp4`;
       const up = await supabase.storage
         .from(FOOTAGE_BUCKET)
         .upload(storagePath, fileBuf, { contentType: "video/mp4", upsert: true });
       if (up.error) throw new Error(`upload failed: ${up.error.message}`);
       const publicUrl = supabase.storage.from(FOOTAGE_BUCKET).getPublicUrl(storagePath).data.publicUrl;
       mp4Url = `${publicUrl}?v=${Date.now()}`;
-      await supabase
+      const reportUpdate = await supabase
         .from("briefs")
-        .update({ render_status: "done", render_url: mp4Url, scene_reports: sceneReports })
-        .eq("id", input.briefId);
+        .update({ scene_reports: sceneReports })
+        .eq("id", input.briefId)
+        .eq("render_job_id", input.jobId);
+      if (reportUpdate.error) {
+        throw new Error(`scene report persistence failed: ${reportUpdate.error.message}`);
+      }
     } else if (renderId) {
       try {
         const supabase = getSupabaseAdmin();
@@ -278,7 +283,6 @@ export async function runJob(
       }
     }
 
-    onStatus("done", { mp4Url, renderId });
     return {
       mp4Url,
       localPath: outAbs,

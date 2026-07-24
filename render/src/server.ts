@@ -6,11 +6,12 @@ import type { JobState, RenderJobInput } from "./types.js";
 import { runJob } from "./job.js";
 import { RENDER_ROOT } from "./render.js";
 import { createSemaphore } from "./semaphore.js";
-import { loadRecoverableJobs, updateDurableJob } from "./durable.js";
+import { heartbeatDurableJob, loadRecoverableJobs, updateDurableJob } from "./durable.js";
 import { enforceWorkerEditMode, resolveWorkerEditMode } from "./edit-mode.js";
 import { resolveWorkerSecurityConfiguration, workerRequestAuthorized } from "./server-auth.js";
 import { hyperframesAvailable } from "./premium/hyperframes.js";
 import { premiumEngineWarning } from "./premium/fallback.js";
+import { markJobDone } from "./completion.js";
 
 // Resolve the security posture ONCE at startup. With no RENDER_TOKEN this throws (unless the
 // explicit local-dev escape hatch is set) so a misconfigured box refuses to boot rather than
@@ -54,7 +55,6 @@ function enqueueJob(id: string, input: RenderJobInput): void {
   const now = Date.now();
   activeIds.add(id);
   jobs.set(id, jobs.get(id) ?? { id, status: "queued", startedAt: now, updatedAt: now });
-  void updateDurableJob(id, "queued").catch(() => {});
 
   const enforcedInput = enforceWorkerEditMode(input, WORKER_EDIT_MODE);
   renderGate
@@ -67,7 +67,8 @@ function enqueueJob(id: string, input: RenderJobInput): void {
         );
       }),
     )
-    .then((result) => {
+    .then(async (result) => {
+      await markJobDone(id, result.mp4Url);
       const current = jobs.get(id) ?? { id, startedAt: now };
       jobs.set(id, {
         ...(current as JobState),
@@ -76,9 +77,6 @@ function enqueueJob(id: string, input: RenderJobInput): void {
         renderId: result.renderId,
         updatedAt: Date.now(),
       });
-      void updateDurableJob(id, "done", { outputUrl: result.mp4Url }).catch((error) =>
-        console.warn(`[job ${id}] durable completion update failed:`, error),
-      );
     })
     .catch((error: Error) => {
       const current = jobs.get(id) ?? { id, status: "error", startedAt: now, updatedAt: now };
@@ -151,3 +149,11 @@ app.listen(PORT, SECURITY.host, () => {
 setInterval(() => {
   void recoverJobs().catch(() => {});
 }, 10_000).unref();
+
+setInterval(() => {
+  for (const id of activeIds) {
+    void heartbeatDurableJob(id).catch((error) =>
+      console.warn(`[job ${id}] durable heartbeat failed:`, error),
+    );
+  }
+}, 60_000).unref();

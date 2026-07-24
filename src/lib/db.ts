@@ -946,16 +946,26 @@ export async function assertProjectOwnedBy(projectId: string, userId: string): P
 /** Persist the render state (job id / status / finished MP4 URL) on a brief. */
 export async function saveBriefRender(
   briefId: string,
-  patch: { jobId?: string; status?: string; url?: string },
-): Promise<void> {
+  patch: {
+    jobId?: string;
+    status?: string;
+    url?: string | null;
+    expectedJobId?: string;
+  },
+): Promise<boolean> {
   const supabase = getSupabaseAdmin();
   const row: Record<string, unknown> = {};
   if (patch.jobId !== undefined) row.render_job_id = patch.jobId;
   if (patch.status !== undefined) row.render_status = patch.status;
   if (patch.url !== undefined) row.render_url = patch.url;
-  if (Object.keys(row).length === 0) return;
-  const { error } = await supabase.from("briefs").update(row).eq("id", briefId);
+  if (Object.keys(row).length === 0) return true;
+  let query = supabase.from("briefs").update(row).eq("id", briefId);
+  if (patch.expectedJobId !== undefined) {
+    query = query.eq("render_job_id", patch.expectedJobId);
+  }
+  const { data, error } = await query.select("id");
   if (error) throw new Error(`saveBriefRender failed: ${error.message}`);
+  return (data?.length ?? 0) > 0;
 }
 
 export interface DurableRenderJob {
@@ -974,14 +984,19 @@ export async function createRenderJob(args: {
   input: Record<string, unknown>;
 }): Promise<void> {
   const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
   const { error } = await supabase.from("render_jobs").insert({
     id: args.id,
     brief_id: args.briefId,
     user_id: args.userId,
-    status: "queued",
+    // Reserve the job for the worker selected by this request. Recovery workers may only
+    // reclaim it after the lease becomes stale, preventing two workers from rendering it.
+    status: "processing",
     phase: "queued",
     progress: 0,
     input: args.input,
+    started_at: now,
+    locked_at: now,
   });
   if (error) throw new Error(`createRenderJob failed: ${error.message}`);
 }
