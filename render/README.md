@@ -13,14 +13,16 @@ scene clips
   -> remove fillers and dead space
   -> remap words and scene anchors to the cut timeline
   -> Remotion captions on a transparent ProRes overlay
-  -> ffmpeg caption composite
-  -> GPT-5.6 Sol scene author
+  -> GPT-5.6 Sol global editorial plan (clean / overlay / full-frame)
+  -> deterministic coverage and recovery budgets
+  -> GPT-5.6 Sol scene author with one shared visual system
   -> sanitize model HTML
-  -> HyperFrames transparent scene render
-  -> deterministic speaker and caption alpha mask
+  -> HyperFrames transparent scene render; FFmpeg optionally hard-cuts full-frame beats to black
+  -> deterministic caption-band alpha mask for overlays; readable graphics may overlap the face
   -> five-frame GPT-5.6 Sol vision QA
-  -> repair, approve, or omit each scene
-  -> ffmpeg final composite
+  -> repair, approve, or ship flagged with an auditable report
+  -> ffmpeg scenes over clean footage
+  -> ffmpeg captions LAST
   -> validate dimensions and duration
   -> upload to Supabase Storage
 ```
@@ -29,12 +31,13 @@ The web route and render worker own the mode. Both ignore a caller-supplied `edi
 to `generated-experimental`, which runs the premium author and vision-reviewed path. Set the same
 `RENDER_EDIT_MODE` value in both services to select an operator fallback:
 
-- `generated-experimental`: brief-driven bespoke scenes, HyperFrames, safety mask, and vision QA
+- `generated-experimental`: creator-native global planning, HyperFrames overlay/full-frame scenes,
+  mode-aware safety, captions-last composition, and vision QA
 - `brief-driven`: Luna selects from deterministic Remotion visual templates
 - `classic`: legacy captions and fixed overlays
 
-Premium failure falls back to the valid captioned base video. A rejected scene never reaches
-the final composite.
+Premium failure falls back to the valid captioned base video. A scene with unresolved issues ships
+flagged; only unrenderable or unsafe HTML uses the per-beat base fallback.
 
 ## Model roles
 
@@ -46,10 +49,15 @@ the final composite.
 Premium Chat Completions use low reasoning by default. The Luna visual selector uses no
 reasoning by default. Premium requests have a 90-second per-attempt timeout and one retry.
 
-Vision review sends five composited PNGs with explicit `detail: "auto"`, which GPT-5.6 treats
-as original detail. The parser requires `ok: true` plus an empty issues array. Any parse error
-rejects the scene. There is no runtime QA bypass. Premium mode removes fixed keyword chips and
-text cards before authoring so rejected graphics remain repairable.
+Vision review sends five final-order composites (footage, scene, captions) with explicit
+`detail: "auto"`. Overlay QA protects the caption band and prioritizes complete mobile-readable wording
+over face visibility. Full-frame QA uses the planned background: black takeovers treat the absent speaker
+as intentional, while footage-backed scenes allow face overlap. There is no runtime QA bypass.
+Subjective notes never drive an automatic re-author.
+
+The global plan preserves at least 25% clean A-roll, caps full-frame coverage at 40%, caps overlay
+coverage at 35%, keeps the opening and closing face-led, and preserves a three-second clean interval
+for videos longer than 30 seconds. `premium/edit-plan.json` records the selected modes and coverage.
 
 ## HTTP API
 

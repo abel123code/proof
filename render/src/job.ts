@@ -198,14 +198,15 @@ export async function runJob(
     const captionedAbs = join(workDir, "captioned.mp4");
     await compositeOverlay(baseTmpPath, overlayAbs, captionedAbs);
 
-    // 8b. Premium tier: layer bespoke GPT-authored scenes (storyboard -> HyperFrames HTML ->
-    //     vision-QA loop) on top of the captioned base. Any failure or timeout falls back to
-    //     the fixed-component output, so the user always gets a video.
+    // 8b. Premium tier: creator visuals composite onto the CLEAN cut first; runPremium burns the
+    //     Remotion caption layer last so opaque full-frame explanations cannot hide captions.
+    //     Any failure still falls back to captioned.mp4.
     let sceneReports: SceneReport[] = []; // auditable per-scene QA verdicts, surfaced to the studio
     if (editMode === "generated-experimental") {
       try {
         const pr = await runPremium({
-          basePath: captionedAbs,
+          basePath: baseTmpPath,
+          captionOverlayPath: overlayAbs,
           outPath: outAbs,
           brief,
           words: captionWords,

@@ -1,0 +1,588 @@
+## Method note
+
+The sheets are sampled every 0.5 seconds, so cut points and very short transitions are only accurate to roughly ±0.5 seconds. “Graphics” below excludes the mandatory burned-in captions unless stated otherwise.
+
+# 1. Chronological reconstruction
+
+### 0:00–0:02.5 — Talking-head hook with one large typographic idea
+
+- Medium-close talking head against curtains.
+- Large hook copy occupies the right side: **“This AI DREAMS about your code.”**
+- “DREAMS” is oversized and yellow; the rest is white.
+- Lower-center captions sit in a compact dark rounded rectangle, with one current keyword highlighted yellow.
+- The composition has three focal zones:
+  1. face,
+  2. hook headline,
+  3. caption.
+- The headline is not a dashboard or framed panel. It is simply type placed in negative space, although it comes close to the face around 0:02.
+
+### 0:02.5–0:05.5 — Jump cut/reframe; line-count counter
+
+- Apparent jump cut to a slightly tighter, more centered take.
+- The hook headline disappears.
+- A small yellow line counter appears in the upper-right and rises rapidly:
+  - roughly 6,564,
+  - 105,026,
+  - 203,487,
+  - 301,949,
+  - 400,410,
+  - 498,872 lines.
+- This is a single data point, not a full data panel.
+- Captions continue at the bottom.
+
+### 0:05.5–0:09 — Deliberately plain talking head
+
+- Counter is removed.
+- The speaker introduces Claude Code and the KAIROS feature.
+- This is the longest sustained A-roll section with no non-caption graphic.
+- The frame is allowed to rest: face plus caption only.
+
+### 0:09–0:11.5 — KAIROS title over dimmed A-roll
+
+- The talking-head plate is darkened significantly.
+- A neon-green, monospace **KAIROS** wordmark appears centrally across the face/mouth region.
+- A block cursor alternates or pulses at the end of the word.
+- Small explanatory copy appears beneath: “Greek for ‘the right moment’.”
+- This is technically an overlay, but the dimming makes the person recede. The edit is already transitioning visual authority away from the face.
+
+### 0:11.5–0:16.5 — Hard transition into full-frame explanation
+
+- Talking head disappears completely.
+- Dark navy/black full-frame canvas.
+- Large heading near the top:
+  - “Every AI tool is a”
+  - **CONTRACTOR** in bold yellow.
+- A simple white human icon, arrow, and robot icon build in sequentially.
+- Around 0:14.5–0:16:
+  - the robot becomes inactive or disappears,
+  - small text states “Session ends. Memory gone.”
+  - magenta communicates the failed state.
+- The design uses a few icons and labels surrounded by substantial empty space.
+
+### 0:16.5–0:21 — Full-frame “without/with KAIROS” comparison
+
+- A central vertical divider creates two columns.
+- Left: **WITHOUT KAIROS**, magenta robot, “Memory gone.”
+- Right: **WITH KAIROS**, glowing green robot, “Still running.”
+- The comparison is spatial rather than dashboard-like:
+  - one binary contrast,
+  - one object per side,
+  - one state label per side.
+- Around 0:20.5–0:21, the split comparison resolves toward a single green robot.
+
+### 0:21–0:26.5 — Full-frame capability list
+
+- Green robot sits left of center.
+- A numbered list builds to its right:
+  1. Reviews its own notes
+  2. Throws out contradictions
+  3. Watches your GitHub
+- Items enter progressively rather than appearing as a complete interface at once.
+- By roughly 0:24–0:26.5, all three are visible.
+- The list remains small relative to the frame, retaining large margins.
+
+### 0:27–0:29.5 — “ZERO catch-up” payoff
+
+- Previous list is replaced rather than retained.
+- Large yellow **ZERO** appears centrally, followed by smaller white “catch-up.”
+- A bright green checkmark and faint “Context ready” status appear below.
+- This is a clean, high-emphasis typographic beat: one claim, one confirmation symbol.
+
+### 0:29.5–0:35.5 — “autoDream” full-frame sequence
+
+- Green robot returns.
+- A rounded dark sleep card with “ZZZ” appears above it, connected by small thought-bubble dots.
+- Sparse code-like terms sit around the card.
+- The green monospace label **autoDream** fades or types in below.
+- The visual remains largely unchanged for several seconds while narration explains that it works on the codebase while the user sleeps.
+- Full-frame sequence ends around 0:36.
+
+### 0:36–0:39.5 — Cut back to talking head with code card
+
+- Direct cut back to the same talking-head setup.
+- At first, approximately 0:36, only the speaker and captions are present.
+- A small code-window card then appears above the head:
+  - `feature("KAIROS")`
+  - `enabled: false`
+- It stays in a reserved upper area and fades out around 0:39.
+
+### 0:39.5–0:42.5 — Feature-flag toggle
+
+- The code card is replaced by a compact toggle above the head.
+- “KAIROS” is labeled in small yellow type.
+- The switch appears green/on, then changes to a dark/off state as the speaker says it has not been switched on.
+- Again, this is one overlay replacing another, not another layer added to an accumulating stack.
+
+### 0:42.5–0:46 — Comparative bar graphic
+
+- Brief visual reset near 0:42.5.
+- A small top-of-frame chart appears around 0:43:
+  - heading: “Background Autonomy”
+  - several AI products listed,
+  - KAIROS receives the long green bar,
+  - competitors remain short or dark.
+- The chart is positioned above the speaker but is fairly small and text-heavy.
+- It disappears near 0:46.
+
+### 0:46–0:48.57 — Talking-head CTA
+
+- A brief mostly plain frame precedes the CTA.
+- Top-center follow card:
+  - `@abelle.dev`
+  - cyan follow button,
+  - small supporting line.
+- Speaker remains visible and gestures through the closing sentence.
+- Captions continue until the end.
+- No separate end card; the video concludes on the creator.
+
+# 2. Visual-density quantification
+
+## Mode split
+
+Approximate duration:
+
+| Visual mode | Duration | Share |
+|---|---:|---:|
+| Talking head | ~24.1 s | ~50% |
+| Full-frame animation | ~24.5 s | ~50% |
+
+The edit is almost exactly divided between human delivery and a narration-led graphic sequence.
+
+## How often non-caption graphics appear
+
+Approximate periods with an added graphic or full-frame graphic treatment:
+
+- 0:00–0:05.5
+- 0:09–0:36
+- 0:36.5–0:42.5
+- 0:43–0:46
+- 0:46.5–end
+
+Depending on exact transition boundaries, non-caption graphics are present for roughly **42–44 seconds**, or about **87–91% of the video**.
+
+That is important: this is not visually minimal because it uses graphics rarely. It is minimal because it limits **concurrent, independently competing graphics**.
+
+## Clean footage
+
+If “clean” means no graphic at all, essentially none is clean because captions are always present.
+
+If captions are treated as the baseline accessibility layer, approximately **4–5 seconds** remain genuinely unadorned talking head:
+
+- sustained clean section around 0:05.5–0:09,
+- a few short reset frames around 0:36, 0:42.5, and 0:46.
+
+That is only around **8–10% of total runtime**, or roughly **17–21% of the talking-head footage**.
+
+The major clean interval is purposeful. It resets the eye before KAIROS is introduced.
+
+## Simultaneous focal elements
+
+A practical count:
+
+- **Plain A-roll:** face + caption = 2 focal zones.
+- **A-roll with overlay:** face + one graphic + caption = 3.
+- **Full-frame animation:** one unified graphic composition + caption = usually 2.
+- Some list/comparison frames contain several objects, but they belong to one semantic diagram rather than separate modules.
+
+There are almost no moments with four or more unrelated focal systems. A rough time-weighted average is:
+
+- approximately **2.3–2.5 focal zones** if captions count,
+- approximately **1.3–1.5 primary focal systems** if captions are considered support.
+
+This low concurrency is the real “less is more” mechanism.
+
+# 3. Creator-native design language
+
+## Typography
+
+- Heavy geometric sans serif for declarative words and headings.
+- White is the default text color.
+- Saturated yellow is used for:
+  - active caption words,
+  - key nouns,
+  - numeric emphasis,
+  - the main claim in a title.
+- Monospace type is reserved for product names and code concepts:
+  - KAIROS,
+  - autoDream,
+  - code snippets.
+- Hierarchy is produced primarily through scale and color, not borders, cards, shadows, or ornamental labels.
+- Headings are short. The largest text rarely exceeds one phrase.
+
+## Captions
+
+- One compact lower-center dark pill.
+- Mostly one line.
+- White bold text with a single yellow karaoke-style word.
+- Captions update by phrase rather than presenting multiple lines of transcript.
+- The yellow word creates motion without requiring the entire caption block to animate.
+
+## Crops and A-roll framing
+
+- Stable medium-close crop with the face near center.
+- The curtains provide a neutral, vertically repetitive background.
+- Jump cuts appear to tighten pacing, especially near 0:02.5, but there is no visible zoom-punch pattern every sentence.
+- The editor does not continually reframe the speaker to manufacture motion.
+- Upper-frame negative space is deliberately left available for occasional graphics.
+
+## Transitions
+
+- Mostly direct cuts, fades, and state replacements.
+- The major transition at approximately 0:11.5 is a decisive cut from dimmed A-roll to full-frame animation.
+- Internal animation transitions are additive or substitutive:
+  - icon enters,
+  - arrow appears,
+  - state changes,
+  - list item is added,
+  - one scene replaces the previous one.
+- There are no conspicuous swipes, spinning cards, 3D camera moves, or template transitions.
+
+## Full-frame sequences
+
+The full-frame animation is not an isolated insert. It is a continuous explanation lasting roughly half the video.
+
+Its visual grammar is:
+
+1. make one claim,
+2. introduce one relationship,
+3. show a failed state,
+4. compare failed and successful states,
+5. enumerate capabilities,
+6. deliver a payoff,
+7. show the named process.
+
+The sequence changes meaning every few seconds even though its underlying canvas remains consistent.
+
+## Color
+
+A compact functional palette:
+
+- near-black/navy background,
+- white for neutral information,
+- yellow for emphasis and framing claims,
+- neon green for KAIROS, success, continuity, and active state,
+- magenta for failure, memory loss, or inactive state,
+- occasional cyan only in the final follow button.
+
+Colors carry meaning. They are not distributed indiscriminately.
+
+## Spacing
+
+- Large amounts of unused space in full-frame scenes.
+- Objects are usually centered or arranged on a single clear axis.
+- Lists and comparison states have broad separation.
+- Cards are small rather than stretched across the viewport.
+- The frame is not subdivided into multiple permanent regions.
+
+## Motion
+
+- Motion communicates state:
+  - counter rises,
+  - cursor blinks,
+  - bot appears or disappears,
+  - active bot glows,
+  - list builds,
+  - checkmark resolves,
+  - toggle changes.
+- There is little evidence of decorative perpetual motion.
+- Glow is used selectively on the green robot to signal continued activity.
+
+## Screen captures
+
+There are no conventional screen recordings in the reference. The code card, toggle, and chart are designed abstractions or faux-interface elements. They are not presented as dense software demonstrations.
+
+# 4. Why it feels sleeker than persistent panels and dashboards
+
+The distinction is not simply “fewer graphics.” It is **lower layer concurrency and stronger mode separation**.
+
+## A. It alternates modes instead of accumulating layers
+
+This video generally chooses one of two modes:
+
+1. the speaker is the main visual, with at most one supporting object, or
+2. the animation owns the frame.
+
+A dashboard-heavy edit often keeps the face, captions, top headline, waveform, badge, progress bar, data panel, and decorative particles visible simultaneously. Each object asks for a separate scan.
+
+Here, a new graphic usually **replaces** the old one:
+
+- headline becomes counter,
+- counter is removed,
+- KAIROS title becomes full-frame animation,
+- code card becomes toggle,
+- toggle becomes chart,
+- chart becomes CTA.
+
+The frame does not maintain a visual history of every prior point.
+
+## B. It has one dominant hierarchy per beat
+
+Examples:
+
+- “DREAMS” is the dominant hook word.
+- The rising number is the only data element.
+- “CONTRACTOR” is the full-frame thesis.
+- The green/magenta split is the comparison.
+- “ZERO” is the payoff.
+- “autoDream” is the named mechanism.
+
+A persistent dashboard often has several equally styled cards. Equal styling creates equal visual priority, forcing the viewer to decide where to look.
+
+## C. Full-frame animation removes the face as a competitor
+
+The 0:11.5–0:36 section does not ask the viewer to watch facial performance while also decoding a conceptual system.
+
+That has two benefits:
+
+- diagrams can be placed at a readable scale,
+- the speaker’s face does not become a large, semantically irrelevant object competing with the explanation.
+
+The voice maintains personality while the image carries the logic.
+
+## D. Negative space is treated as structure
+
+The dark animation scenes frequently leave more than half the frame unoccupied. That empty area:
+
+- separates states,
+- makes small movements noticeable,
+- gives type sufficient contrast,
+- prevents every concept from looking like an app interface.
+
+By contrast, persistent top panels and badges turn available space into inventory that must be filled.
+
+## E. Graphics are semantically timed
+
+The counter appears exactly when the leak scale is discussed. The split comparison appears when “without” and “with” are contrasted. The checkmark appears at “zero catch-up.” The toggle appears when the feature flag is mentioned.
+
+A waveform, badge, or permanent dashboard often remains visible regardless of the sentence. That makes it decorative rather than explanatory.
+
+## F. It avoids nested containers
+
+Most information sits directly on the canvas. Cards are used only when the concept itself is a card-like artifact, such as code or a sleep process. There are few:
+
+- header bars,
+- panel titles,
+- nested rounded rectangles,
+- persistent chrome elements.
+
+This reduces visual bureaucracy.
+
+# 5. Weaknesses in the reference
+
+## The opening headline competes with the face
+
+The large “DREAMS” treatment extends close to or over the face around 0:02. It is readable, but it creates a hierarchy collision during the most expressive part of the hook. Shifting the speaker farther left or reducing the headline width would be cleaner.
+
+## Captions duplicate several major headlines
+
+The narration is simultaneously represented by:
+
+- spoken audio,
+- captions,
+- large headline text.
+
+At the hook and during “CONTRACTOR” or “ZERO,” the viewer sometimes receives nearly the same claim twice on-screen. Some duplication is useful for emphasis, but the edit could temporarily simplify the captions when a large title already carries the exact phrase.
+
+## The full-frame sequence is slightly too long and visually repetitive
+
+The animation occupies about 24.5 seconds continuously. The latter portions, especially the sleep-card/autoDream section around 0:30–0:35.5, change slowly relative to the narration.
+
+The full-frame approach is sound, but this particular passage could be condensed by two or three seconds or given one additional meaningful state change.
+
+## Some labels are too small for mobile viewing
+
+Likely weak points include:
+
+- the “Greek for…” subline,
+- code-like labels around the sleep card,
+- “Context ready,”
+- the competitor names in the bar chart,
+- final CTA support copy.
+
+They may be legible in a high-resolution export but are too delicate at typical feed size.
+
+## The late overlays are less elegant than the central animation
+
+The code card and feature toggle are reasonably clear. The comparative bar chart at 0:43–0:46 is less successful:
+
+- text is tiny,
+- it sits close to the top edge,
+- it competes with hair and curtain texture,
+- the differences are difficult to inspect in three seconds.
+
+That claim would likely work better as a brief full-frame comparison or as one large statistic.
+
+## Green glow is somewhat overused
+
+The robot glow establishes success effectively, but the same strong neon treatment persists across many frames. It slightly reduces the impact of later green moments because active state is continuously emphasized.
+
+## There is limited proof footage
+
+The piece explains the feature with abstraction but offers no substantive screen capture or real output. For a product claim involving autonomous code work, one concise full-frame proof artifact could increase credibility without turning the edit into a tutorial.
+
+## The comparison claim risks looking editorialized
+
+The “Background Autonomy” chart appears to rank products, but the visual does not show methodology, units, or evidence. Its dashboard-like appearance implies precision that the graphic does not substantiate.
+
+# 6. Concrete constraints for an automated editor
+
+## A. Enforce mutually exclusive visual modes
+
+At any point, choose one:
+
+1. **Clean A-roll:** speaker + captions.
+2. **A-roll support:** speaker + captions + one overlay.
+3. **Full-frame explanation:** animation or screen evidence + captions; no speaker.
+4. **Full-frame title/payoff:** one phrase or statistic + captions if not redundant.
+
+Do not combine modes by shrinking the speaker into a corner of a full-frame diagram unless the face is necessary to the meaning.
+
+## B. Cap focal-element count
+
+- Maximum of **three focal zones including captions**.
+- Maximum of **one non-caption overlay** on talking-head footage.
+- Treat a chart containing multiple cards, badges, and meters as multiple focal zones, not as “one overlay.”
+- Never display a persistent title panel, dashboard, waveform, badge, and CTA together.
+
+## C. Replace graphics; do not stack them
+
+When a new idea begins:
+
+- remove the previous supporting graphic,
+- allow a 0.2–0.6 second visual reset when pacing permits,
+- then introduce the next graphic.
+
+Do not retain a statistic merely because it appeared earlier.
+
+## D. Reserve full frame for concepts that require decoding
+
+Use full-frame animation when the narration expresses:
+
+- a sequence,
+- a causal relationship,
+- before/after,
+- a system state,
+- a comparison,
+- a process with three or more steps,
+- a visual payoff that needs large scale,
+- a real screen result that must be read.
+
+Use a small A-roll overlay for:
+
+- one number,
+- one name,
+- one short quote,
+- one binary toggle,
+- one brief label.
+
+## E. Maintain clean A-roll intervals
+
+- After any dense or full-frame passage, provide at least **1.0–2.5 seconds** of face-led visual recovery.
+- In a 45–60 second video, include at least one sustained **3–5 second** A-roll section with no graphic beyond captions.
+- Do not interpret “retention editing” as requiring a new overlay every second.
+
+## F. Overlay geometry
+
+- Place supporting overlays in genuine negative space, generally the upper 15–25% of frame.
+- Do not cover eyes, mouth, or gesturing hands.
+- Keep at least 6–8% frame margin from side and top edges.
+- If the overlay cannot be read without covering the speaker, switch to full frame.
+
+## G. Typography limits
+
+- Use no more than two type families:
+  - bold sans serif for editorial statements,
+  - monospace for technical identifiers.
+- Use no more than three visible hierarchy sizes in one frame.
+- Large display text should generally be no more than 2–6 words.
+- Use one emphasis color per phrase.
+- Do not highlight more than 20–30% of words in a frame.
+
+## H. Caption rules
+
+- One line whenever possible; two only when required for comprehension.
+- Approximately 3–7 words per caption phrase.
+- Use a compact dark background rather than a full-width subtitle panel.
+- Highlight no more than one active word or short phrase.
+- If a full-frame title duplicates the spoken line exactly, reduce caption prominence or delay it slightly rather than showing two equally strong copies.
+
+## I. Full-frame composition
+
+- One claim per scene.
+- One primary object or relationship.
+- Preserve at least 35–50% negative space.
+- For comparisons, use two clearly separated columns rather than multiple cards.
+- Build lists progressively and cap them at three or four items.
+- Avoid small legends, axis labels, or values that require pausing.
+
+## J. Motion rules
+
+Every animation must do at least one of the following:
+
+- reveal,
+- compare,
+- count,
+- connect,
+- change state,
+- confirm,
+- fail,
+- transition to the next idea.
+
+Do not add looping waveforms, floating badges, particle systems, or ambient graph motion merely to keep the frame moving.
+
+Recommended timing:
+
+- micro state change: 0.15–0.4 s,
+- text or icon reveal: 0.25–0.6 s,
+- readable visual hold: at least 1.0–1.5 s,
+- major conceptual scene: usually 2–5 s.
+
+## K. Color constraints
+
+- One dark neutral background.
+- White for baseline information.
+- One warm emphasis color for claims.
+- One success/active color.
+- One failure/inactive color.
+- Use glow only on the current active object, not every accent.
+
+## L. Cuts and reframing
+
+- Use jump cuts to remove dead speech, not on a fixed interval.
+- Maintain a stable crop for several seconds at a time.
+- Avoid automatic alternating punch-ins.
+- Prefer hard cuts and short opacity transitions over template swipes.
+- The major move into full-frame animation should be decisive, not a picture-in-picture compromise.
+
+## M. Screen-capture treatment
+
+If screen evidence is meaningful:
+
+- show it full frame or in a large readable crop,
+- isolate the relevant area,
+- remove irrelevant browser chrome,
+- annotate only one interaction at a time.
+
+Do not place an unreadable software screen above the speaker merely to signal technical credibility.
+
+# 7. Assessment of the full-frame-animation principle
+
+The reference strongly supports the creator’s idea. Its most coherent passage is the roughly **24.5-second full-frame animation from 0:11.5 to 0:36**.
+
+When an animation contains actual meaning—comparison, process, state, chronology, or proof—it should often take over the frame rather than coexist with the talking head.
+
+The reason is functional:
+
+- The face is valuable when expression and trust are the content.
+- The animation is valuable when a relationship or mechanism is the content.
+- Showing both at equal strength usually creates a hierarchy conflict without adding information.
+
+The dimmed KAIROS overlay at 0:09–0:11.5 demonstrates the intermediate case: once the title becomes important, the face is intentionally suppressed. The next step is a full cut away. That progression is more controlled than leaving the face bright under a growing stack of interface elements.
+
+However, full-frame treatment should not become an automatic reward for every noun. It is justified when the viewer needs more than about a second to understand the visual or when scale materially improves comprehension. A single number, product name, toggle, or short quote can remain an overlay.
+
+The operating principle should therefore be:
+
+> **If the graphic carries the explanation, give it the frame. If it merely supports the sentence, give it one reserved area beside the speaker. If it does neither, omit it.**
+
+That is the reference’s actual sleekness: not low graphic frequency, but disciplined visual authority—one primary idea owns each beat.

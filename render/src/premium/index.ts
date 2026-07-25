@@ -9,17 +9,19 @@ import type {
   SceneQAOutcome,
   SceneIssue,
   SceneReport,
+  CreativeDirection,
 } from "../types.js";
-import { planScenes } from "./scenes.js";
+import { planEdit } from "./scenes.js";
 import { authorScene } from "./author.js";
 import { qaScene } from "./qa.js";
-import { composeScenes } from "./compose.js";
+import { composeCreatorNativeVideo } from "./compose.js";
 import { renderComposition, hyperframesAvailable } from "./hyperframes.js";
 import { validateComposition } from "./sanitize.js";
 import { fetchAssetBytes } from "./asset-source.js";
 import { assetsNamedInIntent, missingAssets } from "./assets-gate.js";
 import { createSemaphore } from "../semaphore.js";
 import { captionIntrusionIssue, overlayIntrudesCaptionBand } from "./caption-guard.js";
+import { maskOverlaySafeZones } from "../ffmpeg.js";
 import sharp from "sharp";
 
 export { hyperframesAvailable };
@@ -56,6 +58,7 @@ export interface SceneDeps {
   author: typeof authorScene;
   render: typeof renderComposition;
   qa: typeof qaScene;
+  mask?: typeof maskOverlaySafeZones;
   /** Deterministic caption-band intrusion check (not an erase). Stubbed to a constant in unit tests. */
   captionCheck?: typeof overlayIntrudesCaptionBand;
 }
@@ -63,6 +66,7 @@ const DEFAULT_DEPS: SceneDeps = {
   author: authorScene,
   render: renderComposition,
   qa: qaScene,
+  mask: maskOverlaySafeZones,
   captionCheck: overlayIntrudesCaptionBand,
 };
 
@@ -122,10 +126,12 @@ export async function produceScene(
   args: {
     spec: SceneSpec;
     brief: RenderBrief;
+    creativeDirection?: CreativeDirection;
     assetHints: string[];
     assetsDir: string;
     premiumDir: string;
     basePath: string;
+    captionOverlayPath?: string;
     fps: number;
     log: (m: string) => void;
     /** Called after each RENDERED attempt (awaited) so a caller can snapshot artifacts before the
@@ -134,7 +140,18 @@ export async function produceScene(
   },
   deps: SceneDeps = DEFAULT_DEPS,
 ): Promise<AuthoredScene> {
-  const { spec, brief, assetHints, assetsDir, premiumDir, basePath, fps, log } = args;
+  const { spec, brief, assetHints, assetsDir, premiumDir, basePath, captionOverlayPath, fps, log } = args;
+  const creativeDirection = args.creativeDirection ?? {
+    backgroundColor: "#101114",
+    textColor: "#ffffff",
+    emphasisColor: brief.assets?.brandColor || brief.accentColor || "#d9ff45",
+    successColor: "#79f28b",
+    failureColor: "#ff4f9a",
+    displayStyle: "bold geometric sans serif",
+    technicalStyle: "clean monospace",
+    transitionStyle: "hard cuts and direct state replacement",
+    motif: spec.motif,
+  };
 
   // Each scene renders from its own dir; assets + local GSAP are copied in so `./assets/<name>`
   // and `./gsap.min.js` resolve with no network.
@@ -156,6 +173,9 @@ export async function produceScene(
     sceneId: spec.id,
     anchorMs: spec.anchorMs,
     durMs: spec.durMs,
+    mode: spec.mode,
+    backgroundTreatment: spec.backgroundTreatment ?? "footage",
+    rationale: spec.rationale,
     intent: spec.intent,
     verdict: "clean",
     shipped: true,
@@ -195,6 +215,7 @@ export async function produceScene(
       html = await deps.author({
         spec,
         brief,
+        creativeDirection,
         assetHints,
         priorIssues: safetyIssues.length ? texts(safetyIssues) : undefined,
         priorHtml,
@@ -240,6 +261,7 @@ export async function produceScene(
       }
 
       await deps.render({ html, sceneDir, outMovPath: movPath, fps });
+      if (spec.mode === "overlay" && deps.mask) await deps.mask(movPath);
       hasRender = true;
 
       // Deterministic caption protection (safety, NOT an erase): if the graphic reaches into the fixed
@@ -258,7 +280,7 @@ export async function produceScene(
     }
     retryQaOnly = false;
 
-    const qa = await deps.qa({ spec, movPath, basePath, workDir: premiumDir, assetHints });
+    const qa = await deps.qa({ spec, movPath, basePath, captionOverlayPath, workDir: premiumDir, assetHints });
     await args.onAttempt?.({ attempt: iter, outcome: qa.outcome, issues: qa.issues, html, movPath });
 
     if (qa.outcome === "operational_error") {
@@ -307,12 +329,13 @@ export async function produceScene(
 }
 
 /**
- * The premium render path: bespoke per-beat scenes (GPT storyboard -> HyperFrames HTML ->
- * vision-QA loop) composited onto the already-captioned base clip. Any hard failure throws so
- * job.ts can fall back to the fixed-component output (which is exactly `basePath`).
+ * The premium render path: one global creator-native edit plan -> per-beat HyperFrames authoring ->
+ * mode-aware vision QA -> visuals over clean footage -> captions last. Any hard failure throws so
+ * job.ts can fall back to its already-rendered captioned base.
  */
 export async function runPremium(args: {
-  basePath: string; // the captioned base clip (fixed-component output = the fallback)
+  basePath: string; // clean cut footage; creator-native visuals composite here first
+  captionOverlayPath: string; // Remotion alpha layer, burned after every premium visual
   outPath: string;
   brief: RenderBrief;
   words: Word[];
@@ -321,7 +344,7 @@ export async function runPremium(args: {
   fps?: number;
   log?: (m: string) => void;
 }): Promise<{ outPath: string; sceneCount: number; reports: SceneReport[] }> {
-  const { basePath, outPath, brief, words, durationMs, workDir } = args;
+  const { basePath, captionOverlayPath, outPath, brief, words, durationMs, workDir } = args;
   const fps = args.fps ?? 30;
   const log = args.log ?? (() => {});
 
@@ -358,13 +381,20 @@ export async function runPremium(args: {
     }
   }
 
-  // 2. Storyboard, then repoint any ".svg" the intents named at the rasterized ".png".
-  const specs = await planScenes({ brief, words, durationMs, assetHints });
-  if (specs.length === 0) throw new Error("planScenes produced no scenes");
+  // 2. Plan the whole edit before authoring individual scenes. TypeScript enforces the final
+  //    coverage and recovery budgets; the model supplies semantic mode choices and shared direction.
+  const editPlan = await planEdit({ brief, words, durationMs, assetHints });
+  const specs = editPlan.scenes;
   for (const spec of specs) {
     for (const [svg, png] of svgToPng) spec.intent = spec.intent.split(svg).join(png);
   }
-  log(`premium: ${specs.length} scenes planned, ${assetHints.length} assets`);
+  log(
+    `premium: ${specs.length} creator-native scenes planned ` +
+      `(${Math.round(editPlan.coverage.fullFrameRatio * 100)}% full-frame, ` +
+      `${Math.round(editPlan.coverage.overlayRatio * 100)}% overlay, ` +
+      `${Math.round(editPlan.coverage.cleanRatio * 100)}% clean), ${assetHints.length} assets`,
+  );
+  await writeFile(join(premiumDir, "edit-plan.json"), JSON.stringify(editPlan, null, 2)).catch(() => {});
 
   // 3. Author -> render -> QA each scene, up to PREMIUM_CONCURRENCY at a time (order preserved).
   //    Every scene returns an auditable report; a hard crash becomes a reported base_fallback, never
@@ -374,7 +404,18 @@ export async function runPremium(args: {
     specs.map((spec) =>
       sem.run(async () => {
         try {
-          return await produceScene({ spec, brief, assetHints, assetsDir, premiumDir, basePath, fps, log });
+          return await produceScene({
+            spec,
+            brief,
+            creativeDirection: editPlan.creativeDirection,
+            assetHints,
+            assetsDir,
+            premiumDir,
+            basePath,
+            captionOverlayPath,
+            fps,
+            log,
+          });
         } catch (e) {
           const msg = (e as Error).message;
           log(`premium: scene ${spec.id} crashed — base shows for this beat: ${msg}`);
@@ -385,6 +426,9 @@ export async function runPremium(args: {
               sceneId: spec.id,
               anchorMs: spec.anchorMs,
               durMs: spec.durMs,
+              mode: spec.mode,
+              backgroundTreatment: spec.backgroundTreatment ?? "footage",
+              rationale: spec.rationale,
               intent: spec.intent,
               verdict: "base_fallback",
               shipped: false,
@@ -409,13 +453,14 @@ export async function runPremium(args: {
   // show the user each scene's verdict + reasoning and ask whether to re-render.
   await writeFile(join(premiumDir, "scene-report.json"), JSON.stringify(reports, null, 2)).catch(() => {});
 
-  // 4. Composite the shipped scenes over the captioned base. If none shipped, the base IS the output
-  //    (still a valid video) — the reports explain why, rather than the job just failing.
-  let sceneCount = 0;
-  if (shipped > 0) {
-    sceneCount = await composeScenes(basePath, authored, outPath);
-  } else {
-    await copyFile(basePath, outPath);
-  }
+  // 4. Composite creator visuals onto clean footage, then burn captions last. Opaque full-frame
+  //    explanations can own the image without hiding the accessibility layer.
+  const sceneCount = await composeCreatorNativeVideo({
+    basePath,
+    scenes: authored,
+    captionOverlayPath,
+    visualPath: join(premiumDir, "visual.mp4"),
+    outPath,
+  });
   return { outPath, sceneCount, reports };
 }

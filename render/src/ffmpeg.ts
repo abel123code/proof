@@ -8,7 +8,6 @@ const FFPROBE = process.env.FFPROBE_PATH || "ffprobe";
 
 export const SPEAKER_SAFE_ALPHA_FILTER =
   "format=rgba," +
-  "drawbox=x=160:y=180:w=760:h=1070:color=black@0:t=fill:replace=1," +
   "drawbox=x=0:y=1450:w=iw:h=470:color=black@0:t=fill:replace=1," +
   "format=yuva444p10le";
 
@@ -39,8 +38,8 @@ function runCapture(cmd: string, args: string[]): Promise<string> {
 }
 
 /**
- * Clear authored pixels over the moving speaker and burned-in captions. Vision QA still
- * reviews the masked composite and can reject clipped, empty, or otherwise broken scenes.
+ * Clear authored pixels only over the burned-in caption band. Face overlap remains visible:
+ * readable essential wording takes priority, and vision QA judges the resulting composition.
  */
 export async function maskOverlaySafeZones(overlayPath: string): Promise<void> {
   const maskedPath = `${overlayPath}.speaker-safe.mov`;
@@ -196,6 +195,31 @@ export async function compositeOverlay(
   ]);
 }
 
+/** Composite a time slice from a full-length transparent overlay onto a reset-to-zero base window. */
+export async function compositeOverlaySlice(
+  basePath: string,
+  overlayPath: string,
+  startMs: number,
+  durationMs: number,
+  outPath: string,
+): Promise<void> {
+  await run(FFMPEG, [
+    "-y",
+    "-i", basePath,
+    "-ss", (startMs / 1000).toFixed(3),
+    "-t", (durationMs / 1000).toFixed(3),
+    "-i", overlayPath,
+    "-filter_complex", "[0:v][1:v]overlay=format=auto:eof_action=pass[v]",
+    "-map", "[v]",
+    "-map", "0:a?",
+    "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
+    "-r", "30", "-fps_mode", "cfr",
+    "-c:a", "aac", "-b:a", "192k",
+    "-movflags", "+faststart",
+    outPath,
+  ]);
+}
+
 /**
  * Extract still PNG frames at the given timestamps (seconds). Used by the premium vision-QA
  * pass — a handful of frames per scene is enough for GPT-4o to judge it. One ffmpeg call per
@@ -230,7 +254,12 @@ export async function extractFrames(
  */
 export async function overlayScenesAtOffsets(
   basePath: string,
-  scenes: { movPath: string; startMs: number; endMs: number }[],
+  scenes: {
+    movPath: string;
+    startMs: number;
+    endMs: number;
+    backgroundTreatment?: "footage" | "black";
+  }[],
   outPath: string,
 ): Promise<void> {
   if (scenes.length === 0) throw new Error("overlayScenesAtOffsets: no scenes");
@@ -245,11 +274,19 @@ export async function overlayScenesAtOffsets(
     const endS = (s.endMs / 1000).toFixed(3);
     const inIdx = i + 1;
     parts.push(`[${inIdx}:v]setpts=PTS-STARTPTS+${startS}/TB[m${i}]`);
+    let sceneBase = prev;
+    if (s.backgroundTreatment === "black") {
+      const blackLabel = `[b${i}]`;
+      parts.push(
+        `${prev}drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill:enable='between(t,${startS},${endS})'${blackLabel}`,
+      );
+      sceneBase = blackLabel;
+    }
     const outLbl = i === scenes.length - 1 ? "[v]" : `[v${i}]`;
     parts.push(
-      `${prev}[m${i}]overlay=format=auto:eof_action=pass:enable='between(t,${startS},${endS})'${outLbl}`,
+      `${sceneBase}[m${i}]overlay=format=auto:eof_action=pass:enable='between(t,${startS},${endS})'${outLbl}`,
     );
-    prev = `[v${i}]`;
+    prev = outLbl;
   });
 
   await run(FFMPEG, [

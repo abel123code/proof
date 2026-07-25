@@ -1,0 +1,54 @@
+*** Begin Patch
+*** Add File: tmp/reference-analysis/analyze-reference.mjs
++import fs from "node:fs/promises";
++import path from "node:path";
++import OpenAI from "openai";
++import dotenv from "dotenv";
++
++dotenv.config({ path: ".env.local" });
++
++const apiKey = process.env.OPENAI_API_KEY;
++if (!apiKey) throw new Error("OPENAI_API_KEY is missing from .env.local");
++
++const directory = path.resolve("tmp/reference-analysis/IMG_9014");
++const files = Array.from({ length: 7 }, (_, index) =>
++  path.join(directory, `contact-${String(index + 1).padStart(2, "0")}.png`),
++);
++
++const imageParts = await Promise.all(
++  files.map(async (file) => ({
++    type: "image_url",
++    image_url: {
++      url: `data:image/png;base64,${(await fs.readFile(file)).toString("base64")}`,
++      detail: "auto",
++    },
++  })),
++);
++
++const client = new OpenAI({ apiKey });
++const response = await client.chat.completions.create({
++  model: process.env.PREMIUM_QA_MODEL || "gpt-5.6-sol",
++  messages: [
++    {
++      role: "system",
++      content: "You are a senior short-form creator-video editor and motion-design director. Analyze a complete vertical video from sequential contact sheets sampled every 0.5 seconds. Focus on observable editing decisions, not generic advice. Distinguish talking-head footage, captions, overlays, full-frame animation, screen captures, cuts, reframing, transitions, and deliberately unadorned moments.",
++    },
++    {
++      role: "user",
++      content: [
++        {
++          type: "text",
++          text: `These seven contact sheets cover one 48.57-second creator video continuously from start to finish. Each tile is 0.5 seconds apart and has a timestamp. The creator says their principle is "less is more" and asks why animation cannot take over the whole frame instead of stacking UI-like overlays on the face. Analyze:\n\n1. Reconstruct the edit chronologically, with approximate timestamps.\n2. Quantify visual density: how often graphics appear, how many simultaneous focal elements exist, and how much footage remains clean.\n3. Identify the creator-native design language: typography, captions, crops, transitions, full-frame sequences, color, spacing, and motion.\n4. Explain specifically why this feels sleeker than a video with persistent top panels, dashboards, waveforms, badges, and overlays.\n5. Identify any weaknesses in this reference too.\n6. Produce concrete design constraints an automated editor should follow to recreate this editorial philosophy without copying the exact design.\n7. Explicitly assess the idea that when a meaningful animation happens, it should often become a full-frame visual beat rather than coexist with the talking head.\n\nBe exact and critical. Do not praise vaguely.`,
++        },
++        ...imageParts,
++      ],
++    },
++  ],
++});
++
++const analysis = response.choices[0]?.message?.content;
++if (!analysis) throw new Error("Vision analysis returned no content");
++
++await fs.writeFile(path.join(directory, "vision-analysis.txt"), analysis, "utf8");
++console.log(analysis);
+*** End Patch

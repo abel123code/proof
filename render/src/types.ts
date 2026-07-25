@@ -94,6 +94,42 @@ export interface RenderBrief {
 
 export type EditMode = "brief-driven" | "classic" | "generated-experimental";
 
+export type SceneMode = "overlay" | "full-frame";
+export type SceneBackgroundTreatment = "footage" | "black";
+
+export interface CreativeDirection {
+  backgroundColor: string;
+  textColor: string;
+  emphasisColor: string;
+  successColor: string;
+  failureColor: string;
+  displayStyle: string;
+  technicalStyle: string;
+  transitionStyle: string;
+  motif: string;
+}
+
+export interface TimeInterval {
+  startMs: number;
+  endMs: number;
+}
+
+export interface EditCoverage {
+  overlayMs: number;
+  fullFrameMs: number;
+  cleanMs: number;
+  overlayRatio: number;
+  fullFrameRatio: number;
+  cleanRatio: number;
+}
+
+export interface EditPlan {
+  creativeDirection: CreativeDirection;
+  scenes: SceneSpec[];
+  cleanIntervals: TimeInterval[];
+  coverage: EditCoverage;
+}
+
 /** One bespoke scene the premium path storyboards, anchored to the cut timeline. */
 export interface SceneSpec {
   /** Stable id, e.g. "scene-1"; used as the HyperFrames composition id + output filename. */
@@ -102,6 +138,18 @@ export interface SceneSpec {
   anchorMs: number;
   /** How long the scene plays, in ms. */
   durMs: number;
+  /** Whether the speaker remains visible or the visual owns the complete frame. */
+  mode: SceneMode;
+  /** Whether the compositor keeps the source footage or hard-cuts it to black behind this scene. */
+  backgroundTreatment?: SceneBackgroundTreatment;
+  /** Planner importance used only by deterministic budget enforcement. */
+  priority: number;
+  /** Human-readable reason the planner selected this visual mode. */
+  rationale: string;
+  /** Optional presentation metadata used by stricter authoring-contract experiments. */
+  visualPurpose?: string;
+  headline?: string;
+  supportingVisual?: string;
   /** The recurring motif to honor (shared across scenes for continuity). */
   motif: string;
   /** What this beat should visually convey — the authoring prompt for this scene. */
@@ -148,6 +196,9 @@ export interface SceneReport {
   sceneId: string;
   anchorMs: number;
   durMs: number;
+  mode?: SceneMode;
+  backgroundTreatment?: SceneBackgroundTreatment;
+  rationale?: string;
   intent: string;
   verdict: SceneVerdict;
   /** True unless the scene fell back to base (could not be rendered safely). */

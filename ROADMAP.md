@@ -1,6 +1,6 @@
 # Proof roadmap
 
-Last updated: 2026-07-23.
+Last updated: 2026-07-24.
 
 ## Shipped foundation
 
@@ -9,8 +9,8 @@ Proof already runs one product path from repository analysis to a final vertical
 - GPT-5.6 Luna extracts repository proof and drafts structured briefs
 - GPT-5.6 Sol researches current demand, ranks angles, authors scenes, and reviews rendered frames
 - Whisper word timestamps drive cutting, captions, and scene anchors
-- HyperFrames creates bespoke transparent motion graphics
-- FFmpeg composes the real footage, captions, and bespoke scenes, each carrying an auditable QA verdict
+- HyperFrames creates transparent creator-native scenes; FFmpeg places full-frame explanations over footage or hard-cuts them to black
+- FFmpeg composes footage, creator visuals, then captions last; every scene carries an auditable QA verdict
 - Supabase stores durable jobs, credits, progress, and final videos
 - Railway runs the resource-heavy rendering service
 
@@ -33,14 +33,14 @@ fallback rate, and the defects that recur across projects.
 ### 3. Shot-aware composition
 
 Detect the subject and crop per clip, and normalise framing before scene authoring. Feed the
-detected speaker position to the author as *guidance* for where a face is likely to sit — not as a
-hard geometry mask, which was tried and rejected (see DECISIONS.md 2026-07-23).
+detected speaker position to the author and replace the current fixed overlay-only safety mask with
+shot-aware geometry. Full-frame scenes intentionally do not use a speaker mask.
 
-### 4. Agent-authored scene systems
+### 4. Agent-authored scene systems (creator-native foundation shipped)
 
-Move beyond caption-shaped overlays toward diagrams, product walkthroughs, UI reconstructions,
-timelines, comparisons, and recurring visual callbacks. Give the creative director a shot library
-and continuity state across the whole video.
+The global editor now selects clean A-roll, one-object overlays, and full-frame explanatory beats,
+then shares palette, typography, spacing, motif, and transition grammar across every scene. Next:
+add a real shot library, stronger product-proof capture, and continuity-aware scene transitions.
 
 ### 5. Resumable, observable rendering
 
@@ -52,5 +52,5 @@ before widening access.
 
 The model may propose a scene, but it never self-approves. Deterministic safety checks and an
 editorial vision review judge every rendered scene; QA is an auditable advisor, so a scene may ship
-*flagged* — its unresolved issues surfaced to the user — rather than being silently dropped. The
+*flagged* - its unresolved issues surfaced to the user - rather than being silently dropped. The
 human decides what to re-render.

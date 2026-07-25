@@ -107,8 +107,8 @@ model): every agent action must be auditable — the user must see *why*, and *t
 whether to re-render, especially for anything subjective.
 
 **Decision:** QA becomes an **auditable advisor**, not a silent gatekeeper.
-- Each QA finding is tagged `safety` (objective: graphic on a face feature / in the caption band,
-  garbled or clipped text, duplicated captions, broken render, missing required asset) or
+- Each QA finding is tagged `safety` (objective: missing/clipped/unreadably small required wording,
+  graphic in the caption band, garbled text, duplicated captions, broken render, missing required asset) or
   `subjective` (creative/copy/polish — a matter of taste). When unsure, default to `subjective`.
 - **A scene is never silently omitted.** `safety` faults drive an auto-patch up to the retry budget;
   if still unresolved, the scene **ships FLAGGED** (the founder chose ship-it-flagged over base
@@ -135,3 +135,42 @@ the flag MUST be surfaced. Remaining work: persist `SceneReport` with the render
 studio review UI + a per-scene re-render endpoint. See `render/src/types.ts` (`SceneIssue`,
 `SceneReport`), `render/src/premium/index.ts` (`produceScene`, `runPremium`),
 `render/src/premium/qa.ts`, and `render/tests/premium.test.ts`.
+
+---
+
+## 2026-07-24: One visual authority per beat; captions composite last
+
+**Status:** Active.
+
+**Context:** A frame-by-frame comparison against a founder-edited creator video showed that graphic
+frequency was not the main quality problem. The reference used graphics through most of its runtime,
+but separated visual modes: clean talking head, one supporting overlay, or a full-frame explanation.
+Proof instead instructed every scene to build chips, dashboards, panels, timelines, and waveforms
+around the face. Full-frame animation was also structurally impossible because premium scenes were
+transparent, speaker-masked overlays composited after captions.
+
+**Decision:**
+
+- GPT-5.6 Sol produces one global typed edit plan before scene authoring. The plan assigns `overlay`
+  or `full-frame`; timeline gaps intentionally remain clean A-roll.
+- TypeScript enforces the editorial budget: at least 25% clean runtime, no more than 40% full-frame,
+  no more than 35% overlay, face-led opening/closing, recovery after full-frame sequences, and one
+  three-second clean interval in videos over 30 seconds.
+- Every scene receives one shared creative direction. Continuity comes from palette, typography,
+  spacing, motif, and transition grammar, not mandatory dashboard chrome.
+- Overlay scenes receive a deterministic caption-band alpha mask and always keep footage visible.
+  Face overlap is allowed because readable mobile-sized wording takes priority over preserving every face feature.
+  Full-frame scenes independently select `footage` or `black`: black is reserved for animation that
+  occupies most of the frame or must be the sole focus.
+  The compositor supplies the black background, so authored HTML remains transparent in both cases.
+- QA reviews the selected background treatment. A black takeover treats the absent speaker as
+  intentional; footage-backed scenes allow face overlap and treat missing, clipped, or sub-56px essential
+  wording as an objective repair fault.
+- Composition order is clean footage -> creator visuals -> captions. QA reviews the same order.
+- A planner decision to use zero enhanced scenes is valid clean A-roll, not a premium failure.
+
+**Consequences:** HyperFrames can now own the complete frame when the visual carries the explanation,
+while short supporting graphics remain singular and speaker-led. Captions remain readable because they
+are composited last. `SceneReport` adds the selected mode, background treatment, and rationale, while
+`edit-plan.json` records coverage and clean intervals. The public render brief and database schema do
+not change.

@@ -9,6 +9,7 @@ import { scriptToVocabPrompt } from "../src/transcribe.js";
 import {
   DEFAULT_PREMIUM_PLAN_MODEL,
   normalizeScenes,
+  planEdit,
   planScenes,
   findAnchorMs,
   buildSceneIntent,
@@ -50,6 +51,9 @@ const spec = (id: string): SceneSpec => ({
   id,
   anchorMs: 0,
   durMs: 2000,
+  mode: "overlay",
+  priority: 50,
+  rationale: "test scene",
   motif: "chip",
   intent: "show the thing",
   captionText: "the thing",
@@ -308,6 +312,7 @@ test("produceScene returns a movPath when QA approves", async () => {
       {
         author: async () => VALID_HTML,
         render: async () => { order.push("render"); },
+        mask: async () => { order.push("mask"); },
         captionCheck: async () => { order.push("caption"); return false; },
         qa: async () => {
           order.push("qa");
@@ -318,8 +323,7 @@ test("produceScene returns a movPath when QA approves", async () => {
     assert.equal(out.movPath, join(dir, "scene-2.mov"));
     assert.equal(out.report.verdict, "clean", "an approved scene ships clean, no flags");
     assert.deepEqual(out.report.issues, []);
-    // No mask: render -> deterministic caption check -> vision QA.
-    assert.deepEqual(order, ["render", "caption", "qa"]);
+    assert.deepEqual(order, ["render", "mask", "caption", "qa"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -451,8 +455,8 @@ test("premium model calls have a bounded deadline and one transient retry", () =
   });
 });
 
-test("the deterministic overlay mask clears the moving-speaker and caption zones", () => {
-  assert.match(SPEAKER_SAFE_ALPHA_FILTER, /x=160:y=180:w=760:h=1070/);
+test("the deterministic overlay mask protects captions without erasing face-overlapping graphics", () => {
+  assert.doesNotMatch(SPEAKER_SAFE_ALPHA_FILTER, /x=160:y=180:w=760:h=1070/);
   assert.match(SPEAKER_SAFE_ALPHA_FILTER, /x=0:y=1450:w=iw:h=470/);
   assert.match(SPEAKER_SAFE_ALPHA_FILTER, /black@0/);
 });
@@ -488,7 +492,7 @@ test("the FFmpeg mask clears protected alpha pixels and preserves permitted pixe
       return pixel[0];
     };
 
-    assert.equal(alphaAt(500, 500), 0, "speaker corridor must be transparent");
+    assert.ok(alphaAt(500, 500) >= 250, "face-overlapping wording must remain rendered");
     assert.equal(alphaAt(500, 1500), 0, "caption band must be transparent");
     assert.ok(alphaAt(80, 100) >= 250, "header-safe pixels must stay opaque");
     assert.ok(alphaAt(500, 1300) >= 250, "lower permitted pixels must stay opaque");
@@ -504,32 +508,95 @@ test("vision QA sends explicit full-detail frames and samples scene boundaries",
   assert.deepEqual(qaSampleTimes(4), [0.2, 0.8, 2, 3.4, 3.8]);
 });
 
-test("the author contract composes in wide top/bottom bands, not narrow side rails", () => {
-  const prompt = authorSystemPrompt(3);
-  // Gold-standard layout language (proof-demo-FINAL): a wide top band above the head and a
-  // full-width lower panel over the chest — NOT two narrow vertical rails, which read as a
-  // cramped HUD and were the thing the first fix wrongly prescribed.
-  assert.match(prompt, /top band above the head/);
-  assert.match(prompt, /FULL-WIDTH panel in the lower band/);
-  assert.match(prompt, /Do NOT build two narrow\s+vertical side rails/);
-  // No OPAQUE block on any face feature, but transparent accents may cross.
-  assert.match(prompt, /NEVER cover a face feature[\s\S]*with\s*[\s\S]*an OPAQUE block/);
-  assert.match(prompt, /Transparent, non-blocking accents/);
-  // Caption band stays protected, and the number comes from the shared constant (1450).
+test("the overlay author contract keeps text over the head, pins installed fonts, and rejects dashboard chrome", () => {
+  const prompt = authorSystemPrompt(3, "overlay");
+  assert.match(prompt, /ONE visual authority that lives OVER THE HEAD/);
+  assert.match(prompt, /speaker remains the primary visual/i);
   assert.match(prompt, /y=1450\.\.1920/);
+  assert.match(prompt, /y=80\.\.640/);
+  assert.match(prompt, /essential wording must use at least 56px/i);
+  assert.match(prompt, /readability wins/i);
+  assert.match(prompt, /may overlap the speaker's face/i);
+  assert.match(prompt, /no dashboards/i);
+  // installed-font pin: reliable stack required, distorting display faces forbidden.
+  assert.match(prompt, /Liberation Sans/);
+  assert.match(prompt, /NEVER use Impact, Haettenschweiler/i);
+  assert.match(prompt, /font-stretch:condensed/i);
+  assert.doesNotMatch(prompt, /small dashboard/i);
+  assert.doesNotMatch(prompt, /timeline\/waveform strip/i);
+});
+
+test("produceScene keeps blackout scenes transparent, skips masking, and checks captions", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "premium-full-frame-"));
+  try {
+    const order: string[] = [];
+    const fullFrameSpec = {
+      ...spec("scene-full"),
+      mode: "full-frame" as const,
+      backgroundTreatment: "black" as const,
+    };
+    const out = await produceScene(
+      {
+        spec: fullFrameSpec,
+        brief: { script: "", keywordFlags: [] },
+        assetHints: [],
+        assetsDir: dir,
+        premiumDir: dir,
+        basePath: "base.mp4",
+        fps: 30,
+        log: () => {},
+      },
+      {
+        author: async () => VALID_HTML,
+        render: async () => { order.push("render"); },
+        mask: async () => { order.push("mask"); },
+        captionCheck: async () => { order.push("caption"); return false; },
+        qa: async () => {
+          order.push("qa");
+          return { outcome: "approved", issues: [] };
+        },
+      },
+    );
+    assert.equal(out.report.mode, "full-frame");
+    assert.equal(out.report.backgroundTreatment, "black");
+    assert.deepEqual(order, ["render", "caption", "qa"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("the blackout author contract gives the animation visual authority without painting its own background", () => {
+  const prompt = authorSystemPrompt(3, "full-frame", "black");
+  assert.match(prompt, /solid black background is supplied by the compositor/i);
+  assert.match(prompt, /keep html, body, and #stage transparent/i);
+  assert.match(prompt, /speaker is intentionally hidden/i);
+  assert.match(prompt, /35-50% negative space/i);
+  assert.match(prompt, /one claim or relationship/i);
+  assert.doesNotMatch(prompt, /NEVER cover a face feature/);
+});
+
+test("the footage-backed full-frame contract keeps wording readable without a hard face mask", () => {
+  const prompt = authorSystemPrompt(3, "full-frame", "footage");
+  assert.match(prompt, /keep html, body, and #stage transparent/i);
+  assert.match(prompt, /speaker remains visible/i);
+  assert.match(prompt, /face overlap is allowed/i);
+  assert.match(prompt, /at least 56px/i);
+  assert.match(prompt, /readability wins/i);
+  assert.doesNotMatch(prompt, /opaque full-frame canvas/i);
 });
 
 test("QA is an auditable advisor that tags each issue safety|subjective (never a silent gatekeeper)", () => {
-  const p = qaSystemPrompt([]);
+  const p = qaSystemPrompt([], "overlay");
   // The core of the model: advise + tag, never block. The scene ships regardless.
   assert.match(p, /ADVISOR, not a gatekeeper/i);
   assert.match(p, /the scene WILL ship/i);
   assert.match(p, /tag each one as "safety" or "subjective"/i);
   // SAFETY = objective faults that get auto-repaired.
   assert.match(p, /SAFETY = an OBJECTIVE defect/i);
-  assert.match(p, /OPAQUE graphic sitting ACROSS a face feature/);
-  assert.match(p, /Covering even ONE eye counts/);
-  assert.match(p, /graz(e|es) the HAIR or SHOULDERS/i);
+  assert.match(p, /missing, clipped, partially erased, or unreadably small/i);
+  assert.match(p, /at least 56px/i);
+  assert.match(p, /face overlap is allowed/i);
+  assert.doesNotMatch(p, /Covering even ONE eye counts/);
   assert.match(p, /caption band/i);
   // SUBJECTIVE = matters of taste that NEVER block — incl. copy/word-order preferences.
   assert.match(p, /SUBJECTIVE = a matter of TASTE/i);
@@ -544,6 +611,21 @@ test("QA is an auditable advisor that tags each issue safety|subjective (never a
   // Feedback is concrete edits, not "start over".
   assert.match(p, /CONCRETE EDIT/);
   assert.match(p, /never "start over"/i);
+});
+
+test("full-frame QA does not treat intentionally hidden faces as a safety fault", () => {
+  const p = qaSystemPrompt([], "full-frame", "black");
+  assert.match(p, /speaker is intentionally absent/i);
+  assert.match(p, /negative space/i);
+  assert.doesNotMatch(p, /Covering even ONE eye counts/);
+});
+
+test("footage-backed full-frame QA prioritizes readable graphics over face protection", () => {
+  const p = qaSystemPrompt([], "full-frame", "footage");
+  assert.match(p, /speaker remains visible/i);
+  assert.match(p, /face overlap is allowed/i);
+  assert.match(p, /readability wins/i);
+  assert.doesNotMatch(p, /actual face feature/i);
 });
 
 test("buildAuthorMessages: fresh author is one user turn; patch puts prior HTML as an assistant turn", () => {
@@ -673,7 +755,7 @@ test("buildSceneIntent bakes brollCue + headline + asset filenames into one dire
   assert.match(intent, /popup slides up/);
   assert.match(intent, /SHIP IT/);
   assert.match(intent, /main-view\.png/);
-  assert.match(intent, /headline-only card is NOT acceptable/i);
+  assert.match(intent, /one bespoke, intentional visual authority/i);
 });
 
 test("scenesFromBrief anchors each brief scene to the timeline and honors the motif", () => {
@@ -707,6 +789,31 @@ test("planScenes uses the brief's own scenes without calling the LLM when they e
   const specs = await planScenes({ brief, words: w, durationMs: 6000, assetHints: [] });
   assert.equal(specs.length, 1);
   assert.match(specs[0].intent, /logos rain in/);
+});
+
+test("planEdit always invokes the global editorial planner even when brief scenes exist", async () => {
+  const w = words([[0, "problem"], [1000, "platforms"], [3000, "manual"], [4000, "burden"]]);
+  const brief = {
+    script: "x", keywordFlags: [],
+    scenes: [{ label: "a", spokenLine: "problem platforms", onScreenText: "PLATFORMS", brollCue: "logos rain in" }],
+  } as RenderBrief;
+  let calls = 0;
+  const plan = await planEdit({
+    brief,
+    words: w,
+    durationMs: 7000,
+    assetHints: [],
+    generate: async () => {
+      calls++;
+      return {
+        creativeDirection: { emphasisColor: "#ffcc00" },
+        beats: [{ anchorMs: 1000, durMs: 2000, mode: "overlay", intent: "one logo", priority: 90 }],
+      };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(plan.scenes.length, 1);
+  assert.equal(plan.creativeDirection.emphasisColor, "#ffcc00");
 });
 
 // ---- asset-inclusion gate (Task 6 fix lever 1) ----

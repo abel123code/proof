@@ -1,26 +1,26 @@
 // Retest the improved premium loop (author -> render -> caption-check -> editorial QA -> patch)
-// over an ALREADY-captioned frozen base, then composite the final MP4. Skips download/transcribe/
-// cut/caption entirely (those are frozen in minfix), so this exercises ONLY the code that changed
+// over a frozen clean base + transparent caption overlay, then composite the final MP4. Skips
+// download/transcribe/cut/caption rendering, so this exercises ONLY the code that changed
 // and is far cheaper/faster than a full E2E while still producing a complete before/after video.
 //
-// before = the captioned base (captions only, the old fallback when scenes were rejected)
-// after  = this output (captioned base + approved bespoke scenes)
+// after = clean base + creator-native scenes + captions burned last
 //
-// Usage: npx tsx scripts/run-premium-frozen.ts <captioned.mp4> <props.json> <brief.json> <out.mp4>
+// Usage: npx tsx scripts/run-premium-frozen.ts <base.mp4> <captions.mov> <props.json> <brief.json> <out.mp4>
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { runPremium } from "../src/premium/index.js";
 import type { RenderBrief, Word } from "../src/types.js";
 
-const [baseArg, propsArg, briefArg, outArg] = process.argv.slice(2);
+const [baseArg, captionsArg, propsArg, briefArg, outArg] = process.argv.slice(2);
 
-if (!baseArg || !propsArg || !briefArg || !outArg) {
-  console.error("usage: npx tsx scripts/run-premium-frozen.ts <captioned.mp4> <props.json> <brief.json> <out.mp4>");
+if (!baseArg || !captionsArg || !propsArg || !briefArg || !outArg) {
+  console.error("usage: npx tsx scripts/run-premium-frozen.ts <base.mp4> <captions.mov> <props.json> <brief.json> <out.mp4>");
   process.exit(1);
 }
 
 async function main() {
   const basePath = resolve(baseArg);
+  const captionOverlayPath = resolve(captionsArg);
   const props = JSON.parse(await readFile(propsArg, "utf8")) as { words: Word[]; durationMs: number };
   const brief = JSON.parse(await readFile(briefArg, "utf8")) as RenderBrief;
   const outPath = resolve(outArg);
@@ -29,13 +29,14 @@ async function main() {
   const started = Date.now();
   const at = () => `${((Date.now() - started) / 1000).toFixed(1).padStart(7)}s`;
 
-  console.log(`\n=== premium retest over frozen captioned base ===`);
+  console.log(`\n=== premium retest over frozen base + caption layer ===`);
   console.log(`base   : ${basePath}`);
   console.log(`words  : ${props.words.length}, durationMs: ${props.durationMs}`);
   console.log(`out    : ${outPath}\n`);
 
   const r = await runPremium({
     basePath,
+    captionOverlayPath,
     outPath,
     brief,
     words: props.words,

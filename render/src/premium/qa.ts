@@ -1,8 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getOpenAI } from "../openai.js";
-import { buildCutVideo, overlayScenesAtOffsets, extractFrames } from "../ffmpeg.js";
-import type { SceneSpec, SceneQA, SceneIssue } from "../types.js";
+import { buildCutVideo, compositeOverlaySlice, overlayScenesAtOffsets, extractFrames } from "../ffmpeg.js";
+import type {
+  SceneBackgroundTreatment,
+  SceneSpec,
+  SceneQA,
+  SceneIssue,
+  SceneMode,
+} from "../types.js";
 import { chatTuning, premiumRequestOptions } from "./model-params.js";
 
 export const DEFAULT_PREMIUM_QA_MODEL = "gpt-5.6-sol";
@@ -19,7 +25,11 @@ const QA_EFFORT = process.env.PREMIUM_QA_EFFORT; // default "low" via chatTuning
  * demand assets that are on disk, and the example fixes are conditional so they never suggest
  * embedding a file that was never staged.
  */
-export function qaSystemPrompt(assetHints: string[] = []): string {
+export function qaSystemPrompt(
+  assetHints: string[] = [],
+  mode: SceneMode = "overlay",
+  backgroundTreatment: SceneBackgroundTreatment = "footage",
+): string {
   const hasAssets = assetHints.length > 0;
   const assetRule = hasAssets
     ? `STAGED ASSETS for this scene: ${assetHints.join(", ")}. When the intent names one, the scene must embed
@@ -28,6 +38,42 @@ export function qaSystemPrompt(assetHints: string[] = []): string {
     : `NO assets are staged for this scene. Judge it on layout, typography, motion and design craft. Do NOT
   demand real screenshots, recordings, photos or logos, and do NOT fail the scene for using a recreated UI,
   chart or diagram instead of a real capture — a well-built recreated visual is the CORRECT outcome here.`;
+  if (mode === "full-frame" && backgroundTreatment === "black") {
+    return `You are the SECOND-PASS creative director for a creator-native FULL-FRAME motion scene in a
+vertical (1080x1920) video. The speaker is intentionally absent; hiding the face is NOT a fault. Captions are
+composited above the scene. You are an ADVISOR, not a gatekeeper: the scene WILL ship regardless of verdict.
+
+SAFETY = only objective broken output: misspelled or garbled text, clipped wordmarks, duplicated subtitle
+sentences, empty frames, illegible overlaps, or text too small / low-contrast to read.
+
+SUBJECTIVE = taste and density: weak hierarchy, less than roughly 35-50% negative space, excessive dashboards,
+nested cards, tiny labels, several equal focal systems, decorative motion, generic visuals, or polish preferences.
+Subjective issues NEVER block and NEVER drive an automatic re-author.
+
+${assetRule}
+Every issue must be one CONCRETE EDIT to the existing scene, never "start over". When unsure, tag it
+"subjective". Respond with JSON: { "issues": [ { "text": string, "kind": "safety" | "subjective" } ] }.
+Return an EMPTY issues array when the scene is clean, readable, restrained, and caption-clear.`;
+  }
+  if (mode === "full-frame") {
+    return `You are the SECOND-PASS creative director for a creator-native FULL-FRAME motion scene composited
+over visible talking-head footage in a vertical (1080x1920) video. The speaker remains visible and captions are
+composited above the scene. You are an ADVISOR, not a gatekeeper: the scene WILL ship regardless of verdict.
+
+SAFETY = only objective broken output: required wording from the intent that is missing, clipped, partially erased,
+or unreadably small; essential text below 56px; any element covering the bottom caption band; misspelled or garbled
+text; clipped wordmarks; duplicated subtitle sentences; empty frames; illegible overlaps; or low-contrast text.
+Face overlap is allowed and is never a safety fault. Readability wins over keeping the speaker's face clear.
+
+SUBJECTIVE = taste and density: weak hierarchy, excessive dashboards, nested cards, tiny labels, several equal
+focal systems, decorative motion, generic visuals, or polish preferences. Subjective issues NEVER block and NEVER
+drive an automatic re-author.
+
+${assetRule}
+Every issue must be one CONCRETE EDIT to the existing scene, never "start over". When unsure, tag it
+"subjective". Respond with JSON: { "issues": [ { "text": string, "kind": "safety" | "subjective" } ] }.
+Return an EMPTY issues array when the scene is clean, readable, restrained, and caption-clear.`;
+  }
   const examples = hasAssets
     ? `("embed ./assets/${assetHints[0]} for real, don't just name it", "move the title fully into the left rail", "fix 'Triger.dev' -> 'Trigger.dev'")`
     : `("move the strip off the speaker's chin into the header", "give the chart a real axis instead of bare labels", "fix 'Triger.dev' -> 'Trigger.dev'")`;
@@ -37,11 +83,14 @@ are an ADVISOR, not a gatekeeper: the scene WILL ship regardless of your verdict
 issue AND tag each one as "safety" or "subjective", because the two are handled completely differently:
 
 SAFETY = an OBJECTIVE defect a reasonable person calls broken. These get auto-repaired. Only these:
-- an OPAQUE graphic sitting ACROSS a face feature — an eye, the glasses, the nose, the mouth, or the chin.
-  Covering even ONE eye counts. A graphic that only grazes the HAIR or SHOULDERS, or a thin/translucent accent
-  passing near the face, is FINE — never flag those.
+- required wording named in the scene intent that is missing, clipped, partially erased, or unreadably small.
+  Essential overlay wording must be at least 56px at 1080x1920. Face overlap is allowed: readability wins, so
+  never request smaller, abbreviated, hidden, or replacement wording merely to keep the face clear.
 - any element reaching into the bottom caption band and covering the burned-in captions.
 - MISSPELLED or garbled on-screen text, or a CLIPPED / cut-off wordmark (e.g. "Compositin" for "Compositing").
+- DISTORTED editorial type from a bad/unavailable display font: crushed or malformed glyphs (e.g. "WHO"
+  rendering as "VHO"), or a headline left in inconsistent MIXED CASE (e.g. "Try Proof") that should read as
+  clean uniform type. Ask for a clean installed sans (Arial/Liberation Sans) at the intended uniform case.
 - reproducing the spoken sentence as on-screen subtitles / duplicating the bottom captions.
 - a genuinely broken render: empty, elements overlapping into illegibility, or text too small / low-contrast to read.
 
@@ -82,18 +131,34 @@ export async function qaScene(args: {
   spec: SceneSpec;
   movPath: string;
   basePath: string;
+  captionOverlayPath?: string;
   workDir: string;
   /** Filenames actually staged for this scene; QA may only demand these. */
   assetHints?: string[];
 }): Promise<SceneQA> {
-  const { spec, movPath, basePath, workDir, assetHints = [] } = args;
+  const { spec, movPath, basePath, captionOverlayPath, workDir, assetHints = [] } = args;
   const durSec = spec.durMs / 1000;
 
   // 1. Base window [anchor, anchor+dur] with the scene overlaid at offset 0.
   const baseWin = join(workDir, `${spec.id}-basewin.mp4`);
+  const sceneComposite = join(workDir, `${spec.id}-scene-composite.mp4`);
   const qaComposite = join(workDir, `${spec.id}-qa.mp4`);
   await buildCutVideo(basePath, [{ startMs: spec.anchorMs, endMs: spec.anchorMs + spec.durMs }], baseWin);
-  await overlayScenesAtOffsets(baseWin, [{ movPath, startMs: 0, endMs: spec.durMs }], qaComposite);
+  const backgroundTreatment = spec.backgroundTreatment ?? "footage";
+  await overlayScenesAtOffsets(
+    baseWin,
+    [{ movPath, startMs: 0, endMs: spec.durMs, backgroundTreatment }],
+    sceneComposite,
+  );
+  if (captionOverlayPath) {
+    await compositeOverlaySlice(sceneComposite, captionOverlayPath, spec.anchorMs, spec.durMs, qaComposite);
+  } else {
+    await overlayScenesAtOffsets(
+      baseWin,
+      [{ movPath, startMs: 0, endMs: spec.durMs, backgroundTreatment }],
+      qaComposite,
+    );
+  }
 
   // 2. Sample frames across the window.
   const frames = await extractFrames(
@@ -117,7 +182,7 @@ export async function qaScene(args: {
     ...chatTuning(QA_MODEL, QA_EFFORT),
     response_format: { type: "json_object" },
     messages: [
-      { role: "system", content: qaSystemPrompt(assetHints) },
+      { role: "system", content: qaSystemPrompt(assetHints, spec.mode, backgroundTreatment) },
       {
         role: "user",
         content: [
