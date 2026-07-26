@@ -48,6 +48,9 @@ next-env.d.ts
 # Local agent instructions stay on developer machines.
 /CLAUDE.md
 
+# Local render/debug scratch (audit frames, OCR dumps, smoke logs — never commit).
+/tmp/
+
 # Local Build Week research, source media, and working artefacts.
 /.playwright-mcp/
 /Codex OpenAI Build Week Research.md
