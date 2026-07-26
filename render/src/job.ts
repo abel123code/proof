@@ -20,7 +20,6 @@ import { planBriefVisuals } from "./visual-planner.js";
 import { renderOverlay, RENDER_ROOT } from "./render.js";
 import { runPremium } from "./premium/index.js";
 import { premiumFallbackReport } from "./premium/fallback.js";
-import { soundtrack } from "./soundtrack.js";
 import { FOOTAGE_BUCKET, getSupabaseAdmin, RENDER_BUCKET } from "./supabase.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -237,16 +236,6 @@ export async function runJob(
     } else {
       await copyFile(captionedAbs, outAbs);
     }
-
-    // 8c. Sound-tracking: mix a gentle background track, ducked under the voice. Best-effort — any
-    //     failure (disabled, empty library, no audio, ffmpeg error) leaves outAbs untouched.
-    onStatus("scoring");
-    await soundtrack({
-      videoPath: outAbs,
-      brief,
-      words: captionWords,
-      log: (m) => console.log(`[music ${jobId}] ${m}`),
-    });
 
     onStatus("quality-checking");
     const finalProbe = await probeVideo(outAbs);

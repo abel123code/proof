@@ -7,7 +7,6 @@ const PROGRESS: Record<JobStatus, number> = {
   cutting: 30,
   planning: 45,
   rendering: 58,
-  scoring: 80,
   "quality-checking": 85,
   uploading: 92,
   done: 100,

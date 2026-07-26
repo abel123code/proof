@@ -45,19 +45,6 @@ flagged; only unrenderable or unsafe HTML uses the per-beat base fallback.
 - `PREMIUM_AUTHOR_MODEL=gpt-5.6-sol`
 - `PREMIUM_QA_MODEL=gpt-5.6-sol`
 - `BRIEF_VISUAL_MODEL=gpt-5.6-luna`
-- `MUSIC_MODEL=gpt-5.6-sol` — the post-edit "music director" that picks a background track
-
-## Soundtrack
-
-After the video is edited (visuals + captions), the `scoring` stage mixes a gentle background track
-**ducked under the speaker's voice** (sidechain compression + fades). The `MUSIC_MODEL` call picks one
-track from `assets/music/` (see its `manifest.json`) and its mix levels; on any failure it falls back to
-a neutral default track. The stage is best-effort: with `RENDER_MUSIC=0`, an empty library, or any
-error, the video ships unchanged. Bundled tracks are synthesized, license-free ambient pads — drop your
-own royalty-free (no-attribution) tracks into `assets/music/` and add a manifest entry to expand the set.
-
-- `RENDER_MUSIC`, default on; set `0` to disable scoring
-- `MUSIC_MODEL` / `MUSIC_EFFORT`, the track-selection model + reasoning effort
 
 Premium Chat Completions use low reasoning by default. The Luna visual selector uses no
 reasoning by default. Premium requests have a 90-second per-attempt timeout and one retry.
