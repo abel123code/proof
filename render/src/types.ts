@@ -273,7 +273,6 @@ export type JobStatus =
   | "cutting"
   | "planning"
   | "rendering"
-  | "scoring"
   | "quality-checking"
   | "uploading"
   | "done"
