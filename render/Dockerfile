@@ -2,8 +2,13 @@
 # System dependencies for chrome-headless-shell and FFmpeg on a clean Debian worker.
 FROM node:22-bookworm-slim
 
+# `unzip` is REQUIRED: hyperframes extracts its chrome-headless-shell download with a system zip
+# archiver. Without it the download fails ("no zip archiver is available"), hyperframes finds no
+# browser, and EVERY premium scene crashes -> the render ships the caption-only base with 0 bespoke
+# animations. Do not remove.
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
     ffmpeg \
+    unzip \
     libnss3 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
     libasound2 libpango-1.0-0 libcairo2 fonts-liberation \
@@ -26,7 +31,14 @@ COPY --chown=node:node package.json package-lock.json ./
 RUN npm ci --include=dev
 
 # Pre-warm chrome-headless-shell so the first render doesn't cold-download it.
+# BOTH renderers need their OWN browser and they do NOT share one:
+#   remotion    -> /app/node_modules/.remotion/chrome-headless-shell/...  (captions/overlay layer)
+#   hyperframes -> /home/node/.cache/hyperframes/chrome/...               (premium bespoke scenes)
+# Only remotion was pre-warmed, so hyperframes cold-downloaded Chrome on every render, failed inside
+# the container, and EVERY premium scene crashed -> videos shipped with 0 bespoke animations. Baking
+# both at build time also removes a runtime network dependency mid-render.
 RUN npx remotion browser ensure
+RUN npx hyperframes browser ensure
 
 COPY --chown=node:node . .
 
