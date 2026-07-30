@@ -51,6 +51,16 @@ API usage.
 - For UI changes, inspect desktop and mobile renders.
 - For render changes, inspect actual output frames or video, not only generated HTML.
 - For deployed changes, verify the live route and provider logs.
+- **A deploy is NOT verified until you have run a real render and looked at its frames.** A healthy
+  boot line, a passing health check and a green test suite are each necessary and none of them are
+  sufficient. Download the MP4 (`GET /out/edited-<jobId>.mp4` with `x-render-token`), extract frames,
+  look at them, and confirm the log reports `composited N bespoke scene(s)` with N > 0. Calling a
+  deploy "verified" off a boot line once put 0-animation videos in front of users — see
+  `POST_MORTEMS.md` (2026-07-29).
+- **`hyperframesAvailable()` does not mean HyperFrames works.** It only checks that the CLI resolves;
+  the browser is a separate requirement it cannot see. Same caution for any "is X installed" preflight.
+- **Railway is NOT connected to GitHub.** Merging to `main` deploys nothing. The render worker ships
+  only via `railway up` from `render/`, so production can silently run code days behind `main`.
 
 ## Next.js rule
 
