@@ -14,7 +14,7 @@
   <img src="https://github.com/abel123code/proof/actions/workflows/verify.yml/badge.svg" alt="Verification workflow" />
   <img src="https://img.shields.io/badge/built%20with-Codex-111111" alt="Built with Codex" />
   <img src="https://img.shields.io/badge/powered%20by-GPT--5.6-10A37F" alt="Powered by GPT-5.6" />
-  <img src="https://img.shields.io/badge/tests-116%20passing-2563EB" alt="116 tests passing" />
+  <img src="https://img.shields.io/badge/tests-168%20passing-2563EB" alt="168 tests passing" />
   <img src="https://img.shields.io/badge/license-MIT-F5C542" alt="MIT licence" />
 </p>
 
@@ -140,7 +140,9 @@ the scene.
 
 The next author attempt receives the same scene intent plus concrete defects such as “move the
 title above the speaker” or “replace duplicated caption text with a real visual.” A scene that
-never passes is omitted. The captioned base remains valid.
+still has an unresolved safety fault at the end of the retry budget **ships flagged rather than being
+silently dropped**, carrying an auditable `SceneReport` the app can surface; the captioned base is the
+per-scene fallback only when a scene cannot be rendered at all.
 
 A full eight-second production fixture rejected two variants and approved the second repair. QA
 caught duplicated values, weak entrance contrast, and malformed headline copy before the final
@@ -245,8 +247,8 @@ test suites.
 
 | Check | Result |
 |---|---|
-| Web tests | 54 passed |
-| Render-service tests | 62 passed |
+| Web tests | 61 passed |
+| Render-service tests | 107 passed |
 | TypeScript checks | Passed in both packages |
 | Production Next.js build | Passed |
 | Live GPT-5.6 Luna JSON request | Passed |

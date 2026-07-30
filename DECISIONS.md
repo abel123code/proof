@@ -174,3 +174,59 @@ while short supporting graphics remain singular and speaker-led. Captions remain
 are composited last. `SceneReport` adds the selected mode, background treatment, and rationale, while
 `edit-plan.json` records coverage and clean intervals. The public render brief and database schema do
 not change.
+
+---
+
+## 2026-07-29: Both renderers get their browser baked in; the alpha mask never touches rgba
+
+**Status:** Active. Two hard environment constraints for the render image, both learned from a
+production outage that shipped 0-animation videos. Full narrative in `POST_MORTEMS.md` (2026-07-29).
+
+**Context.** Production renders were completing and shipping with **zero bespoke scenes**. Two
+independent faults, both latent since the premium engine landed:
+
+1. `render/Dockerfile` pre-warmed only **Remotion's** chrome-headless-shell. Remotion and HyperFrames
+   keep browsers in **separate** caches (`/app/node_modules/.remotion/...` vs
+   `/home/node/.cache/hyperframes/...`), so HyperFrames cold-downloaded Chrome on every render. That
+   download needs a system zip archiver: `unzip` was absent and `yauzl` is an **optional peer
+   dependency** npm skips. With no Railway volume (`volumeMounts: []`) nothing cached between
+   restarts, so **prod could never render a scene**. It appeared to work only because the team
+   rendered locally, where a system Chrome exists.
+2. `SPEAKER_SAFE_ALPHA_FILTER` ran `format=rgba,drawbox=...,format=yuva444p10le` over HyperFrames'
+   ProRes 4444 **yuva444p12le** output. That 12-bit to 8-bit to 10-bit chain **segfaults ffmpeg 5.1**
+   (exit 139, reproducible on any scene mov). The mask only runs for `mode === "overlay"`, so it
+   silently killed **every overlay scene** while full-frame scenes rendered — reading as "half the
+   animations are missing".
+
+**Decision.**
+
+- The image **provisions both browsers at build time**: `npx remotion browser ensure` *and*
+  `npx hyperframes browser ensure`, with `unzip` installed. No render may depend on a runtime browser
+  download. Removing either line silently disables an entire renderer.
+- `SPEAKER_SAFE_ALPHA_FILTER` **converts straight to `yuva444p10le` and draws there**. It must never
+  route through `format=rgba`. A regression test (`render/tests/ffmpeg-filter.test.ts`) asserts the
+  filter contains no `rgba`. The rgba hop was also silently discarding alpha precision.
+
+**Alternatives considered.**
+
+- *Point `HYPERFRAMES_BROWSER_PATH` at a system Chrome.* Rejected: the slim base image ships only
+  chromium **libraries**, not a browser binary, so this would need a heavier apt install.
+- *Add `yauzl` as an explicit dependency* so the runtime download can extract. Rejected as the primary
+  fix — it still leaves a network dependency mid-render. Baking the browser is strictly better.
+- *Mount a Railway volume to cache the browser.* Rejected: solves caching, not the first cold start,
+  and adds state to a stateless worker.
+- *Drop the caption-band mask entirely* (caption-guard already relocates intruding graphics). Deferred
+  — plausible per the 2026-07-23 advisor ADR, but it removes a safety net and was out of scope for an
+  outage fix. Revisit deliberately.
+
+**Consequences.** Docker builds are slower and the image is about 115 MB larger (a second headless
+shell). Verified in the production container: chrome binary present, `unzip` present,
+`chrome-headless-shell --version` returns, and the previously-segfaulting command exits 0. A real
+production render went from **0/6 scenes shipped to 5/5, 0 base-fallback**.
+
+**A deploy is not verified by a boot log.** `hyperframesAvailable()` only checks the CLI resolves; it
+cannot see the browser. Verification means downloading the rendered MP4 and inspecting frames. See
+`AGENTS.md` "Definition of done" and `POST_MORTEMS.md`.
+
+**References:** `render/Dockerfile`, `render/src/ffmpeg.ts`, `render/src/premium/index.ts` (mask call
+site), `render/tests/ffmpeg-filter.test.ts`, PR #18.
