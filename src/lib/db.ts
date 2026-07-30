@@ -277,6 +277,8 @@ export interface Profile {
   onboardingState: OnboardingState;
   onboardingVersion: number;
   onboardingCompletedAt: string | null;
+  /** GitHub App installation id, or null when private repos aren't connected. Not a secret. */
+  githubInstallationId: number | null;
   createdAt: string;
 }
 
@@ -288,6 +290,7 @@ interface ProfileRow {
   onboarding_state?: OnboardingState;
   onboarding_version?: number;
   onboarding_completed_at?: string | null;
+  github_installation_id?: number | string | null;
   created_at: string;
 }
 
@@ -300,6 +303,9 @@ function mapProfile(r: ProfileRow): Profile {
     onboardingState: r.onboarding_state ?? "not_started",
     onboardingVersion: r.onboarding_version ?? 1,
     onboardingCompletedAt: r.onboarding_completed_at ?? null,
+    // bigint can arrive as a string from postgrest; normalise to number | null.
+    githubInstallationId:
+      r.github_installation_id == null ? null : Number(r.github_installation_id),
     createdAt: r.created_at,
   };
 }
@@ -328,6 +334,26 @@ export async function updateProfileGithub(
     .update({ github_username: githubUsername })
     .eq("user_id", userId);
   if (error) throw new Error(`updateProfileGithub failed: ${error.message}`);
+}
+
+/**
+ * Save (or clear, with null) the user's GitHub App installation id.
+ *
+ * Only the id is stored. It is not a credential — access tokens are minted per request from the app
+ * private key and never persisted, so a database leak cannot be replayed against anyone's private
+ * repositories. See `src/lib/github-app.ts`.
+ */
+export async function setProfileGithubInstallation(
+  userId: string,
+  installationId: number | null,
+): Promise<void> {
+  if (!realUserId(userId)) return;
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ github_installation_id: installationId })
+    .eq("user_id", userId);
+  if (error) throw new Error(`setProfileGithubInstallation failed: ${error.message}`);
 }
 
 export async function updateProfileOnboarding(
