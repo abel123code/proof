@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { fetchRepoSnapshot, parseRepoUrl } from "@/lib/github";
 import { OPENAI_MINI_MODEL, openaiJSON } from "@/lib/openai";
 import { requireApprovedUser } from "@/lib/auth";
-import { createProject, getProjectByRepo, refundCredits, spendCredits } from "@/lib/db";
+import { createProject, getProfile, getProjectByRepo, refundCredits, spendCredits } from "@/lib/db";
+import {
+  githubAppConfigured,
+  installationCanAccess,
+  installationOctokit,
+} from "@/lib/github-app";
 import { CREDIT_COSTS } from "@/lib/pricing";
 import type { ProjectUnderstanding } from "@/lib/types";
 
@@ -12,7 +17,8 @@ export const maxDuration = 60;
 // Repo-level: we look at ONE specific repo the user picked and distill a "builder
 // profile" for it - the credibility base the rest of the pipeline (research ->
 // brief) uses to prove they can actually build this thing.
-const SYSTEM = `You analyze a single PUBLIC GitHub repository to build a "builder profile" for short-form "I build things" content.
+const SYSTEM = `You analyze a single GitHub repository to build a "builder profile" for short-form "I build things" content.
+The repository may be private, so never state or imply that a reader can go and browse it; describe the work itself.
 You are given the repo's metadata, languages, README, and a shallow file tree.
 Infer what this project actually is, the problem it solves, and what's genuinely impressive or technically interesting about it.
 
@@ -66,7 +72,19 @@ export async function POST(req: Request) {
     }
     charged = CREDIT_COSTS.repoAnalysis;
 
-    const snapshot = await fetchRepoSnapshot(repoUrl);
+    // Private repos are readable only through the user's own GitHub App installation, and only for
+    // the repos they granted. We check the grant explicitly so an ungranted repo gives an honest
+    // error instead of GitHub's misleading 404.
+    const profile = await getProfile(auth.userId).catch(() => null);
+    const installationId = profile?.githubInstallationId ?? null;
+    let client;
+    if (githubAppConfigured() && installationId !== null) {
+      if (await installationCanAccess(installationId, owner, repo)) {
+        client = installationOctokit(installationId);
+      }
+    }
+
+    const snapshot = await fetchRepoSnapshot(repoUrl, client);
 
     const understanding = await openaiJSON<ProjectUnderstanding>({
       model: OPENAI_MINI_MODEL,

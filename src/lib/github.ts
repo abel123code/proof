@@ -40,10 +40,30 @@ export interface RepoSnapshot {
   fileTree: string[];
 }
 
-/** Pull repo-level context: metadata, languages, README, and a shallow file tree. */
-export async function fetchRepoSnapshot(repoUrl: string): Promise<RepoSnapshot> {
+/**
+ * True when an Octokit error means "you are not allowed to see this" rather than "this is missing".
+ *
+ * GitHub answers **404, not 403**, for private resources the caller cannot see. A naive `catch {}`
+ * therefore turns an auth failure into "(no README found)" and the pipeline cheerfully scripts a
+ * video about an empty repo. Anything auth-shaped must be re-thrown.
+ */
+export function isAccessError(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  return status === 401 || status === 403 || status === 404;
+}
+
+/**
+ * Pull repo-level context: metadata, languages, README, and a shallow file tree.
+ *
+ * NOTE: this reads the README, language stats and file *paths* only — never source file contents.
+ * The privacy claim shown to users in the connect UI depends on that staying true.
+ *
+ * `client` injects an installation-scoped Octokit for private repos; omitted, it uses the shared
+ * server token, which can only see public repos.
+ */
+export async function fetchRepoSnapshot(repoUrl: string, client?: Octokit): Promise<RepoSnapshot> {
   const { owner, repo } = parseRepoUrl(repoUrl);
-  const gh = getOctokit();
+  const gh = client ?? getOctokit();
 
   const { data: meta } = await gh.repos.get({ owner, repo });
 
@@ -53,7 +73,13 @@ export async function fetchRepoSnapshot(repoUrl: string): Promise<RepoSnapshot> 
   try {
     const { data } = await gh.repos.getReadme({ owner, repo });
     readme = Buffer.from(data.content, "base64").toString("utf8");
-  } catch {
+  } catch (err) {
+    // A repo genuinely without a README is fine. An access failure is NOT — surface it.
+    if (isAccessError(err)) {
+      throw new Error(
+        `Cannot read ${owner}/${repo}. If it is private, connect it to Proof from the repo picker.`,
+      );
+    }
     readme = "(no README found)";
   }
 

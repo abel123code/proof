@@ -31,6 +31,7 @@
     "verify:openai": "node scripts/verify-openai.mjs"
   },
   "dependencies": {
+    "@octokit/auth-app": "^8.2.0",
     "@octokit/rest": "^22.0.1",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",
