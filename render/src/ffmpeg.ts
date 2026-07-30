@@ -6,10 +6,18 @@ import type { KeepSegment } from "./types.js";
 const FFMPEG = process.env.FFMPEG_PATH || "ffmpeg";
 const FFPROBE = process.env.FFPROBE_PATH || "ffprobe";
 
+// Convert straight to the 10-bit alpha format the encoder wants, then drawbox.
+//
+// Do NOT route this through `format=rgba` first. HyperFrames emits ProRes 4444 as yuva444p12le, and
+// the 12-bit -> rgba -> yuva444p10le chain SEGFAULTS ffmpeg 5.1 (verified in the production image:
+// exit 139 / SIGSEGV, reproducible on any scene mov). Because this mask only runs for `overlay`-mode
+// scenes, that crash silently killed EVERY overlay scene — they fell back to base while full-frame
+// scenes rendered fine, which looked like "the animations are half missing".
+// Staying in yuva444p10le also avoids an 8-bit rgba round-trip that was quietly throwing away
+// alpha precision.
 export const SPEAKER_SAFE_ALPHA_FILTER =
-  "format=rgba," +
-  "drawbox=x=0:y=1450:w=iw:h=470:color=black@0:t=fill:replace=1," +
-  "format=yuva444p10le";
+  "format=yuva444p10le," +
+  "drawbox=x=0:y=1450:w=iw:h=470:color=black@0:t=fill:replace=1";
 
 function run(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
