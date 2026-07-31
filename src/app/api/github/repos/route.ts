@@ -39,8 +39,18 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const override = searchParams.get("username")?.trim();
-    const profile = override ? null : await getProfile(auth.userId).catch(() => null);
-    const username = override || profile?.githubUsername || null;
+    const profile = await getProfile(auth.userId).catch(() => null);
+    const saved = profile?.githubUsername?.trim() || null;
+
+    // The override exists for the dev / pre-persistence case where the handle lives only in
+    // localStorage. It must NOT become an open field for listing anyone's repos: the picker runs on
+    // one shared server token (5000 req/hr for the whole app), so an arbitrary handle lets a single
+    // user burn GitHub's rate limit for everybody. Once a handle is saved, only that handle counts.
+    const username = saved
+      ? saved
+      : override && /^[A-Za-z0-9-]{1,39}$/.test(override)
+        ? override
+        : null;
 
     const installationId = profile?.githubInstallationId ?? null;
     const canUseApp = githubAppConfigured() && installationId !== null;
