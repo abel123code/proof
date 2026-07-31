@@ -230,3 +230,67 @@ cannot see the browser. Verification means downloading the rendered MP4 and insp
 
 **References:** `render/Dockerfile`, `render/src/ffmpeg.ts`, `render/src/premium/index.ts` (mask call
 site), `render/tests/ffmpeg-filter.test.ts`, PR #18.
+
+---
+
+## 2026-07-31: Private repos via a scoped GitHub App, and Proof never reads source code
+
+**Status:** Active. Shipped in PRs #19 and #20.
+
+**Context.** `src/lib/github.ts` used a single shared server token, so Proof could only ever see
+public repositories. Private access was not a missing feature, it was excluded by the auth
+architecture. Most real startups keep their code private, which capped the addressable user at
+open-source maintainers and hackathon projects. The question came from a founder during outreach:
+"do you cater for private repos yet?"
+
+**Decision: a GitHub App the user installs on repositories they pick. Not an OAuth App.**
+
+- The OAuth `repo` scope is all-or-nothing read **and write** across every private repository the
+  user can see. That is both an alarming consent screen for the exact audience we are courting, and
+  a credential that turns a small breach into an incident. Rejected.
+- With an App, **GitHub enforces the boundary** and the consent screen names the specific repos.
+- We persist **only the installation id**, which is not a credential and grants nothing by itself.
+  Access tokens are minted per request from the app private key, expire in about an hour, and are
+  never written to the database or logged, so a database leak cannot be replayed against anyone's
+  source.
+- **Additive, not a login change.** Login stays Google-only and the manual handle input in Settings
+  is untouched, so there is no second identity to reconcile and no disruption to the approved beta
+  list. Switching login to GitHub was considered and deferred: it is the better end state for a
+  developer product, but it breaks every whitelisted user today.
+
+**Proof reads the README, file names and language stats. It never fetches file contents.** That is
+what `fetchRepoSnapshot` does, and the claim shown to users in the connect UI depends on it staying
+true. Note the consent screen says "Read access to **code** and metadata" because that is GitHub's
+wording for `contents:read`; the permission permits more than we use, so the user-facing copy
+describes what Proof does rather than what the token could do.
+
+**Two failure modes fixed on the way, both of the same family: a swallowed error becoming plausible
+garbage.**
+
+- GitHub answers **404, not 403**, for private resources the caller cannot see, and
+  `fetchRepoSnapshot` caught that as `"(no README found)"`. The pipeline would have scripted a video
+  about an empty repo. The access check now sits on `repos.get`, the call that actually fails, so a
+  repo that merely has no README still degrades quietly.
+- A repo with no README now surfaces a warning instead of silently producing a thin script, because
+  the user would otherwise blame the connection.
+
+**Installs that begin on GitHub.** A user can install from `github.com/apps/<slug>` without ever
+touching our button, in which case GitHub uses the app's setup URL and there is no signed state of
+ours. Rejecting that stranded a real installation; blindly accepting it would let a crafted link
+bind someone else's installation to whoever clicks it. Resolved by proving **ownership** instead:
+the installation must belong to the GitHub handle already saved on that user's profile.
+`decideInstallCallback` is pure so every branch is unit-tested.
+
+**Consequences.** Requires `GITHUB_APP_ID`, `GITHUB_APP_SLUG` and `GITHUB_APP_PRIVATE_KEY`, plus
+migration `0017`. Without the env vars `githubAppConfigured()` is false, the connect UI never
+renders, and behaviour is identical to before, so the feature can ship dark. The App must be set to
+**"Any account"** or only its owner can install it; GitHub's API does not expose that flag, so it
+can only be confirmed in the dashboard.
+
+**Verified against real GitHub**, not mocks: app JWT to installation token to reading a genuinely
+private repo (`LearnLoop`, 3663-char README, 159 paths), with the installation seeing only the one
+granted repo out of 18, and `installationCanAccess` refusing an ungranted repo.
+
+**References:** `src/lib/github-app.ts`, `src/lib/github.ts`, `src/app/api/github/*`,
+`supabase/migrations/0017_github_app_install.sql`, `tests/github-private-repos.test.ts`,
+`tests/github-install-callback.test.ts`, `tests/live-github-app.test.ts` (live, skipped in CI).

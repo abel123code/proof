@@ -43,6 +43,15 @@ API usage.
   (verdict `base_fallback`) only when a scene cannot be rendered safely at all.
 - The web route and render worker own `RENDER_EDIT_MODE`; callers cannot select a weaker mode.
 - Never commit credentials, local media paths, generated videos, or `.env` files.
+- Private repos are read through a per-user **GitHub App installation**, never an OAuth `repo` token.
+  Only the installation id is stored; access tokens are minted per request and never persisted. The
+  whole feature is gated on `GITHUB_APP_*`, so a deployment without those env vars behaves exactly as
+  a public-only one.
+- **Proof reads the README, file names and language stats. It never fetches source file contents.**
+  The privacy claim shown to users depends on `fetchRepoSnapshot` staying that way.
+- GitHub answers **404, not 403**, for private resources the caller cannot see. Never swallow a 404
+  from an access-bearing call, or an auth failure becomes "(no README found)" and the pipeline
+  scripts a video about an empty repo.
 
 ## Definition of done
 
