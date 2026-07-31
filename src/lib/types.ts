@@ -108,6 +108,26 @@ export type HookArchetype =
   | "trend-reference"
   | "unanswerable-question";
 
+/** Proof's evidence-backed hook families. Legacy hook archetypes normalize into these. */
+export type HookFormat =
+  | "future-shift"
+  | "contrarian-truth"
+  | "builder-secret"
+  | "proof-first"
+  | "visual-proof"
+  | "unexpected-connection";
+
+/** One cascading retention loop inside an angle. */
+export interface StoryLoop {
+  stakes: string;
+  openQuestion: string;
+  expectedBelief: string;
+  proofBackedReversal: string;
+  evidenceIds: string[];
+  payoff: string;
+  rehook: string | null;
+}
+
 export type EmotionalTrigger =
   | "fear"
   | "empathy"
@@ -126,6 +146,10 @@ export interface ViralityScore {
   trendFit: number;
   /** How directly this speaks to the target user's real problem (product fit). */
   relevance: number;
+  curiosity?: number;
+  surprise?: number;
+  loopStrength?: number;
+  credibility?: number;
 }
 
 /** A scored, rankable content angle - the core output of the research engine. */
@@ -137,7 +161,11 @@ export interface Angle {
   /** 3-5 hook variations to A/B. */
   hookOptions: string[];
   hookArchetype: HookArchetype;
+  hookFormat: HookFormat;
+  alternateHookFormats: HookFormat[];
   emotionalTrigger: EmotionalTrigger;
+  storyLoops: StoryLoop[];
+  evidenceIds: string[];
   coreIdea: string;
   whyShareable: string;
   /** Which piece of the builder's proof this rides. */
@@ -295,7 +323,24 @@ export interface BriefScene {
   brollCue: string;
   /** Rough duration for this scene in seconds. */
   durationSeconds?: number;
+  /** Narrative job this scene performs in the selected story loop. */
+  storyRole?: StoryRole;
+  /** 1-based story-loop number, when the brief contains cascading loops. */
+  storyLoop?: number;
+  /** Evidence references inherited from the selected angle. */
+  evidenceIds?: string[];
 }
+
+export type StoryRole =
+  | "hook"
+  | "stakes"
+  | "question"
+  | "expectation"
+  | "reversal"
+  | "proof"
+  | "payoff"
+  | "rehook"
+  | "cta";
 
 /**
  * The scene-by-scene content brief shown on stage 04. Grounded in the chosen
@@ -304,6 +349,11 @@ export interface BriefScene {
  */
 export interface BriefDoc {
   title: string;
+  /** Story-engine version that authored this brief. Missing on legacy briefs. */
+  storyEngineVersion?: number;
+  /** Selected angle that produced this brief, when it came through Research & Plan. */
+  sourceAngleId?: string;
+  sourceHookFormat?: HookFormat;
   /** The first ~3 seconds hook. */
   hook: string;
   /** One-line creative angle. */

@@ -95,6 +95,37 @@ Sol proposes the angle rubric dimensions, but it cannot self-award the final ran
 every dimension to 0–100 and recomputes the weighted score in deterministic TypeScript before
 sorting the candidates.
 
+### Evidence-backed story engine
+
+Angle generation turns repository proof into several genuinely different storytelling approaches
+instead of producing small variations of one generic hook. Proof currently uses six hook styles:
+
+| Style | What it does |
+|---|---|
+| `future-shift` | Opens on a supported change that will affect the viewer's future |
+| `contrarian-truth` | Challenges a common belief, then earns the reversal with evidence |
+| `builder-secret` | Shares a non-obvious lesson learned while building the product |
+| `proof-first` | Leads with a verified result, artifact, or finished output |
+| `visual-proof` | Starts with a compelling product action or before-and-after demonstration |
+| `unexpected-connection` | Connects two ideas that do not initially appear related |
+
+Each angle contains one or more structured story loops. A loop establishes the viewer stakes,
+opens a specific question, states the expected belief, delivers an evidence-backed reversal, shows
+the payoff, and rehooks into the next unresolved question when the video needs another beat. Short
+videos normally use one loop; longer scripts can cascade up to three.
+
+Every proof-first claim, number, and reversal references an evidence id drawn from repository
+understanding, extracted receipts, or the founder's answers. Unsupported numeric claims receive a
+deterministic credibility penalty. The model proposes component scores for hook, curiosity,
+surprise, loop strength, relevance, and credibility, but TypeScript applies the weights, caps weak
+or unsupported angles, and owns the final ranking.
+
+The selected angle is passed into the filming brief with its chosen hook, story loops, and evidence
+references. Each brief scene records its narrative role, such as `stakes`, `question`, `reversal`,
+`proof`, `payoff`, `rehook`, or `cta`. Selecting a new angle explicitly invalidates the previously
+saved brief for that navigation, so Proof asks for any missing information and regenerates from the
+new creative direction rather than silently restoring an older script.
+
 ~~~mermaid
 flowchart TD
     repo["GitHub repository"] --> luna["GPT-5.6 Luna<br/>understand product and extract proof"]

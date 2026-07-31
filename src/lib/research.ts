@@ -18,8 +18,15 @@ import {
   openaiWebSearchJSON,
 } from "@/lib/openai";
 import { CREATOR_PERSONA } from "@/lib/persona";
+import {
+  HOOK_FORMATS,
+  normalizeEvidenceIds,
+  normalizeHookFormat,
+  normalizeStoryLoops,
+} from "@/lib/story-frameworks";
 import type {
   Angle,
+  HookFormat,
   Proof,
   ProjectUnderstanding,
   ReferencePattern,
@@ -166,14 +173,23 @@ export async function researchReferences(topic: string): Promise<ReferencePatter
 
 const ANGLES_SYSTEM = `${CREATOR_PERSONA}
 
-You are a viral short-form strategist whose real goal is PRODUCT ADOPTION: angles that make a viewer want to try the product. Virality is engineered, not luck - optimize for algorithmic satisfaction signals (completion, shares, saves, rewatches), NOT likes.
+You are a short-form story strategist whose real goal is PRODUCT ADOPTION. Optimize for completion, shares, saves, and rewatches, but credibility beats empty shock.
 
-Given the product's POSITIONING (targetUser, problemSpace, transformation, topics + supporting receipts), the chosen TOPIC (or a freeform prompt), and REFERENCE_PATTERNS, generate 3-5 distinct content angles. Score EACH on a 0-100 rubric and rank.
+Given the product's POSITIONING, EVIDENCE_CATALOG, chosen TOPIC (or freeform prompt), and REFERENCE_PATTERNS, generate 4-6 distinct content angles spanning at least four different hook formats. Score EACH on a 0-100 rubric.
 
 Hard rules:
 - Topic-driven, NOT tech-driven. Lead with the relatable, real-world problem or desire; the product appears as the payoff/solution with a soft "try it" beat - it is not the subject.
 - Jargon-light: a general (non-engineer) viewer must instantly get it. Only go technical if TARGET_USER is actually engineers.
-- Use receipts only as supporting proof, never as the lead. Do not invent numbers.
+- Every numeric claim, proof-first hook, and reversal must cite valid EVIDENCE_CATALOG ids. Never invent numbers, fake urgency, pseudo-scientific claims, or a contrarian take the body does not prove.
+- Build 1 story loop under 30 seconds, 1-2 loops from 30-45 seconds, and 2-3 loops above 45 seconds. Every open question needs a payoff; videos over 30 seconds need a rehook.
+
+Proof hook formats:
+- future-shift: a supported change affecting the audience's future
+- contrarian-truth: a common belief overturned by evidence
+- builder-secret: a non-obvious lesson learned from building
+- proof-first: a verified result or demonstration first
+- visual-proof: a compelling product action or before/after first
+- unexpected-connection: two unlikely ideas connected into a useful insight
 
 Scoring dimensions (each 0-100):
 - hook: strength, mapped to a proven archetype (hot-take, proof-drop, action-start, trend-reference, unanswerable-question)
@@ -182,7 +198,11 @@ Scoring dimensions (each 0-100):
 - saveability: is there something worth saving?
 - trendFit: timeliness / topic fit
 - relevance: how directly it speaks to the target user's real problem and pulls them toward the product
-"total" is a weighted blend (hook, shareability, and relevance weigh most). Retention design (one idea, fast pacing) should push scores up.
+- curiosity: strength and specificity of the open question
+- surprise: distance between expected belief and supported reversal
+- loopStrength: completeness of stakes -> question -> reversal -> payoff -> rehook
+- credibility: how directly every meaningful claim maps to supplied evidence
+TypeScript calculates the final total. Your total is advisory only.
 
 For "proofUsed", name the piece of POSITIONING (problem, transformation, or a receipt) the angle leans on.
 
@@ -192,15 +212,52 @@ Return ONLY JSON:
   "hook": string,
   "hookOptions": [string],            // 3-5 variations
   "hookArchetype": "hot-take"|"proof-drop"|"action-start"|"trend-reference"|"unanswerable-question",
+  "hookFormat": "future-shift"|"contrarian-truth"|"builder-secret"|"proof-first"|"visual-proof"|"unexpected-connection",
+  "alternateHookFormats": ["future-shift"|"contrarian-truth"|"builder-secret"|"proof-first"|"visual-proof"|"unexpected-connection"],
   "emotionalTrigger": "fear"|"empathy"|"outrage"|"curiosity"|"humor"|"aspiration",
+  "storyLoops": [{
+    "stakes": string,
+    "openQuestion": string,
+    "expectedBelief": string,
+    "proofBackedReversal": string,
+    "evidenceIds": [string],
+    "payoff": string,
+    "rehook": string|null
+  }],
+  "evidenceIds": [string],
   "coreIdea": string,
   "whyShareable": string,
   "proofUsed": string,
   "format": string,
   "targetDurationSeconds": number,
   "why": string,
-  "score": { "total": number, "hook": number, "emotion": number, "shareability": number, "saveability": number, "trendFit": number, "relevance": number }
+  "score": { "total": number, "hook": number, "emotion": number, "shareability": number, "saveability": number, "trendFit": number, "relevance": number, "curiosity": number, "surprise": number, "loopStrength": number, "credibility": number }
 } ] }`;
+
+interface EvidenceItem {
+  id: string;
+  claim: string;
+}
+
+function evidenceCatalog(args: {
+  proof: Proof | null;
+  understanding: ProjectUnderstanding | null;
+}): EvidenceItem[] {
+  const items: EvidenceItem[] = [];
+  const add = (id: string, claim: string | null | undefined) => {
+    if (claim?.trim()) items.push({ id, claim: claim.trim() });
+  };
+  add("problem", args.proof?.problemSpace ?? args.understanding?.problem);
+  add("transformation", args.proof?.transformation);
+  add("unique-angle", args.proof?.uniqueAngle ?? args.understanding?.interesting);
+  add("builder-story", args.proof?.story);
+  add("best-proof-drop", args.proof?.bestProofDrop);
+  (args.proof?.receipts ?? []).forEach((claim, index) => add(`receipt:${index}`, claim));
+  (args.understanding?.talkingPoints ?? []).forEach((claim, index) =>
+    add(`talking-point:${index}`, claim),
+  );
+  return items;
+}
 
 export async function scoreAngles(args: {
   proof: Proof | null;
@@ -213,6 +270,9 @@ export async function scoreAngles(args: {
     ...(args.topic?.sourceUrls ?? []),
     ...args.references.map((r) => r.url).filter(Boolean),
   ];
+  const evidence = evidenceCatalog(args);
+  const validEvidenceIds = new Set(evidence.map((item) => item.id));
+  const evidenceClaims = new Map(evidence.map((item) => [item.id, item.claim]));
   const out = await openaiJSON<{ angles: Angle[] }>({
     model: OPENAI_TEXT_MODEL,
     maxTokens: 8000,
@@ -223,13 +283,14 @@ export async function scoreAngles(args: {
       TOPIC: args.topic ?? null,
       FREEFORM_PROMPT: args.freeformPrompt ?? null,
       REFERENCE_PATTERNS: args.references,
+      EVIDENCE_CATALOG: evidence,
     }),
   });
 
   const angles = Array.isArray(out.angles) ? out.angles : [];
   return angles
     .filter((a) => a && typeof a.title === "string")
-    .map((a, i) => normalizeAngle(a, i, sources))
+    .map((a, i) => normalizeAngle(a, i, sources, validEvidenceIds, evidenceClaims))
     .sort((a, b) => b.score.total - a.score.total);
 }
 
@@ -239,35 +300,110 @@ function clamp(n: unknown): number {
   return Math.max(0, Math.min(100, Math.round(v)));
 }
 
-export function normalizeAngle(a: Angle, i: number, sources: string[]): Angle {
+function numericClaims(value: string): string[] {
+  return value.toLowerCase().match(/\b\d+(?:[.,]\d+)?(?:%|x|k|m)?\b/g) ?? [];
+}
+
+function hasUnsupportedNumericClaim(
+  claims: string[],
+  evidenceIds: string[],
+  evidenceClaims?: ReadonlyMap<string, string>,
+): boolean {
+  if (!evidenceClaims || claims.length === 0) return false;
+  const evidenceText = evidenceIds
+    .map((id) => evidenceClaims.get(id) ?? "")
+    .join(" ")
+    .toLowerCase()
+    .replaceAll(",", "");
+  return claims.some((claim) => !evidenceText.includes(claim.replaceAll(",", "")));
+}
+
+export function normalizeAngle(
+  a: Angle,
+  i: number,
+  sources: string[],
+  validEvidenceIds?: ReadonlySet<string>,
+  evidenceClaims?: ReadonlyMap<string, string>,
+): Angle {
   const s = (a.score ?? {}) as Partial<ViralityScore>;
-  const score: ViralityScore = {
+  const score: Required<ViralityScore> = {
     hook: clamp(s.hook),
     emotion: clamp(s.emotion),
     shareability: clamp(s.shareability),
     saveability: clamp(s.saveability),
     trendFit: clamp(s.trendFit),
     relevance: clamp(s.relevance),
+    curiosity: clamp(s.curiosity ?? s.hook),
+    surprise: clamp(s.surprise ?? s.emotion),
+    loopStrength: clamp(s.loopStrength ?? s.hook),
+    credibility: clamp(s.credibility ?? s.relevance),
     total: 0,
   };
-  // Recompute total ourselves so the ranking is trustworthy. Product-adoption
-  // north star: hook, shareability, and relevance (fit to the user's problem) weigh most.
-  score.total = Math.round(
-    score.hook * 0.26 +
-      score.shareability * 0.22 +
-      score.relevance * 0.2 +
-      score.emotion * 0.14 +
-      score.saveability * 0.1 +
-      score.trendFit * 0.08,
+  const storyLoops = normalizeStoryLoops(a.storyLoops, validEvidenceIds);
+  const evidenceIds = normalizeEvidenceIds(a.evidenceIds, validEvidenceIds);
+  const allEvidenceIds = Array.from(
+    new Set([...evidenceIds, ...storyLoops.flatMap((loop) => loop.evidenceIds)]),
   );
+  if (storyLoops.length > 0) {
+    if (storyLoops.some((loop) => !loop.stakes || !loop.openQuestion)) {
+      score.loopStrength = Math.min(score.loopStrength, 40);
+    }
+    if (storyLoops.some((loop) => loop.proofBackedReversal && loop.evidenceIds.length === 0)) {
+      score.credibility = Math.min(score.credibility, 30);
+    }
+    const duration = typeof a.targetDurationSeconds === "number" ? a.targetDurationSeconds : 35;
+    if (duration > 30 && storyLoops.every((loop) => !loop.rehook)) {
+      score.loopStrength = Math.min(score.loopStrength, 60);
+    }
+  }
+  const claims = numericClaims(
+    [
+      a.hook,
+      a.coreIdea,
+      ...storyLoops.flatMap((loop) => [loop.proofBackedReversal, loop.payoff]),
+    ]
+      .filter((value): value is string => typeof value === "string")
+      .join(" "),
+  );
+  if (hasUnsupportedNumericClaim(claims, allEvidenceIds, evidenceClaims)) {
+    score.credibility = Math.min(score.credibility, 30);
+  }
+  score.total = Math.round(
+    score.credibility * 0.2 +
+      score.relevance * 0.18 +
+      score.hook * 0.14 +
+      score.curiosity * 0.12 +
+      score.loopStrength * 0.1 +
+      score.shareability * 0.08 +
+      score.emotion * 0.06 +
+      score.surprise * 0.05 +
+      score.saveability * 0.04 +
+      score.trendFit * 0.03,
+  );
+  if (score.credibility < 60) score.total = Math.min(score.total, 69);
   const hookOptions = Array.isArray(a.hookOptions) ? a.hookOptions.filter(Boolean) : [];
+  const hookFormat = normalizeHookFormat(a.hookFormat, a.hookArchetype);
+  const alternateHookFormats = Array.isArray(a.alternateHookFormats)
+    ? Array.from(
+        new Set(
+          a.alternateHookFormats.filter(
+            (format): format is HookFormat =>
+              HOOK_FORMATS.includes(format as HookFormat) && format !== hookFormat,
+          ),
+        ),
+      )
+    : [];
   return {
     id: `angle-${i + 1}`,
     title: a.title ?? `Angle ${i + 1}`,
     hook: a.hook ?? hookOptions[0] ?? "",
     hookOptions: hookOptions.length ? hookOptions : a.hook ? [a.hook] : [],
     hookArchetype: a.hookArchetype ?? "proof-drop",
+    hookFormat,
+    alternateHookFormats,
     emotionalTrigger: a.emotionalTrigger ?? "curiosity",
+    storyLoops,
+    evidenceIds,
     coreIdea: a.coreIdea ?? "",
     whyShareable: a.whyShareable ?? "",
     proofUsed: a.proofUsed ?? "",

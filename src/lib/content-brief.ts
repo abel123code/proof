@@ -1,5 +1,10 @@
 import { OPENAI_MINI_MODEL, openaiJSON } from "@/lib/openai";
 import { CREATOR_PERSONA } from "@/lib/persona";
+import {
+  isStoryRole,
+  normalizeEvidenceIds,
+  STORY_ENGINE_VERSION,
+} from "@/lib/story-frameworks";
 import type {
   Angle,
   BriefDoc,
@@ -40,7 +45,11 @@ function contextPayload(ctx: BriefContext) {
           hook: ctx.angle.hook,
           hookOptions: ctx.angle.hookOptions,
           hookArchetype: ctx.angle.hookArchetype,
+          hookFormat: ctx.angle.hookFormat,
+          alternateHookFormats: ctx.angle.alternateHookFormats,
           emotionalTrigger: ctx.angle.emotionalTrigger,
+          storyLoops: ctx.angle.storyLoops,
+          evidenceIds: ctx.angle.evidenceIds,
           coreIdea: ctx.angle.coreIdea,
           format: ctx.angle.format,
           targetDurationSeconds: ctx.angle.targetDurationSeconds,
@@ -101,17 +110,17 @@ const DRAFT_SYSTEM = `${CREATOR_PERSONA}
 
 Write a filmable, scene-by-scene content brief for a short vertical (9:16) video whose goal is PRODUCT ADOPTION - make the viewer want to try the product - optimized for algorithmic satisfaction signals (completion, shares, saves, rewatches), not likes.
 
-Shape the arc as: relatable problem/hook -> raise the stakes (why it matters to the viewer) -> reveal the product as the "oh, that fixes it" payoff (show it) -> clear try-it CTA. Topic-driven, not tech-driven; jargon-light unless the target user is technical.
+Build the script from the CHOSEN_ANGLE's evidence-backed story loops: hook -> stakes -> open question -> expected belief -> supported reversal -> visible payoff -> rehook when another loop follows -> CTA. Topic-driven, not tech-driven; jargon-light unless the target user is technical.
 
 Use ALL of:
-- CHOSEN_ANGLE: this is the strategy. Open on its hook (or one of its hookOptions), deliver its coreIdea, lean into its emotionalTrigger. If there's no angle, use FREEFORM_PROMPT.
+- CHOSEN_ANGLE: this is the strategy. Open on its selected hook, follow its storyLoops in order, resolve every openQuestion, and cite its evidenceIds in the relevant scenes. If there's no angle, use FREEFORM_PROMPT and create one complete loop.
 - POSITIONING / BUILDER_PROFILE: lead with problemSpace + transformation for the targetUser; use receipts only as supporting proof where they earn a save. Do not lead with tech or invent numbers.
 - REFERENCE_PATTERNS: mirror the proven pacing/beat shape - do NOT copy content.
 - ANSWERS: the creator's answers to your earlier questions. Use these heavily.
 
-Where an ANSWER is missing, make a reasonable, specific assumption and record it in "assumptions". Never write vague filler. First 3 seconds must earn the watch; one idea, fast pacing.
+Where an ANSWER is missing, make a modest, specific assumption and record it in "assumptions". Never invent numbers, fake urgency, unsupported scientific claims, or a reversal the evidence cannot support. First 3 seconds must earn the watch; one idea, fast pacing.
 
-Each scene must be filmable: an exact spoken line, an on-screen text overlay (or empty string), and a concrete b-roll / screen-recording cue. 4-7 scenes, opening on a strong hook, closing on a try-it CTA.
+Each scene must be filmable: an exact spoken line, an on-screen text overlay (or empty string), a concrete b-roll / screen-recording cue, its storyRole, storyLoop number, and evidenceIds. Use 4-7 scenes, open on a strong hook, show the proof during the reversal/payoff, and close on a try-it CTA.
 
 Return ONLY JSON matching:
 {
@@ -120,8 +129,48 @@ Return ONLY JSON matching:
   "angle": string,
   "targetFeeling": string,
   "assumptions": [string],
-  "scenes": [ { "scene": number, "label": string, "spokenLine": string, "onScreenText": string, "brollCue": string, "durationSeconds": number } ]
+  "scenes": [ {
+    "scene": number,
+    "label": string,
+    "spokenLine": string,
+    "onScreenText": string,
+    "brollCue": string,
+    "durationSeconds": number,
+    "storyRole": "hook"|"stakes"|"question"|"expectation"|"reversal"|"proof"|"payoff"|"rehook"|"cta",
+    "storyLoop": number,
+    "evidenceIds": [string]
+  } ]
 }`;
+
+function cleanSceneText(value: unknown, fallback = ""): string {
+  if (typeof value !== "string") return fallback;
+  return value
+    .replace(/\u001a/g, "→")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u0019\u001b-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function normalizeBriefScenes(value: unknown): BriefScene[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((scene): scene is Record<string, unknown> => Boolean(scene && typeof scene === "object"))
+    .map((scene, index) => ({
+      scene: typeof scene.scene === "number" ? scene.scene : index + 1,
+      label: cleanSceneText(scene.label, `Scene ${index + 1}`),
+      spokenLine: cleanSceneText(scene.spokenLine),
+      onScreenText: cleanSceneText(scene.onScreenText),
+      brollCue: cleanSceneText(scene.brollCue),
+      durationSeconds:
+        typeof scene.durationSeconds === "number" ? scene.durationSeconds : undefined,
+      storyRole: isStoryRole(scene.storyRole) ? scene.storyRole : undefined,
+      storyLoop:
+        typeof scene.storyLoop === "number" && Number.isInteger(scene.storyLoop) && scene.storyLoop > 0
+          ? scene.storyLoop
+          : undefined,
+      evidenceIds: normalizeEvidenceIds(scene.evidenceIds),
+    }));
+}
 
 export async function draftBriefDoc(
   ctx: BriefContext,
@@ -140,17 +189,13 @@ export async function draftBriefDoc(
     user: JSON.stringify({ ...contextPayload(ctx), ANSWERS: qa }),
   });
 
-  const scenes: BriefScene[] = (Array.isArray(out.scenes) ? out.scenes : []).map((s, i) => ({
-    scene: typeof s.scene === "number" ? s.scene : i + 1,
-    label: typeof s.label === "string" ? s.label : `Scene ${i + 1}`,
-    spokenLine: typeof s.spokenLine === "string" ? s.spokenLine : "",
-    onScreenText: typeof s.onScreenText === "string" ? s.onScreenText : "",
-    brollCue: typeof s.brollCue === "string" ? s.brollCue : "",
-    durationSeconds: typeof s.durationSeconds === "number" ? s.durationSeconds : undefined,
-  }));
+  const scenes = normalizeBriefScenes(out.scenes);
 
   return {
     title: out.title ?? ctx.angle?.title ?? "Untitled brief",
+    storyEngineVersion: STORY_ENGINE_VERSION,
+    sourceAngleId: ctx.angle?.id,
+    sourceHookFormat: ctx.angle?.hookFormat,
     hook: out.hook ?? ctx.angle?.hook ?? "",
     angle: out.angle ?? ctx.angle?.coreIdea ?? "",
     targetFeeling: out.targetFeeling ?? undefined,
