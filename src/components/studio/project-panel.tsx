@@ -133,6 +133,9 @@ export function ProjectPanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Analysis failed");
+      // e.g. "no README, so Proof had little to work from". Without this the user assumes the repo
+      // connection failed, when the real cause is simply that there is nothing to read.
+      if (data.warning) toast.warning(data.warning, { duration: 8000 });
       setProject(data.project);
       if (data.project?.id) {
         setActiveProject({ id: data.project.id, name: data.project.name ?? repo.name });
@@ -235,9 +238,10 @@ export function ProjectPanel() {
               {/* The privacy claim is the feature. It is true of fetchRepoSnapshot: README,
                   language stats and file PATHS only, never source file contents. */}
               <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground/70">
-                Proof reads your README, file names and language stats. It never reads your source
-                code. Access is scoped to the repos you pick, and you can revoke it any time from
-                GitHub settings.
+                Proof reads your <span className="text-foreground">README</span> — that is what the
+                script is built from — plus file names and language stats. It never reads your source
+                code, so a repo with no README has almost nothing to work from. Access is scoped to
+                the repos you pick and you can revoke it any time in GitHub settings.
               </p>
               {githubApp.error && (
                 <p className="mt-2 font-mono text-[10px] text-destructive">{githubApp.error}</p>

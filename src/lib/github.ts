@@ -36,6 +36,11 @@ export interface RepoSnapshot {
   description: string | null;
   languages: string[];
   readme: string;
+  /**
+   * False when the repo has no README. The README is the main thing Proof reads, so a repo without
+   * one yields a thin script — callers warn the user instead of silently under-delivering.
+   */
+  hasReadme: boolean;
   /** Top-level + shallow file paths to convey structure (truncated). */
   fileTree: string[];
 }
@@ -82,11 +87,13 @@ export async function fetchRepoSnapshot(repoUrl: string, client?: Octokit): Prom
 
   const { data: langs } = await gh.repos.listLanguages({ owner, repo });
 
+  let hasReadme = true;
   let readme = "";
   try {
     const { data } = await gh.repos.getReadme({ owner, repo });
     readme = Buffer.from(data.content, "base64").toString("utf8");
   } catch {
+    hasReadme = false;
     // Access is already proven by repos.get above, so a failure here (including the 404 GitHub
     // returns for a repo with no README at all) genuinely means "no README". Degrade quietly.
     readme = "(no README found)";
@@ -115,6 +122,7 @@ export async function fetchRepoSnapshot(repoUrl: string, client?: Octokit): Prom
 
   return {
     name: meta.name,
+    hasReadme,
     description: meta.description,
     languages: Object.keys(langs),
     readme: cappedReadme,

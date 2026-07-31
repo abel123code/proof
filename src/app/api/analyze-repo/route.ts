@@ -113,7 +113,14 @@ export async function POST(req: Request) {
       userId: auth.userId,
     });
 
-    return NextResponse.json({ project });
+    // The README is the main thing Proof reads. Without one the script is thin, and the user would
+    // otherwise blame the connection ("I connected my repo but it didn't work"). Say so explicitly.
+    return NextResponse.json({
+      project,
+      warning: snapshot.hasReadme
+        ? undefined
+        : `${snapshot.name} has no README, so Proof had little to work from. Add one and re-analyze for a much better script.`,
+    });
   } catch (err) {
     if (charged) await refundCredits(auth.userId, charged).catch(() => {});
     const message = err instanceof Error ? err.message : "Unknown error";
