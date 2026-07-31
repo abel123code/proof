@@ -3,6 +3,7 @@ import { requireApprovedUser } from "@/lib/auth";
 import { getProfile } from "@/lib/db";
 import { listUserRepos, type PublicRepo } from "@/lib/github";
 import { githubAppConfigured, listInstallationRepos } from "@/lib/github-app";
+import { allowRepoList, withRepoListCache } from "@/lib/repo-list-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -53,7 +54,28 @@ export async function GET(req: Request) {
       );
     }
 
-    const publicRepos = username ? await listUserRepos(username) : [];
+    // Listing anyone's public repos is intentional (contributors, employees, agencies), so the guard
+    // is on RATE, not ownership: one shared GitHub token serves every user. Cache hits are free and
+    // never count against the cap.
+    const now = Date.now();
+    let publicRepos: PublicRepo[] = [];
+    if (username) {
+      const key = username.toLowerCase();
+      const cached = await withRepoListCache(key, now, async () => {
+        if (!allowRepoList(auth.userId, now)) throw new Error("RATE_LIMITED");
+        return listUserRepos(username);
+      }).catch((err) => {
+        if (err instanceof Error && err.message === "RATE_LIMITED") return "RATE_LIMITED" as const;
+        throw err;
+      });
+      if (cached === "RATE_LIMITED") {
+        return NextResponse.json(
+          { error: "Too many repo lookups in a row. Give it a minute and try again." },
+          { status: 429 },
+        );
+      }
+      publicRepos = cached;
+    }
 
  // A revoked or uninstalled App must not break the picker, degrade to public-only and say why.
     let privateRepos: (PublicRepo & { isPrivate: true })[] = [];
