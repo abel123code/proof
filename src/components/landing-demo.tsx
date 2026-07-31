@@ -16,8 +16,11 @@ const DEMO_DOC: BriefDoc = {
       label: "Pitch your project",
       // The demo script IS Proof's pitch. Reading it out loud is the fastest way to understand the
       // product, and it saves inventing a fake project the visitor has no reason to care about.
+      // Kept distinct from the side-by-side example on the landing page: this one demonstrates the
+      // mechanism, that one demonstrates the writing. Saying the same sentence twice on one page
+      // makes the whole thing feel generated.
       spokenLine:
-        "I shipped five projects last year and nobody saw a single one. So I built Proof. You point it at your GitHub repo, it works out what's actually worth saying about your work, writes the script, and you read it off a teleprompter. It cuts the whole video for you.",
+        "You point Proof at your GitHub repo. It reads the README, works out what's actually worth saying about the project, and writes you a script. You read it off this teleprompter in one take, and it cuts the video for you.",
       onScreenText: "Repo in. Video out.",
       brollCue: "Face to camera. Keep it conversational.",
       durationSeconds: 15,
@@ -83,7 +86,12 @@ export function LandingDemo() {
               />
             ) : (
               <>
-                <div className="absolute inset-x-0 top-0 h-[62%] overflow-hidden px-5 pt-10">
+                <div className="absolute inset-x-0 top-0 h-[62%] overflow-hidden px-5 pt-8">
+                  {/* Without this the demo reads as a plain webcam. The point is that the script was
+                      written FOR you from a repo, so say so above the words being read. */}
+                  <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.16em] text-white/40">
+                    script Proof wrote from a repo
+                  </p>
                   <p className="text-xl font-semibold leading-[1.18] text-white sm:text-2xl">
                     {DEMO_DOC.scenes[0].spokenLine}
                   </p>

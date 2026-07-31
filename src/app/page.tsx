@@ -85,9 +85,12 @@ export default function Landing() {
               </h1>
 
               <p className="enter mt-7 max-w-md text-lg leading-relaxed text-muted-foreground" style={stagger(190)}>
+                <span className="font-medium text-foreground">
+                  Writing code is cheap now. Distribution is the moat.
+                </span>{" "}
                 Proof researches the angle, writes the brief, gives you a
-                teleprompter, cuts the take, authors the graphics, and reviews
-                the finished frames. You choose the story and record it.
+                teleprompter, cuts the take, and authors the graphics. You choose
+                the story and record it.
               </p>
 
               <div className="enter mt-9 flex flex-wrap items-center gap-4" style={stagger(280)}>
@@ -125,7 +128,9 @@ export default function Landing() {
           <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
             <p className="kicker">the problem</p>
             <h2 className="mt-5 max-w-[16ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
-              Good code <span className="text-primary">isn&apos;t enough.</span>
+              Projects don&apos;t die because they&apos;re bad.
+              <br />
+              <span className="text-primary">They die because nobody sees them.</span>
             </h2>
 
             <ul className="mt-10 grid max-w-2xl gap-5">
@@ -155,8 +160,36 @@ export default function Landing() {
             </ul>
 
             <p className="mt-10 max-w-[24ch] font-display text-2xl font-medium leading-tight tracking-tight sm:text-3xl">
-                  So the best work goes unseen,{" "}
+              So the best work goes unseen,{" "}
               <span className="text-primary">and no one ever hears about you.</span>
+            </p>
+          </Reveal>
+        </section>
+
+        {/* ---------- Why now (the insight beat) ---------- */}
+        <section id="why-now" className="border-t border-border/60">
+          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
+            <p className="kicker">why now</p>
+            <h2 className="mt-5 max-w-[20ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
+              Everyone can build now.
+              <br />
+              <span className="text-primary">Almost nobody can get seen.</span>
+            </h2>
+
+            <div className="mt-10 grid max-w-3xl gap-6 sm:grid-cols-2">
+              <p className="text-lg leading-relaxed text-muted-foreground">
+                AI collapsed the cost of shipping. A weekend gets you a working product, so a working
+                product stopped being the thing that sets you apart.
+              </p>
+              <p className="text-lg leading-relaxed text-muted-foreground">
+                What did not get cheaper is attention. The bottleneck moved, and it moved to the one
+                job most developers will not do for themselves.
+              </p>
+            </div>
+
+            <p className="mt-10 max-w-[26ch] font-display text-2xl font-medium leading-tight tracking-tight sm:text-3xl">
+              Writing code is cheap now.{" "}
+              <span className="text-primary">Distribution is the moat.</span>
             </p>
           </Reveal>
         </section>
@@ -201,15 +234,14 @@ export default function Landing() {
                   how devs write it
                 </p>
                 <p className="mt-4 font-display text-xl leading-snug text-muted-foreground">
-                  &ldquo;Proof is a TypeScript pipeline that ingests a repo,
-                  runs word-level transcription, and composites bespoke motion
-                  graphics over the footage.&rdquo;
+                  &ldquo;I built a CLI that parses OpenAPI specs and generates
+                  typed clients with full runtime validation.&rdquo;
                 </p>
                 <ul className="mt-6 grid gap-2.5 font-mono text-sm text-muted-foreground">
                   {[
-                    "accurate, and nobody watches it",
-                    "leads with the stack, not the point",
-                    "no reason to stop scrolling",
+                    "technically correct, zero reason to care",
+                    "opens on the what, never the why",
+                    "scrolled past in half a second",
                   ].map((item) => (
                     <li key={item} className="relative pl-6">
                       <span className="absolute left-0 font-bold text-primary/70">
@@ -224,18 +256,17 @@ export default function Landing() {
               {/* Good */}
               <article className="rounded-2xl border border-primary/40 bg-background p-7 shadow-sm">
                 <p className="font-mono text-xs uppercase tracking-[0.2em] text-primary">
-                  proof
+                  what proof writes
                 </p>
                 <p className="mt-4 font-display text-xl leading-snug text-foreground">
-                  &ldquo;I shipped five projects last year. Nobody saw a single
-                  one. So I spent the weekend building the thing that fixes
-                  that.&rdquo;
+                  &ldquo;I got tired of hand-writing the same API client every
+                  time the backend changed. So I made it generate itself.&rdquo;
                 </p>
                 <ul className="mt-6 grid gap-2.5 font-mono text-sm text-muted-foreground">
                   {[
-                    "same project, opens on the stakes",
-                    "a reason to watch the next line",
-                    "keywords flagged for overlays",
+                    "opens on the problem you actually had",
+                    "one idea, said like a person",
+                    "keywords flagged for on-screen overlays",
                   ].map((item) => (
                     <li key={item} className="relative pl-6">
                       <span className="absolute left-0 font-bold text-primary">
