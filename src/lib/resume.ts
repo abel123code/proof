@@ -55,7 +55,7 @@ export function resolveResumeStage(
     else if (isRenderInFlight(latestBrief.renderStatus)) label = "Rendering";
     else label = "Brief & Film";
   } else {
-    // Research started (or repo only analyzed) — next action is Research & Plan.
+ // Research started (or repo only analyzed), next action is Research & Plan.
     stage = "research";
     label = "Research & Plan";
   }

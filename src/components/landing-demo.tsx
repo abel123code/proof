@@ -14,9 +14,11 @@ const DEMO_DOC: BriefDoc = {
     {
       scene: 1,
       label: "Pitch your project",
+      // The demo script IS Proof's pitch. Reading it out loud is the fastest way to understand the
+      // product, and it saves inventing a fake project the visitor has no reason to care about.
       spokenLine:
-        "I built a small tool that turns messy GitHub issues into a visual daily plan. It reads the issue, breaks the work into steps, and gives the team one place to track what ships next.",
-      onScreenText: "From issue to daily plan",
+        "I shipped five projects last year and nobody saw a single one. So I built Proof. You point it at your GitHub repo, it works out what's actually worth saying about your work, writes the script, and you read it off a teleprompter. It cuts the whole video for you.",
+      onScreenText: "Repo in. Video out.",
       brollCue: "Face to camera. Keep it conversational.",
       durationSeconds: 15,
     },

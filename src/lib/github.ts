@@ -38,7 +38,7 @@ export interface RepoSnapshot {
   readme: string;
   /**
    * False when the repo has no README. The README is the main thing Proof reads, so a repo without
-   * one yields a thin script — callers warn the user instead of silently under-delivering.
+ * one yields a thin script, callers warn the user instead of silently under-delivering.
    */
   hasReadme: boolean;
   /** Top-level + shallow file paths to convey structure (truncated). */
@@ -60,7 +60,7 @@ export function isAccessError(err: unknown): boolean {
 /**
  * Pull repo-level context: metadata, languages, README, and a shallow file tree.
  *
- * NOTE: this reads the README, language stats and file *paths* only — never source file contents.
+ * NOTE: this reads the README, language stats and file *paths* only, never source file contents.
  * The privacy claim shown to users in the connect UI depends on that staying true.
  *
  * `client` injects an installation-scoped Octokit for private repos; omitted, it uses the shared
@@ -71,7 +71,7 @@ export async function fetchRepoSnapshot(repoUrl: string, client?: Octokit): Prom
   const gh = client ?? getOctokit();
 
   // THIS is the call that fails when the repo is private or otherwise invisible, so the access
-  // check belongs here — not on the README below. GitHub answers 404 (not 403) in that case, and
+ // check belongs here, not on the README below. GitHub answers 404 (not 403) in that case, and
   // the raw error ("Not Found") gives the user nothing to act on.
   let meta;
   try {

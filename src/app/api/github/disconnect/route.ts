@@ -5,8 +5,8 @@ import { setProfileGithubInstallation } from "@/lib/db";
 export const runtime = "nodejs";
 
 /**
- * Forget the installation on our side. This does NOT uninstall the App from GitHub — only the user
- * can do that, from their GitHub settings — so the UI says so explicitly rather than implying we
+ * Forget the installation on our side. This does NOT uninstall the App from GitHub, only the user
+ * can do that, from their GitHub settings, so the UI says so explicitly rather than implying we
  * revoked something we cannot revoke.
  */
 export async function POST() {

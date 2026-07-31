@@ -107,7 +107,7 @@ export function Teleprompter({
   const [mirror, setMirror] = useState(false);
   // Persistent footage per scene index (public Storage URLs), seeded from the brief.
   const [footage, setFootage] = useState<Record<number, string>>(initialFootage);
-  // An uploaded .mov/HEVC take won't decode in a browser <video> (it renders fine — the box
+ // An uploaded .mov/HEVC take won't decode in a browser <video> (it renders fine, the box
   // re-encodes it), so we swap the black box for a note. Reset per source via onLoadStart.
   const [previewFailed, setPreviewFailed] = useState(false);
   // Label per scene (original filename from an upload, or "Recorded take"), seeded from
@@ -520,7 +520,7 @@ export function Teleprompter({
               <span className="text-4xl">🎞</span>
               <p className="font-mono text-sm text-white/90">Can&apos;t preview this format in the browser.</p>
               <p className="font-mono text-[11px] text-white/50">
-                It&apos;ll still render fine — proof re-encodes it during editing.
+ It&apos;ll still render fine, proof re-encodes it during editing.
               </p>
             </div>
           ) : (

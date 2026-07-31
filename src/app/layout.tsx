@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   // Absolute base so the auto-generated OG/twitter image URLs resolve when shared.
   metadataBase: new URL("https://tryproof.org"),
   title: {
-    default: "proof — get your github projects seen",
+ default: "proof, get your github projects seen",
     template: "%s · proof",
   },
   description:
@@ -34,13 +34,13 @@ export const metadata: Metadata = {
     type: "website",
     url: "https://tryproof.org",
     siteName: "proof",
-    title: "proof — get your github projects seen",
+ title: "proof, get your github projects seen",
     description:
-      "devs ship projects nobody sees. proof turns your repo into a short people actually watch — research-backed script, teleprompter, auto-edited.",
+ "devs ship projects nobody sees. proof turns your repo into a short people actually watch, research-backed script, teleprompter, auto-edited.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "proof — get your github projects seen",
+ title: "proof, get your github projects seen",
     description:
       "point it at your github repo. proof writes the script, you read the teleprompter, it edits the video.",
   },
@@ -63,7 +63,7 @@ export default function RootLayout({
       className={`${display.variable} ${sans.variable} ${mono.variable} h-full antialiased`}
     >
       <head>
-        {/* Arm scroll-reveal hiding only when JS is present, before first paint —
+ {/* Arm scroll-reveal hiding only when JS is present, before first paint  
             without JS the content stays visible instead of a blank section. */}
         <script
           dangerouslySetInnerHTML={{

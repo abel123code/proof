@@ -2,7 +2,7 @@
  * Normalize a video mime to a browser-playable container label.
  *
  * Phones/screen-recorders report H.264 clips as `video/quicktime` (a .mov). Storing them raw
- * (as a `.webm` with a quicktime content-type — the old mapping) makes the in-app <video> preview
+ * (as a `.webm` with a quicktime content-type, the old mapping) makes the in-app <video> preview
  * a black box even though the file is fine and renders fine. H.264 in a mov/mp4 (ISOBMFF)
  * container plays in-browser when it's labelled mp4, so map everything that isn't webm to mp4.
  * (The render service re-encodes anything genuinely odd anyway.)
@@ -28,7 +28,7 @@ export async function uploadSceneFootageDirect(input: {
 }): Promise<string> {
   const { contentType } = normalizeVideoType(input.contentType || input.file.type);
 
-  // 1. Mint a signed upload ticket (tiny JSON — immune to the body limit).
+ // 1. Mint a signed upload ticket (tiny JSON, immune to the body limit).
   const signRes = await fetch("/api/footage/sign", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -47,7 +47,7 @@ export async function uploadSceneFootageDirect(input: {
   await new Promise<void>((resolve, reject) => {
     const form = new FormData();
     form.append("cacheControl", "3600");
-    // Supabase infers the stored object's content-type from this part's Blob type — re-wrap so a
+ // Supabase infers the stored object's content-type from this part's Blob type, re-wrap so a
     // quicktime clip lands as video/mp4 (matching the .mp4 path), not an unplayable quicktime .webm.
     const filePart =
       input.file.type === contentType ? input.file : new Blob([input.file], { type: contentType });
@@ -57,7 +57,7 @@ export async function uploadSceneFootageDirect(input: {
     // Generous ceiling for large clips on slow links; without it a stalled
     // connection (no data, no error) would hang the upload UI forever.
     xhr.timeout = 10 * 60 * 1000;
-    xhr.setRequestHeader("x-upsert", "true"); // do NOT set content-type — the browser sets the multipart boundary
+ xhr.setRequestHeader("x-upsert", "true"); // do NOT set content-type, the browser sets the multipart boundary
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) input.onProgress?.(e.loaded / e.total);
     };
@@ -65,7 +65,7 @@ export async function uploadSceneFootageDirect(input: {
       xhr.status >= 200 && xhr.status < 300
         ? resolve()
         : reject(new Error(`Upload failed (${xhr.status})`));
-    xhr.onerror = () => reject(new Error("Upload failed — network error"));
+ xhr.onerror = () => reject(new Error("Upload failed, network error"));
     xhr.ontimeout = () => reject(new Error("Upload timed out"));
     xhr.onabort = () => reject(new Error("Upload aborted"));
     xhr.send(form);

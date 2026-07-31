@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 /**
  * Where GitHub returns after the user installs the App. Persists the installation id (not a
- * credential — tokens are minted per request and never stored) against the user's profile.
+ * credential, tokens are minted per request and never stored) against the user's profile.
  *
  * Both the session AND the signed state must agree on the user: the session alone would let a
  * crafted callback bind an attacker's installation to whoever clicks it.

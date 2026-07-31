@@ -238,8 +238,8 @@ export function ProjectPanel() {
               {/* The privacy claim is the feature. It is true of fetchRepoSnapshot: README,
                   language stats and file PATHS only, never source file contents. */}
               <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground/70">
-                Proof reads your <span className="text-foreground">README</span> — that is what the
-                script is built from — plus file names and language stats. It never reads your source
+ Proof reads your <span className="text-foreground">README</span>, that is what the
+ script is built from, plus file names and language stats. It never reads your source
                 code, so a repo with no README has almost nothing to work from. Access is scoped to
                 the repos you pick and you can revoke it any time in GitHub settings.
               </p>

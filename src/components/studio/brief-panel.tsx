@@ -79,7 +79,7 @@ export function BriefPanel() {
   const [briefId, setBriefId] = useState<string | null>(null);
   const [footage, setFootage] = useState<Record<number, string>>({});
   // Human-readable label per scene (original filename, or "Recorded take"). Client-only,
-  // localStorage-backed per brief — the DB stores footage at a fixed path, so this is what
+ // localStorage-backed per brief, the DB stores footage at a fixed path, so this is what
   // lets a creator tell which of their recordings they attached. See footage-names.ts.
   const [filenames, setFilenames] = useState<Record<number, string>>({});
   const [recordScene, setRecordScene] = useState<number | null>(null);
@@ -104,7 +104,7 @@ export function BriefPanel() {
     setFilenames(readFootageNames(briefId));
   }, [briefId]);
 
-  // Recover the project on a hard refresh where ?project= isn't in the URL — the
+ // Recover the project on a hard refresh where ?project= isn't in the URL, the
   // brand-new-video path only sets it in state, and the top-nav stepper links to a
   // bare /brief. Without this, a reload loses the saved brief AND its render state,
   // so a finished/in-flight edit reverts to "Send to editor". The active-project
@@ -218,8 +218,8 @@ export function BriefPanel() {
           setRenderStatus(briefRes.brief.renderStatus ?? null);
           // Resume polling whenever a job exists but we don't yet have the final
           // video URL. The durable render_jobs row (updated by the render service)
-          // is the source of truth, so even if the brief's status looks stale — or
-          // the render finished while the tab was closed — the poll recovers the
+ // is the source of truth, so even if the brief's status looks stale, or
+ // the render finished while the tab was closed, the poll recovers the
           // real terminal state (and reveals the video) instead of stranding it.
           if (briefRes.brief.renderJobId && !briefRes.brief.renderUrl) {
             setRenderJobId(briefRes.brief.renderJobId);
@@ -319,7 +319,7 @@ export function BriefPanel() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not start the render");
       setRenderJobId(data.jobId);
-      toast.success("Sent to editor — rendering your cut…");
+ toast.success("Sent to editor, rendering your cut…");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to send");
       setRenderStatus(null);
@@ -533,7 +533,7 @@ export function BriefPanel() {
               <Button
                 size="sm"
                 disabled
-                title="Editing your video — this can take a few minutes. You can leave this page and come back; it'll keep going."
+ title="Editing your video, this can take a few minutes. You can leave this page and come back; it'll keep going."
               >
                 <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />
                 {renderStatusLabel}
@@ -577,7 +577,7 @@ export function BriefPanel() {
       {renderActive && (
         <p className="mt-2 max-w-xl text-xs text-muted-foreground">
           <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary align-middle" />
-          Editing your video — this can take a few minutes. You can leave this page and
+ Editing your video, this can take a few minutes. You can leave this page and
           come back; it&apos;ll keep going.
         </p>
       )}
@@ -725,12 +725,12 @@ function QuestionsForm({
         </Button>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        Answer what you can — anything you skip, I&apos;ll fill with a clearly-marked assumption.
+ Answer what you can, anything you skip, I&apos;ll fill with a clearly-marked assumption.
       </p>
 
       <div className="mt-4 space-y-4">
         {gaps.length === 0 && (
-          <p className="text-sm text-muted-foreground">No questions — you can draft straight away.</p>
+ <p className="text-sm text-muted-foreground">No questions, you can draft straight away.</p>
         )}
         {gaps.map((g) => (
           <div key={g.id}>
@@ -807,8 +807,8 @@ function FootagePreview({
         </span>
         <span className="mt-0.5 block text-[11px] text-muted-foreground">
           {failed
-            ? "Format can't preview here — it'll still render fine"
-            : "Tap to play — confirm it's the right clip"}
+ ? "Format can't preview here, it'll still render fine"
+ : "Tap to play, confirm it's the right clip"}
         </span>
       </span>
     </button>
@@ -842,7 +842,7 @@ function FootageModal({ url, onClose }: { url: string; onClose: () => void }) {
             <span className="text-4xl">🎞</span>
             <p className="font-mono text-sm text-white/90">Can&apos;t preview this format in the browser.</p>
             <p className="font-mono text-[11px] text-white/50">
-              It&apos;ll still render fine — proof re-encodes it during editing.
+ It&apos;ll still render fine, proof re-encodes it during editing.
             </p>
           </div>
         ) : (
@@ -1033,7 +1033,7 @@ function BriefView({
 function BriefSkeleton() {
   return (
     <div className="mt-7" aria-busy="true" aria-label="Loading brief">
-      {/* Hero card — mirrors the title / angle / hook block of the real brief */}
+ {/* Hero card, mirrors the title / angle / hook block of the real brief */}
       <div className="rounded-lg border border-border bg-secondary/30 p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <Skeleton className="h-6 w-2/3 max-w-xs" />

@@ -251,13 +251,13 @@ export function ResearchPanel() {
           <Kicker>Brand-new video</Kicker>
           <p className="mt-1 text-xs text-muted-foreground">
             Skip the research and describe the video you want. We&apos;ll still score angles
-            for it — or jump straight to a brief.
+ for it, or jump straight to a brief.
           </p>
           <Textarea
             value={freeform}
             onChange={(e) => setFreeform(e.target.value)}
             rows={3}
-            placeholder="e.g. Why indie founders can't get their first 100 users — and how my product fixes it."
+ placeholder="e.g. Why indie founders can't get their first 100 users, and how my product fixes it."
             className="mt-3"
           />
           <div className="mt-3 flex gap-2">
@@ -301,7 +301,7 @@ export function ResearchPanel() {
                   <p className="text-sm font-medium">Researching the web…</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     Extracting your positioning and finding the relatable topics your
-                    audience cares about. This usually takes ~20–40s.
+ audience cares about. This usually takes ~20 40s.
                   </p>
                 </div>
               </div>
@@ -440,7 +440,7 @@ export function ResearchPanel() {
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     Mining winning video patterns and ranking angles by predicted
-                    virality. This usually takes ~20–40s — hang tight.
+ virality. This usually takes ~20 40s, hang tight.
                   </p>
                 </div>
               </div>

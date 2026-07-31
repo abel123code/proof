@@ -11,7 +11,7 @@ export default function PendingPage() {
         </h1>
         <p className="mt-3 text-sm text-muted-foreground">
           Proof is invite-only during early access and we&apos;re capped at 50 builders.
-          Your account is pending approval — we&apos;ll email you the moment a spot opens
+ Your account is pending approval, we&apos;ll email you the moment a spot opens
           up.
         </p>
         <Link
