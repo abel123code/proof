@@ -120,6 +120,26 @@ export async function listInstallationRepos(installationId: number): Promise<Ins
 }
 
 /**
+ * The GitHub account an installation belongs to (app-level auth, not installation auth).
+ *
+ * Used to verify ownership when a user installs straight from github.com/apps/<slug>: there is no
+ * signed state of ours in that redirect, so instead we require the installation to belong to the
+ * GitHub handle already saved on their profile.
+ */
+export async function installationAccountLogin(installationId: number): Promise<string | null> {
+  const appOctokit = new Octokit({
+    authStrategy: createAppAuth,
+    auth: {
+      appId: requireEnv("GITHUB_APP_ID"),
+      privateKey: normalizePrivateKey(requireEnv("GITHUB_APP_PRIVATE_KEY")),
+    },
+  });
+  const { data } = await appOctokit.apps.getInstallation({ installation_id: installationId });
+  const account = data.account as { login?: string; slug?: string } | null;
+  return account?.login ?? account?.slug ?? null;
+}
+
+/**
  * Does this installation cover `owner/repo`? Checked before a private snapshot so a user cannot
  * point Proof at a repo their installation was never granted (GitHub would answer 404 anyway, but
  * failing here gives an honest error instead of an empty snapshot).
