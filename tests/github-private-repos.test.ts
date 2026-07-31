@@ -25,6 +25,35 @@ describe("isAccessError — the 404-is-really-403 trap", () => {
   });
 });
 
+describe('fetchRepoSnapshot access handling', () => {
+  it('throws an actionable error when the REPO itself is invisible', async () => {
+    const { fetchRepoSnapshot } = await import('@/lib/github');
+    const notFound = Object.assign(new Error('Not Found'), { status: 404 });
+    const gh = { repos: { get: async () => { throw notFound; } } };
+    await expect(
+      fetchRepoSnapshot('https://github.com/me/secret', gh as never),
+    ).rejects.toThrow(/connect it to Proof/);
+  });
+
+  it('still degrades gracefully when the repo is visible but has NO README', async () => {
+    // Regression: GitHub returns 404 for a repo with no README too. Treating that as an access
+    // failure broke every public repo without a README.
+    const { fetchRepoSnapshot } = await import('@/lib/github');
+    const notFound = Object.assign(new Error('Not Found'), { status: 404 });
+    const gh = {
+      repos: {
+        get: async () => ({ data: { name: 'r', description: null, default_branch: 'main' } }),
+        listLanguages: async () => ({ data: { TypeScript: 1 } }),
+        getReadme: async () => { throw notFound; },
+      },
+      git: { getTree: async () => ({ data: { tree: [] } }) },
+    };
+    const snap = await fetchRepoSnapshot('https://github.com/me/public-no-readme', gh as never);
+    expect(snap.readme).toBe('(no README found)');
+    expect(snap.name).toBe('r');
+  });
+});
+
 describe("mergeRepoLists", () => {
   const pub = (fullName: string, pushedAt: string) => ({
     name: fullName.split("/")[1],
