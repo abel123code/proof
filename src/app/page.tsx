@@ -112,6 +112,12 @@ export default function Landing() {
                 your repo proves you built it.
                 <span className="font-medium text-primary"> nobody outside GitHub reads it.</span>
               </p>
+
+              {/* Beta users asked this unprompted, twice. Say it before they have to wonder. */}
+              <p className="enter mt-4 max-w-md font-mono text-[11px] leading-relaxed text-muted-foreground/70" style={stagger(420)}>
+                Proof reads your README, file names and language stats. It never reads your source
+                code, and the README is used to write your script, not stored.
+              </p>
             </div>
 
             <div className="enter" style={stagger(220)}>
