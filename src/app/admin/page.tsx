@@ -268,7 +268,7 @@ export default function AdminPage() {
                       <div key={a.id} className="flex items-center gap-3 px-4 py-2.5">
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-mono text-sm">
-                            {a.email ?? a.githubUsername ?? "—"}
+ {a.email ?? a.githubUsername ?? " "}
                           </p>
                           {a.note && (
                             <p className="font-mono text-[10px] text-muted-foreground/70">
@@ -302,7 +302,7 @@ export default function AdminPage() {
                       <div key={p.userId} className="flex flex-wrap items-center gap-3 gap-y-2 px-4 py-2.5">
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-mono text-sm">
-                            {p.email ?? "—"}
+ {p.email ?? " "}
                             {p.githubUsername && (
                               <span className="text-muted-foreground">
                                 {" "}
@@ -318,7 +318,7 @@ export default function AdminPage() {
                           title="Credits remaining"
                           className="font-mono text-[11px] text-muted-foreground"
                         >
-                          {wallets[p.userId]?.remaining ?? "—"} cr
+ {wallets[p.userId]?.remaining ?? " "} cr
                         </span>
                         <Button
                           size="sm"

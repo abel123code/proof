@@ -339,7 +339,7 @@ export async function updateProfileGithub(
 /**
  * Save (or clear, with null) the user's GitHub App installation id.
  *
- * Only the id is stored. It is not a credential — access tokens are minted per request from the app
+ * Only the id is stored. It is not a credential, access tokens are minted per request from the app
  * private key and never persisted, so a database leak cannot be replayed against anyone's private
  * repositories. See `src/lib/github-app.ts`.
  */
@@ -932,7 +932,7 @@ export async function getBriefById(briefId: string): Promise<Brief | null> {
 
 /**
  * Ownership guard for service-role routes. The API routes use the service-role client,
- * which BYPASSES row-level security, so a briefId alone is not enough — we must confirm
+ * which BYPASSES row-level security, so a briefId alone is not enough, we must confirm
  * the caller owns the brief or any approved user could touch anyone's footage/renders.
  * Dev (auth off, DEV_USER_ID) is a single identity and always passes.
  */
@@ -952,7 +952,7 @@ export async function assertBriefOwnedBy(briefId: string, userId: string): Promi
 /**
  * Ownership guard for project-scoped service-role routes. Like assertBriefOwnedBy,
  * this exists because the API uses the service-role client (which BYPASSES RLS), so a
- * projectId from the request is not proof of ownership — without this any approved user
+ * projectId from the request is not proof of ownership, without this any approved user
  * could read/overwrite another user's project by supplying its id.
  * Dev (auth off, DEV_USER_ID) is a single identity and always passes.
  */

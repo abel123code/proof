@@ -50,7 +50,7 @@ export default function Landing() {
               How it works
             </a>
             <a href="#compare" className="transition-colors hover:text-foreground">
-              Proof vs. slop
+              Side by side
             </a>
           </nav>
 
@@ -101,7 +101,7 @@ export default function Landing() {
                   href="#demo"
                   className="inline-flex items-center gap-2 font-mono text-sm text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
                 >
-                  or try it yourself — no account
+                  or try it yourself, no account
                 </Link>
               </div>
 
@@ -136,7 +136,7 @@ export default function Landing() {
                   isn&apos;t.
                 </>,
                 <>
-                  Traction comes from marketing — not from the code being good.
+                  Traction comes from marketing, not from the code being good.
                 </>,
                 <>
                   And marketing is the one thing developers{" "}
@@ -155,7 +155,7 @@ export default function Landing() {
             </ul>
 
             <p className="mt-10 max-w-[24ch] font-display text-2xl font-medium leading-tight tracking-tight sm:text-3xl">
-              So the best work goes unseen —{" "}
+                  So the best work goes unseen,{" "}
               <span className="text-primary">and no one ever hears about you.</span>
             </p>
           </Reveal>
@@ -191,25 +191,25 @@ export default function Landing() {
           <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
             <p className="kicker">side by side</p>
             <h2 className="mt-5 font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
-              Same project. <span className="text-primary">One is slop.</span>
+              Same project. <span className="text-primary">One gets watched.</span>
             </h2>
 
             <div className="mt-10 grid gap-5 md:grid-cols-2">
               {/* Bad */}
               <article className="rounded-2xl border border-border bg-card p-7">
                 <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  generic ai
+                  how devs write it
                 </p>
                 <p className="mt-4 font-display text-xl leading-snug text-muted-foreground">
-                  &ldquo;Hi everyone! Today I want to share a project I&apos;ve
-                  been working on called Proof, an AI-powered platform that helps
-                  developers…&rdquo;
+                  &ldquo;Proof is a TypeScript pipeline that ingests a repo,
+                  runs word-level transcription, and composites bespoke motion
+                  graphics over the footage.&rdquo;
                 </p>
                 <ul className="mt-6 grid gap-2.5 font-mono text-sm text-muted-foreground">
                   {[
-                    "opens on a throat-clear",
-                    '"platform," "powerful," "engaging"',
-                    "recruiter already scrolled",
+                    "accurate, and nobody watches it",
+                    "leads with the stack, not the point",
+                    "no reason to stop scrolling",
                   ].map((item) => (
                     <li key={item} className="relative pl-6">
                       <span className="absolute left-0 font-bold text-primary/70">
@@ -227,14 +227,14 @@ export default function Landing() {
                   proof
                 </p>
                 <p className="mt-4 font-display text-xl leading-snug text-foreground">
-                  &ldquo;I spent the weekend making my AI app feel less like a
-                  vibe-coded demo and more like an actual product. here&apos;s
-                  the part that took three rewrites.&rdquo;
+                  &ldquo;I shipped five projects last year. Nobody saw a single
+                  one. So I spent the weekend building the thing that fixes
+                  that.&rdquo;
                 </p>
                 <ul className="mt-6 grid gap-2.5 font-mono text-sm text-muted-foreground">
                   {[
-                    "opens on the real decision",
-                    "names the mechanic, no filler",
+                    "same project, opens on the stakes",
+                    "a reason to watch the next line",
                     "keywords flagged for overlays",
                   ].map((item) => (
                     <li key={item} className="relative pl-6">

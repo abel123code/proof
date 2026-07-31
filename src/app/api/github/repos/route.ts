@@ -55,7 +55,7 @@ export async function GET(req: Request) {
 
     const publicRepos = username ? await listUserRepos(username) : [];
 
-    // A revoked or uninstalled App must not break the picker — degrade to public-only and say why.
+ // A revoked or uninstalled App must not break the picker, degrade to public-only and say why.
     let privateRepos: (PublicRepo & { isPrivate: true })[] = [];
     let privateError: string | null = null;
     if (canUseApp) {

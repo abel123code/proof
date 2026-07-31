@@ -32,7 +32,7 @@ export function RenderConfirmDialog({
               </AlertDialog.Title>
             </div>
             <div className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 font-mono text-xs font-medium text-primary">
-              {cost ?? "—"} credits
+ {cost ?? " "} credits
             </div>
           </div>
 

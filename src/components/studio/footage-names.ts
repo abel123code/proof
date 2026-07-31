@@ -1,6 +1,6 @@
 // Client-only labels for scene footage, keyed by brief. Supabase stores every clip at a
-// deterministic path (scene-N.ext), so the file the creator actually picked — the thing
-// that tells "which of my ten recordings is this?" — is otherwise lost the moment it
+// deterministic path (scene-N.ext), so the file the creator actually picked, the thing
+// that tells "which of my ten recordings is this?", is otherwise lost the moment it
 // uploads. We stash the original filename (or a "Recorded take" label) in localStorage so
 // the studio can show it per scene and it survives a reload in the same browser, WITHOUT a
 // DB migration. The clip's playable preview is already DB-backed (the footage URL); this
@@ -38,7 +38,7 @@ function persist(briefId: string, names: FootageNames): void {
     if (Object.keys(names).length === 0) window.localStorage.removeItem(keyFor(briefId));
     else window.localStorage.setItem(keyFor(briefId), JSON.stringify(names));
   } catch {
-    // Ignore quota / privacy-mode failures — the label is a nicety, not load-bearing.
+ // Ignore quota / privacy-mode failures, the label is a nicety, not load-bearing.
   }
 }
 

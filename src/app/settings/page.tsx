@@ -143,7 +143,7 @@ export default function SettingsPage() {
             <div className="mt-2">
               <p className="text-xs text-muted-foreground">Signed in as</p>
               <p className="mt-1 font-mono text-sm text-foreground">
-                {loading ? "…" : email ?? "—"}
+ {loading ? "…" : email ?? " "}
               </p>
             </div>
             <div className="mt-4 flex flex-wrap items-center justify-between gap-4">

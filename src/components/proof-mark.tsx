@@ -1,5 +1,5 @@
 /**
- * The Proof brand mark — the "play P" (a P whose counter is a play triangle).
+ * The Proof brand mark, the "play P" (a P whose counter is a play triangle).
  * Identical to the favicon (src/app/icon.svg) so the in-app logo matches the tab/OG icon.
  * Self-contained tile (carries its own dark background), so it reads on any surface.
  * Size it with a Tailwind size utility, e.g. <ProofMark className="size-8" />.

@@ -8,7 +8,7 @@ import { optionalEnv, requireEnv } from "@/lib/env";
  *
  * Why an App and not an OAuth App: the OAuth `repo` scope is all-or-nothing read **and write** across
  * every private repository the user can see. An App is installed on repositories the user picks in
- * GitHub's own UI, so GitHub — not Proof — enforces the boundary, and the consent screen names the
+ * GitHub's own UI, so GitHub, not Proof, enforces the boundary, and the consent screen names the
  * exact repos. We request only `metadata: read` and `contents: read`.
  *
  * What we persist: the installation id, which is not a credential. Access tokens are minted per
@@ -72,7 +72,7 @@ export function verifyState(state: string, nowMs: number): string | null {
 
 /**
  * An Octokit scoped to ONE installation. The token is minted here, used for this request, and
- * discarded — it is never returned to the caller or written anywhere.
+ * discarded, it is never returned to the caller or written anywhere.
  */
 export function installationOctokit(installationId: number): Octokit {
   return new Octokit({
@@ -98,7 +98,7 @@ export interface InstallationRepo {
 }
 
 /**
- * Repos this installation can actually see — i.e. exactly what the user ticked during install.
+ * Repos this installation can actually see, i.e. exactly what the user ticked during install.
  * Only private ones are returned; public repos already arrive through the unauthenticated path, and
  * returning both would duplicate rows in the picker.
  */
