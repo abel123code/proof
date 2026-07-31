@@ -119,6 +119,47 @@ export async function listInstallationRepos(installationId: number): Promise<Ins
     }));
 }
 
+export type InstallCallbackDecision =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "missing_installation" | "state_invalid" | "set_handle_first" | "owner_mismatch";
+    };
+
+/**
+ * Should this install callback be trusted? Pure, so every branch is unit-testable.
+ *
+ * Two ways a user can arrive:
+ *  - from our button, carrying a signed `state` that names them. Trust that, but it must match the
+ *    session or a crafted link could attach an attacker's installation to whoever clicks it.
+ *  - straight from github.com/apps/<slug>, where GitHub uses the app's setup URL and there is no
+ *    state at all. Rejecting would strand a real installation, so fall back to proving OWNERSHIP:
+ *    the installation must belong to the GitHub handle already saved on this user's profile.
+ */
+export function decideInstallCallback(args: {
+  installationId: number;
+  stateUserId: string | null;
+  sessionUserId: string;
+  profileHandle: string | null;
+  /** Owner login of the installation. Only consulted on the stateless path. */
+  installationOwner: string | null;
+}): InstallCallbackDecision {
+  const { installationId, stateUserId, sessionUserId, profileHandle, installationOwner } = args;
+
+  if (!Number.isInteger(installationId) || installationId <= 0) {
+    return { ok: false, reason: "missing_installation" };
+  }
+  if (stateUserId) {
+    return stateUserId === sessionUserId ? { ok: true } : { ok: false, reason: "state_invalid" };
+  }
+  const handle = profileHandle?.trim().toLowerCase();
+  if (!handle) return { ok: false, reason: "set_handle_first" };
+  if (!installationOwner || installationOwner.trim().toLowerCase() !== handle) {
+    return { ok: false, reason: "owner_mismatch" };
+  }
+  return { ok: true };
+}
+
 /**
  * The GitHub account an installation belongs to (app-level auth, not installation auth).
  *

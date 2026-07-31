@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/lib/auth";
 import { getProfile, setProfileGithubInstallation } from "@/lib/db";
 import {
+  decideInstallCallback,
   githubAppConfigured,
   installationAccountLogin,
   verifyState,
@@ -27,36 +28,25 @@ export async function GET(req: Request) {
   const installationId = Number(searchParams.get("installation_id"));
   const state = searchParams.get("state") ?? "";
 
-  if (!Number.isInteger(installationId) || installationId <= 0) {
-    return NextResponse.redirect(new URL("/connect?github=missing_installation", req.url));
-  }
-
-  // Path A: the user started from our "Connect private repos" button, so we issued a signed state.
   const stateUserId = verifyState(state, Date.now());
-  if (stateUserId) {
-    if (stateUserId !== auth.userId) {
-      return NextResponse.redirect(new URL("/connect?github=state_invalid", req.url));
-    }
-    await setProfileGithubInstallation(auth.userId, installationId);
-    return NextResponse.redirect(new URL("/connect?github=connected", req.url));
-  }
 
-  // Path B: the user installed straight from github.com/apps/<slug>, so GitHub sends them to the
-  // app's setup URL with NO state of ours. Rejecting that would strand a real installation (the
-  // user has installed, but Proof never learns the id and shows "not connected" forever).
-  //
-  // Without a signed state we cannot trust the URL, so verify OWNERSHIP instead: the installation
-  // must belong to the GitHub account this user saved on their profile. That stops a crafted link
-  // from binding someone else's installation to whoever clicks it.
-  const profile = await getProfile(auth.userId).catch(() => null);
-  const handle = profile?.githubUsername?.trim().toLowerCase();
-  if (!handle) {
-    return NextResponse.redirect(new URL("/connect?github=set_handle_first", req.url));
-  }
+  // Only hit GitHub on the stateless path, where ownership is the thing being proven.
+  const needsOwnerCheck = !stateUserId && Number.isInteger(installationId) && installationId > 0;
+  const profile = needsOwnerCheck ? await getProfile(auth.userId).catch(() => null) : null;
+  const installationOwner = needsOwnerCheck
+    ? await installationAccountLogin(installationId).catch(() => null)
+    : null;
 
-  const owner = (await installationAccountLogin(installationId).catch(() => null))?.toLowerCase();
-  if (!owner || owner !== handle) {
-    return NextResponse.redirect(new URL("/connect?github=owner_mismatch", req.url));
+  const decision = decideInstallCallback({
+    installationId,
+    stateUserId,
+    sessionUserId: auth.userId,
+    profileHandle: profile?.githubUsername ?? null,
+    installationOwner,
+  });
+
+  if (!decision.ok) {
+    return NextResponse.redirect(new URL(`/connect?github=${decision.reason}`, req.url));
   }
 
   await setProfileGithubInstallation(auth.userId, installationId);
