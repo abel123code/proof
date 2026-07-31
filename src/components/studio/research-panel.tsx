@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { emitCreditsChanged } from "@/components/studio/credits";
 import { setActiveProject } from "@/components/studio/active-project";
+import { BRIEF_INPUT_PENDING_KEY } from "@/components/studio/brief-selection";
 import type {
   Angle,
   Proof,
@@ -202,6 +203,7 @@ export function ResearchPanel() {
       try {
         window.sessionStorage.setItem(ANGLE_KEY, JSON.stringify(angle));
         window.sessionStorage.setItem(REFS_KEY, JSON.stringify(references));
+        window.sessionStorage.setItem(BRIEF_INPUT_PENDING_KEY, JSON.stringify(true));
         window.sessionStorage.removeItem(FREEFORM_KEY);
       } catch {
         // sessionStorage may be unavailable; brief page will just re-ask.
@@ -218,6 +220,7 @@ export function ResearchPanel() {
     }
     try {
       window.sessionStorage.setItem(FREEFORM_KEY, JSON.stringify(freeform.trim()));
+      window.sessionStorage.setItem(BRIEF_INPUT_PENDING_KEY, JSON.stringify(true));
       window.sessionStorage.removeItem(ANGLE_KEY);
       window.sessionStorage.removeItem(REFS_KEY);
     } catch {
@@ -450,7 +453,7 @@ export function ResearchPanel() {
           ) : (
             <div className="mt-3 space-y-4">
               {angles.map((a, i) => (
-                <AngleCard key={a.id} angle={a} rank={i} onPick={() => pickAngle(a)} />
+                <AngleCard key={a.id} angle={a} rank={i} onPick={pickAngle} />
               ))}
             </div>
           )}
@@ -487,11 +490,11 @@ function Spinner({ className = "size-5" }: { className?: string }) {
 
 const DIMENSIONS: { key: keyof Angle["score"]; label: string }[] = [
   { key: "hook", label: "Hook" },
+  { key: "credibility", label: "Credible" },
+  { key: "curiosity", label: "Curiosity" },
+  { key: "loopStrength", label: "Story" },
+  { key: "surprise", label: "Surprise" },
   { key: "shareability", label: "Share" },
-  { key: "saveability", label: "Save" },
-  { key: "emotion", label: "Emotion" },
-  { key: "trendFit", label: "Trend" },
-  { key: "relevance", label: "Relevant" },
 ];
 
 function AngleCard({
@@ -501,8 +504,12 @@ function AngleCard({
 }: {
   angle: Angle;
   rank: number;
-  onPick: () => void;
+  onPick: (angle: Angle) => void;
 }) {
+  const [selectedHook, setSelectedHook] = useState(angle.hook);
+  const firstLoop = angle.storyLoops?.[0];
+  const scoreFor = (key: keyof Angle["score"]): number => angle.score[key] ?? 0;
+
   return (
     <article
       className={`rounded-xl border bg-card p-5 ${
@@ -512,13 +519,13 @@ function AngleCard({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            {rank === 0 && (
+            {rank === 0 && scoreFor("credibility") >= 70 && (
               <Badge className="bg-primary font-mono text-[9px] uppercase text-primary-foreground">
-                top pick
+                recommended
               </Badge>
             )}
             <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-              {angle.hookArchetype} · {angle.emotionalTrigger}
+              {angle.hookFormat ?? angle.hookArchetype} · {angle.storyLoops?.length ?? 0} story {angle.storyLoops?.length === 1 ? "loop" : "loops"}
             </span>
           </div>
           <p className="mt-1.5 font-display text-xl leading-tight tracking-tight">
@@ -537,10 +544,24 @@ function AngleCard({
 
       <div className="mt-3 rounded-md border-l-2 border-primary bg-secondary/40 p-3">
         <Kicker>Hook</Kicker>
-        <p className="mt-1 font-display text-lg leading-snug tracking-tight">{angle.hook}</p>
+        <p className="mt-1 font-display text-lg leading-snug tracking-tight">{selectedHook}</p>
       </div>
 
       {angle.why && <p className="mt-3 text-sm text-muted-foreground">{angle.why}</p>}
+
+      {firstLoop && (firstLoop.expectedBelief || firstLoop.proofBackedReversal) && (
+        <div className="mt-3 grid gap-2 rounded-lg bg-muted/40 p-3 text-sm sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+          <div>
+            <Kicker>Expected</Kicker>
+            <p className="mt-1 text-muted-foreground">{firstLoop.expectedBelief}</p>
+          </div>
+          <span className="hidden text-primary sm:block" aria-hidden>→</span>
+          <div>
+            <Kicker>Reversal</Kicker>
+            <p className="mt-1 text-foreground">{firstLoop.proofBackedReversal}</p>
+          </div>
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-6">
         {DIMENSIONS.map((d) => (
@@ -549,17 +570,41 @@ function AngleCard({
               <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
                 {d.label}
               </span>
-              <span className="font-mono text-[10px] text-foreground">{angle.score[d.key]}</span>
+              <span className="font-mono text-[10px] text-foreground">{scoreFor(d.key)}</span>
             </div>
             <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full rounded-full bg-primary"
-                style={{ width: `${angle.score[d.key]}%` }}
+                style={{ width: `${scoreFor(d.key)}%` }}
               />
             </div>
           </div>
         ))}
       </div>
+
+      {angle.hookOptions.length > 1 && (
+        <details className="mt-4 rounded-lg border border-border px-3 py-2">
+          <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            Adjust opening hook
+          </summary>
+          <div className="mt-3 grid gap-2">
+            {angle.hookOptions.map((hook) => (
+              <button
+                key={hook}
+                type="button"
+                onClick={() => setSelectedHook(hook)}
+                className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                  selectedHook === hook
+                    ? "border-primary bg-primary/5 text-foreground"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {hook}
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         {angle.sources.length > 0 ? (
@@ -579,7 +624,7 @@ function AngleCard({
         ) : (
           <span />
         )}
-        <Button size="sm" onClick={onPick}>
+        <Button size="sm" onClick={() => onPick({ ...angle, hook: selectedHook })}>
           Use this angle →
         </Button>
       </div>

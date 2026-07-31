@@ -11,6 +11,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { emitCreditsChanged } from "@/components/studio/credits";
 import { getActiveProject, setActiveProject } from "@/components/studio/active-project";
+import {
+  BRIEF_INPUT_PENDING_KEY,
+  shouldResumeSavedBrief,
+} from "@/components/studio/brief-selection";
 import { getProfileData } from "@/components/studio/profile-store";
 import { RenderConfirmDialog } from "@/components/studio/render-confirm-dialog";
 import { Teleprompter } from "@/components/studio/teleprompter";
@@ -70,6 +74,9 @@ export function BriefPanel() {
     () => readStored<ReferencePattern[]>(REFS_KEY) ?? [],
   );
   const [freeformPrompt] = useState<string | null>(() => readStored<string>(FREEFORM_KEY));
+  const [pendingCreativeInput] = useState(
+    () => readStored<boolean>(BRIEF_INPUT_PENDING_KEY) === true,
+  );
 
   const [project, setProject] = useState<Project | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
@@ -208,8 +215,9 @@ export function BriefPanel() {
         setProject(p ?? null);
         if (p) setActiveProject({ id: p.id, name: p.name ?? null });
 
-        if (briefRes.brief?.doc) {
-          setDoc(briefRes.brief.doc);
+        const savedBrief = briefRes.brief?.doc ?? null;
+        if (shouldResumeSavedBrief(Boolean(savedBrief), pendingCreativeInput) && savedBrief) {
+          setDoc(savedBrief);
           setGaps(briefRes.brief.gaps ?? []);
           setAnswers(briefRes.brief.answers ?? {});
           setBriefId(briefRes.brief.id ?? null);
@@ -262,6 +270,11 @@ export function BriefPanel() {
       if (!res.ok) throw new Error(data.error ?? "Draft failed");
       setDoc(data.doc);
       setBriefId(data.id ?? null);
+      try {
+        window.sessionStorage.removeItem(BRIEF_INPUT_PENDING_KEY);
+      } catch {
+        // sessionStorage may be unavailable; the saved brief still becomes the source of truth.
+      }
       if (data.projectId && !projectId) setProjectId(data.projectId);
       setFootage({});
       setPhase("brief");
