@@ -4,7 +4,6 @@ import { OPENAI_MINI_MODEL, openaiJSON } from "@/lib/openai";
 import { requireApprovedUser } from "@/lib/auth";
 import { createProject, getProfile, getProjectByRepo, refundCredits, spendCredits } from "@/lib/db";
 import {
-  canAnalyseRepo,
   githubAppConfigured,
   installationCanAccess,
   installationOctokit,
@@ -63,38 +62,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Ownership is checked BEFORE spending credits. Charging for a request we are about to reject
-    // would take the user's credits and give them a 403.
-    //
-    // Private repos are readable only through the user's own GitHub App installation, and only for
-    // the repos they granted, so the grant is checked explicitly rather than relying on GitHub's
-    // misleading 404.
-    const profile = await getProfile(auth.userId).catch(() => null);
-    const installationId = profile?.githubInstallationId ?? null;
-    const grantedByInstallation =
-      githubAppConfigured() && installationId !== null
-        ? await installationCanAccess(installationId, owner, repo)
-        : false;
-
-    // You analyse your own work. See canAnalyseRepo for why this is enforced and not just implied.
-    if (
-      !canAnalyseRepo({
-        owner,
-        profileHandle: profile?.githubUsername ?? null,
-        grantedByInstallation,
-      })
-    ) {
-      return NextResponse.json(
-        {
-          error: profile?.githubUsername
-            ? `Proof only analyses your own repos, and ${owner}/${repo} belongs to ${owner}. If it is yours, connect it from the repo picker.`
-            : "Save your GitHub handle in Settings first, then pick one of your repos.",
-        },
-        { status: 403 },
-      );
-    }
-
-    // Charge only for a real analysis (past the reuse short-circuit and the ownership gate).
+    // Charge only for a real analysis (past the reuse short-circuit).
     const spend = await spendCredits(auth.userId, CREDIT_COSTS.repoAnalysis);
     if (!spend.ok) {
       return NextResponse.json(
@@ -104,10 +72,17 @@ export async function POST(req: Request) {
     }
     charged = CREDIT_COSTS.repoAnalysis;
 
-    const client =
-      grantedByInstallation && installationId !== null
-        ? installationOctokit(installationId)
-        : undefined;
+    // Private repos are readable only through the user's own GitHub App installation, and only for
+    // the repos they granted. We check the grant explicitly so an ungranted repo gives an honest
+    // error instead of GitHub's misleading 404.
+    const profile = await getProfile(auth.userId).catch(() => null);
+    const installationId = profile?.githubInstallationId ?? null;
+    let client;
+    if (githubAppConfigured() && installationId !== null) {
+      if (await installationCanAccess(installationId, owner, repo)) {
+        client = installationOctokit(installationId);
+      }
+    }
 
     const snapshot = await fetchRepoSnapshot(repoUrl, client);
 

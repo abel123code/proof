@@ -119,28 +119,6 @@ export async function listInstallationRepos(installationId: number): Promise<Ins
     }));
 }
 
-/**
- * May this user analyse `owner/repo`?
- *
- * Proof's premise is "prove YOU built it", so you analyse your own work. Enforced for two reasons
- * beyond authenticity: the repo picker runs on ONE shared server token (5000 req/hr for the whole
- * app), so an open handle field lets a single user exhaust GitHub's rate limit for everybody, and
- * an approved user could otherwise burn credits generating a video about someone else's project.
- *
- * Pure, so both routes share one rule and every branch is testable.
- */
-export function canAnalyseRepo(args: {
-  owner: string;
-  profileHandle: string | null;
-  /** True when the repo is reachable through the user's own GitHub App installation. */
-  grantedByInstallation?: boolean;
-}): boolean {
-  if (args.grantedByInstallation) return true;
-  const handle = args.profileHandle?.trim().toLowerCase();
-  if (!handle) return false;
-  return args.owner.trim().toLowerCase() === handle;
-}
-
 export type InstallCallbackDecision =
   | { ok: true }
   | {
