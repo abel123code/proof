@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +44,8 @@ interface GithubAppState {
 
 export function ProjectPanel() {
   const [handle, setHandle] = useState<string | null>(null);
+  // Lets the post-install effect refresh the picker without depending on `handle` state.
+  const handleRef = useRef<string | null>(null);
   const [resolving, setResolving] = useState(true);
 
   const [repos, setRepos] = useState<PickerRepo[]>([]);
@@ -58,9 +60,11 @@ export function ProjectPanel() {
   // instead of re-analyzing from scratch.
   const [analyzedUrls, setAnalyzedUrls] = useState<Set<string>>(new Set());
 
-  const loadRepos = useCallback(async (h: string) => {
+  // `force` bypasses the cache: right after connecting an installation the cached list is stale
+  // (it has no private repos), so the user would connect and see nothing change.
+  const loadRepos = useCallback(async (h: string, force = false) => {
     // Serve from cache instantly on revisits; only hit GitHub on a cold handle.
-    const cached = getCachedRepos(h);
+    const cached = force ? null : getCachedRepos(h);
     if (cached) {
       setRepos(cached);
       return;
@@ -101,11 +105,45 @@ export function ProjectPanel() {
     (async () => {
       const h = await resolveHandle();
       setHandle(h);
+      handleRef.current = h;
       setResolving(false);
       if (h) loadRepos(h);
     })();
     loadProjects();
   }, [loadRepos, loadProjects]);
+
+  // GitHub sends the user here after an install. Two shapes arrive:
+  //  - ?github=connected|... : our own callback finished and is reporting the outcome
+  //  - ?installation_id=N    : the user installed straight from github.com/apps/<slug>, so GitHub
+  //    used the app's setup URL and our callback never ran. Forward it so the id is actually saved,
+  //    otherwise they have installed but Proof would show "not connected" forever.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const installationId = params.get("installation_id");
+    const status = params.get("github");
+
+    if (installationId && !status) {
+      window.location.replace(`/api/github/callback?installation_id=${encodeURIComponent(installationId)}`);
+      return;
+    }
+    if (!status) return;
+
+    const messages: Record<string, [("success" | "error"), string]> = {
+      connected: ["success", "Private repos connected."],
+      state_invalid: ["error", "That connect link expired. Try again from this page."],
+      missing_installation: ["error", "GitHub did not send an installation. Try again."],
+      set_handle_first: ["error", "Save your GitHub handle in Settings first, then reconnect."],
+      owner_mismatch: [
+        "error",
+        "That installation belongs to a different GitHub account than the handle on your profile.",
+      ],
+    };
+    const entry = messages[status];
+    if (entry) toast[entry[0]](entry[1]);
+    // Clean the URL so a refresh doesn't re-toast.
+    window.history.replaceState({}, "", window.location.pathname);
+    if (status === "connected" && handleRef.current) loadRepos(handleRef.current, true);
+  }, [loadRepos]);
 
     const disconnectGithub = useCallback(async () => {
     setDisconnecting(true);
