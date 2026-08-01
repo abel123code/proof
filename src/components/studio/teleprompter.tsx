@@ -237,6 +237,13 @@ export function Teleprompter({
   // Camera + mic.
   useEffect(() => {
     let cancelled = false;
+    // Re-arm the ref mirror of `cancelled` on every setup, not just on first mount.
+    // The cleanup below sets it true and nothing ever set it back, so React's
+    // StrictMode remount in dev (setup -> cleanup -> setup) left it stuck true: the
+    // camera reacquired fine because `cancelled` above is per-run, but beginRecord
+    // then bailed at its own cancelled check after the countdown, silently, so the
+    // record button did nothing at all.
+    cancelledRef.current = false;
     (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
