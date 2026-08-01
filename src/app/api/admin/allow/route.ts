@@ -15,9 +15,11 @@ export async function POST(req: Request) {
     const githubUsername =
       typeof body?.githubUsername === "string" ? body.githubUsername : null;
     const note = typeof body?.note === "string" ? body.note : null;
-    if (!email && !githubUsername) {
+    // Email is what actually grants access (see isAllowlisted). A handle-only entry would
+    // sit in /admin looking approved and never let the person in, so reject it here.
+    if (!email) {
       return NextResponse.json(
-        { error: "Provide an email or GitHub handle." },
+        { error: "An email is required. A GitHub handle alone does not grant access." },
         { status: 400 },
       );
     }
