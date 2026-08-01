@@ -29,8 +29,18 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
+/** Hard ceiling on cached handles. A burst of distinct handles must not outrun the TTL sweep. */
+const MAX_CACHE_ENTRIES = 500;
+
 const cache = new Map<string, CacheEntry<unknown>>();
 const hits = new Map<string, number[]>();
+/**
+ * Lookups currently in flight, keyed by handle. Without this, concurrent requests for the SAME
+ * handle all miss the cache before the first one resolves, so each one burns quota and calls
+ * GitHub. That is precisely the runaway-loop case this module exists to stop, so the cache has to
+ * coalesce in-flight work, not just completed work.
+ */
+const inflight = new Map<string, Promise<unknown>>();
 
 /** Cached lookup keyed by GitHub handle. `now` is injectable so tests never sleep. */
 export async function withRepoListCache<T>(
@@ -40,13 +50,36 @@ export async function withRepoListCache<T>(
 ): Promise<T> {
   const entry = cache.get(key);
   if (entry && entry.expiresAt > now) return entry.value as T;
-  const value = await load();
-  cache.set(key, { value, expiresAt: now + REPO_LIST_CACHE_TTL_MS });
-  // Keep the map from growing without bound on a long-lived instance.
-  if (cache.size > 500) {
-    for (const [k, v] of cache) if (v.expiresAt <= now) cache.delete(k);
+
+  const pending = inflight.get(key);
+  if (pending) return pending as Promise<T>;
+
+  const task = load()
+    .then((value) => {
+      cache.set(key, { value, expiresAt: now + REPO_LIST_CACHE_TTL_MS });
+      evictCache(now);
+      return value;
+    })
+    .finally(() => {
+      // Always released, so a failure (GitHub down, rate limit) never poisons the handle.
+      inflight.delete(key);
+    });
+
+  inflight.set(key, task);
+  return task;
+}
+
+/** Drop expired entries, then oldest-first until under the ceiling. */
+function evictCache(now: number): void {
+  if (cache.size <= MAX_CACHE_ENTRIES) return;
+  for (const [k, v] of cache) if (v.expiresAt <= now) cache.delete(k);
+  if (cache.size <= MAX_CACHE_ENTRIES) return;
+  // Everything is still live: a genuine burst of distinct handles. Map preserves insertion order,
+  // so the front is the oldest and the closest to expiring anyway.
+  for (const k of cache.keys()) {
+    if (cache.size <= MAX_CACHE_ENTRIES) break;
+    cache.delete(k);
   }
-  return value;
 }
 
 /**
@@ -62,6 +95,14 @@ export function allowRepoList(userId: string, now: number): boolean {
   }
   recent.push(now);
   hits.set(userId, recent);
+
+  // Every user who ever listed a repo would otherwise keep an entry forever. Sweeping only when the
+  // map is large keeps this O(1) amortised instead of walking every user on every request.
+  if (hits.size > 1_000) {
+    for (const [id, times] of hits) {
+      if (!times.some((t) => t > windowStart)) hits.delete(id);
+    }
+  }
   return true;
 }
 
@@ -69,4 +110,5 @@ export function allowRepoList(userId: string, now: number): boolean {
 export function __resetRepoListGuard(): void {
   cache.clear();
   hits.clear();
+  inflight.clear();
 }

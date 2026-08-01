@@ -37,6 +37,43 @@ describe("withRepoListCache", () => {
     expect(calls).toBe(2);
   });
 
+  it("coalesces concurrent misses into a single GitHub call", async () => {
+    let calls = 0;
+    const load = async () => {
+      calls += 1;
+      // Resolve on a later tick so every caller observes the miss before the first one finishes.
+      await new Promise((r) => setTimeout(r, 10));
+      return ["repo"];
+    };
+    const t = 7_000_000;
+    const all = await Promise.all(
+      Array.from({ length: 8 }, () => withRepoListCache("stampede", t, load)),
+    );
+
+    // Without coalescing this is 8: every request misses, burns quota and hits GitHub for one handle.
+    expect(calls).toBe(1);
+    expect(all.every((r) => r[0] === "repo")).toBe(true);
+  });
+
+  it("does not cache a failed lookup, and fails every waiter", async () => {
+    let calls = 0;
+    const load = async () => {
+      calls += 1;
+      await new Promise((r) => setTimeout(r, 10));
+      throw new Error("github down");
+    };
+    const t = 7_500_000;
+    const results = await Promise.allSettled([
+      withRepoListCache("broken", t, load),
+      withRepoListCache("broken", t, load),
+    ]);
+
+    expect(calls).toBe(1);
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+    // A rejection must not poison the key, the next caller gets a real attempt.
+    await expect(withRepoListCache("broken", t, async () => ["ok"])).resolves.toEqual(["ok"]);
+  });
+
   it("keeps handles separate", async () => {
     const t = 3_000_000;
     await withRepoListCache("a", t, async () => ["a-repo"]);

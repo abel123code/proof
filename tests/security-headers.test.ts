@@ -20,6 +20,9 @@ describe("global security headers", () => {
 
   it("emits all four headers with the exact values we rely on", async () => {
     const rules = await nextConfig.headers!();
+    // Exact count first: fromEntries silently drops a duplicate key, so a conflicting header
+    // emitted before the expected one would otherwise pass unnoticed.
+    expect(rules[0].headers).toHaveLength(4);
     const headers = Object.fromEntries(rules[0].headers.map((h) => [h.key, h.value]));
 
     expect(headers).toEqual({
