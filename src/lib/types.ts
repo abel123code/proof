@@ -33,7 +33,7 @@ export interface NotableRepo {
 
 /**
  * One trending topic / pain point the dev & indie-maker community is discussing
- * right now, surfaced by the Exa Agent (grounded, with real source URLs).
+ * right now, surfaced by grounded web research with real source URLs.
  */
 export interface Trend {
   /** The trending topic or pain point, stated plainly. */
@@ -48,7 +48,7 @@ export interface Trend {
   suggestedAngle: string;
 }
 
-/** Grounded trend research for a project, produced on-demand by the Exa Agent. */
+/** Grounded trend research for a project, produced on demand by OpenAI web search. */
 export interface TrendResearch {
   trends: Trend[];
   /** ISO timestamp of when this research was produced. */
@@ -108,6 +108,26 @@ export type HookArchetype =
   | "trend-reference"
   | "unanswerable-question";
 
+/** Proof's evidence-backed hook families. Legacy hook archetypes normalize into these. */
+export type HookFormat =
+  | "future-shift"
+  | "contrarian-truth"
+  | "builder-secret"
+  | "proof-first"
+  | "visual-proof"
+  | "unexpected-connection";
+
+/** One cascading retention loop inside an angle. */
+export interface StoryLoop {
+  stakes: string;
+  openQuestion: string;
+  expectedBelief: string;
+  proofBackedReversal: string;
+  evidenceIds: string[];
+  payoff: string;
+  rehook: string | null;
+}
+
 export type EmotionalTrigger =
   | "fear"
   | "empathy"
@@ -126,6 +146,10 @@ export interface ViralityScore {
   trendFit: number;
   /** How directly this speaks to the target user's real problem (product fit). */
   relevance: number;
+  curiosity?: number;
+  surprise?: number;
+  loopStrength?: number;
+  credibility?: number;
 }
 
 /** A scored, rankable content angle - the core output of the research engine. */
@@ -137,7 +161,11 @@ export interface Angle {
   /** 3-5 hook variations to A/B. */
   hookOptions: string[];
   hookArchetype: HookArchetype;
+  hookFormat: HookFormat;
+  alternateHookFormats: HookFormat[];
   emotionalTrigger: EmotionalTrigger;
+  storyLoops: StoryLoop[];
+  evidenceIds: string[];
   coreIdea: string;
   whyShareable: string;
   /** Which piece of the builder's proof this rides. */
@@ -201,7 +229,7 @@ export interface OnScreenText {
 }
 
 /**
- * Structured breakdown of a reference video, produced by Gemini (Phase 3b).
+ * Structured breakdown of a reference video.
  * This is the reusable "structure" that gets blended with project understanding.
  */
 export interface ReferenceStructure {
@@ -295,7 +323,24 @@ export interface BriefScene {
   brollCue: string;
   /** Rough duration for this scene in seconds. */
   durationSeconds?: number;
+  /** Narrative job this scene performs in the selected story loop. */
+  storyRole?: StoryRole;
+  /** 1-based story-loop number, when the brief contains cascading loops. */
+  storyLoop?: number;
+  /** Evidence references inherited from the selected angle. */
+  evidenceIds?: string[];
 }
+
+export type StoryRole =
+  | "hook"
+  | "stakes"
+  | "question"
+  | "expectation"
+  | "reversal"
+  | "proof"
+  | "payoff"
+  | "rehook"
+  | "cta";
 
 /**
  * The scene-by-scene content brief shown on stage 04. Grounded in the chosen
@@ -304,6 +349,11 @@ export interface BriefScene {
  */
 export interface BriefDoc {
   title: string;
+  /** Story-engine version that authored this brief. Missing on legacy briefs. */
+  storyEngineVersion?: number;
+  /** Selected angle that produced this brief, when it came through Research & Plan. */
+  sourceAngleId?: string;
+  sourceHookFormat?: HookFormat;
   /** The first ~3 seconds hook. */
   hook: string;
   /** One-line creative angle. */
@@ -358,9 +408,9 @@ export interface Brief {
   gaps: InfoGap[] | null;
   /** The creator's answers, keyed by question id. */
   answers: Record<string, string> | null;
-  /** Zo render job id, once a render has been kicked off. */
+  /** Render job id, once a render has been kicked off. */
   renderJobId: string | null;
-  /** Latest render status from the Zo service. */
+  /** Latest status from the render worker. */
   renderStatus: string | null;
   /** Public URL of the finished edited MP4 (persisted to our Storage). */
   renderUrl: string | null;
@@ -369,7 +419,7 @@ export interface Brief {
 
 /**
  * A persisted script row: the same brief rendered twice - a grounded version
- * (Exa research + reference structure + persona) and a deliberately naive
+ * (grounded research + reference structure + persona) and a deliberately naive
  * generic baseline - so the two can be shown side-by-side.
  */
 export interface Script {
@@ -386,7 +436,7 @@ export interface ReferenceVideo {
   id: string;
   /** Canonical TikTok URL. */
   url: string;
-  /** Direct downloadable video URL from Apify (may expire). */
+  /** Direct downloadable video URL from the source platform (may expire). */
   downloadUrl: string | null;
   /** TikTok cover/thumbnail image URL (may expire). */
   thumbnailUrl: string | null;

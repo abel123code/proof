@@ -1,0 +1,42 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Web app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: npm run build
+
+  render:
+    name: Render service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: render/package-lock.json
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: npm ci
+        working-directory: render
+      - run: npm run check
+        working-directory: render
+      - run: npm run test:unit
+        working-directory: render

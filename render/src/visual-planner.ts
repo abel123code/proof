@@ -1,8 +1,11 @@
 import { getOpenAI } from "./openai.js";
 import { buildVisualCues, shortenHeadline, type SceneWindow } from "./brief-editor.js";
+import { chatTuning } from "./premium/model-params.js";
 import type { RenderBrief, VisualCue, VisualTemplate } from "./types.js";
 
-const MODEL = process.env.BRIEF_VISUAL_MODEL || "gpt-4o";
+export const DEFAULT_BRIEF_VISUAL_MODEL = "gpt-5.6-luna";
+const MODEL = process.env.BRIEF_VISUAL_MODEL || DEFAULT_BRIEF_VISUAL_MODEL;
+const EFFORT = process.env.BRIEF_VISUAL_EFFORT || "none";
 const ENABLED = (process.env.BRIEF_VISUAL_PLANNER ?? "true").toLowerCase() !== "false";
 const TEMPLATES = new Set<VisualTemplate>([
   "hook",
@@ -31,7 +34,7 @@ export async function planBriefVisuals(args: {
   try {
     const response = await getOpenAI().chat.completions.create({
       model: MODEL,
-      temperature: 0.35,
+      ...chatTuning(MODEL, EFFORT),
       response_format: { type: "json_object" },
       messages: [
         {

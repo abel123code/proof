@@ -1,4 +1,6 @@
+import { copyFile } from "node:fs/promises";
 import { overlayScenesAtOffsets } from "../ffmpeg.js";
+import { compositeOverlay } from "../ffmpeg.js";
 import type { AuthoredScene } from "../types.js";
 
 /**
@@ -17,9 +19,24 @@ export async function composeScenes(
       movPath: s.movPath,
       startMs: s.spec.anchorMs,
       endMs: s.spec.anchorMs + s.spec.durMs,
+      backgroundTreatment: s.spec.backgroundTreatment ?? "footage",
     }));
 
   if (windows.length === 0) throw new Error("composeScenes: no rendered scenes to composite");
   await overlayScenesAtOffsets(basePath, windows, outPath);
   return windows.length;
+}
+
+export async function composeCreatorNativeVideo(args: {
+  basePath: string;
+  scenes: AuthoredScene[];
+  captionOverlayPath: string;
+  visualPath: string;
+  outPath: string;
+}): Promise<number> {
+  const shipped = args.scenes.filter((scene) => scene.movPath).length;
+  if (shipped > 0) await composeScenes(args.basePath, args.scenes, args.visualPath);
+  else await copyFile(args.basePath, args.visualPath);
+  await compositeOverlay(args.visualPath, args.captionOverlayPath, args.outPath);
+  return shipped;
 }

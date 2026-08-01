@@ -97,6 +97,14 @@ export default function SettingsPage() {
             base a video on. You can change this any time.
           </p>
 
+          {/* Same claim as the landing hero, repeated at the moment it actually matters. Before this
+              the disclosure only existed on the marketing page and inside the private-repos card,
+              which renders after a handle is already saved, so the connect step said nothing. */}
+          <p className="mt-3 max-w-md font-mono text-[11px] leading-relaxed text-muted-foreground/70">
+            Proof reads your README, file names and language stats. It never reads your source code,
+            and the README is used to write your script, not stored.
+          </p>
+
           <div className="mt-8" data-tour="github-connect">
             <Kicker>GitHub handle</Kicker>
             <div className="mt-2 flex gap-2">
@@ -143,7 +151,7 @@ export default function SettingsPage() {
             <div className="mt-2">
               <p className="text-xs text-muted-foreground">Signed in as</p>
               <p className="mt-1 font-mono text-sm text-foreground">
-                {loading ? "…" : email ?? "—"}
+ {loading ? "…" : email ?? " "}
               </p>
             </div>
             <div className="mt-4 flex flex-wrap items-center justify-between gap-4">

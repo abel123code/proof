@@ -129,6 +129,7 @@
   }
   html {
     @apply font-sans;
+    scroll-behavior: smooth;
   }
   h1,
   h2,
@@ -156,5 +157,97 @@
     height: 1px;
     background: var(--primary);
     opacity: 0.6;
+  }
+}
+
+@keyframes demo-target-flash {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 28%, transparent);
+  }
+  35% {
+    box-shadow: 0 0 0 8px color-mix(in oklch, var(--primary) 18%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+#demo:target .demo-scene-card {
+  animation: demo-target-flash 1.4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  #demo:target .demo-scene-card {
+    animation: none;
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 16%, transparent);
+  }
+}
+
+/* ---- Entrance + scroll-reveal motion ---- */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Hero: fade-up on load, staggered via an inline --stagger custom property. */
+.enter {
+  opacity: 0;
+  animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: var(--stagger, 0ms);
+}
+
+/* Scroll reveal: hidden until the <Reveal> wrapper toggles .is-visible in view.
+   Hiding is gated on `.reveal-ready` (set by an inline script before paint) so that
+   no-JS / pre-hydration renders the content visible instead of a blank section. */
+.reveal {
+  transition:
+    opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--stagger, 0ms);
+  will-change: opacity, transform;
+}
+.reveal-ready .reveal {
+  opacity: 0;
+  transform: translateY(22px);
+}
+.reveal-ready .reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Soft pulse to invite the demo record button (respects reduced-motion below). */
+@keyframes demo-invite-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 42%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 10px color-mix(in oklch, var(--primary) 0%, transparent);
+  }
+}
+.demo-invite {
+  animation: demo-invite-pulse 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter,
+  .reveal {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .demo-invite {
+    animation: none;
   }
 }

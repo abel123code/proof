@@ -14,25 +14,24 @@ import {
   spendCredits,
 } from "@/lib/db";
 import { CREDIT_COSTS } from "@/lib/pricing";
+import { resolveRenderMode } from "@/lib/render-mode";
+import { resolveRenderPoll } from "@/lib/render-poll";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-// The Zo-hosted render service. Set RENDER_SERVICE_URL in the deployed env.
+// The Railway render worker. Set RENDER_SERVICE_URL in the deployed environment.
 const RENDER_SERVICE_URL = process.env.RENDER_SERVICE_URL ?? "http://localhost:8080";
 const RENDER_TOKEN = process.env.RENDER_TOKEN;
 const FOOTAGE_BUCKET = "footage";
 
-// Premium render tier (bespoke GPT-authored scenes + vision QA on the render box).
-// Default on; set PREMIUM_RENDER=false to fall back to the fixed-component render
-// without a code change. The render service always degrades to the captioned output
-// on any premium failure, so this is safe to leave on.
-const PREMIUM_RENDER = (process.env.PREMIUM_RENDER ?? "true").toLowerCase() !== "false";
-const DEFAULT_EDIT_MODE = process.env.RENDER_EDIT_MODE ?? "brief-driven";
+// The server owns this choice so a stale or modified client cannot bypass vision QA.
+// Operators can select a supported fallback through RENDER_EDIT_MODE.
+const EDIT_MODE = resolveRenderMode(process.env.RENDER_EDIT_MODE);
 
 /**
  * Kick off a render. Body: { briefId, videoUrls: string[], brief }.
- * Forwards the clips + brief to the Zo service and records the job on the brief.
+ * Forwards the clips and brief to the render worker and records the durable job.
  */
 export async function POST(req: Request) {
   const auth = await requireApprovedUser();
@@ -42,7 +41,6 @@ export async function POST(req: Request) {
   const briefId: unknown = body?.briefId;
   const videoUrls: unknown = body?.videoUrls;
   const brief: unknown = body?.brief;
-  const requestedEditMode: unknown = body?.editMode;
 
   if (typeof briefId !== "string") {
     return NextResponse.json({ error: "briefId is required" }, { status: 400 });
@@ -72,8 +70,7 @@ export async function POST(req: Request) {
   try {
     const jobId = randomUUID();
     durableJobId = jobId;
-    const editMode =
-      typeof requestedEditMode === "string" ? requestedEditMode : DEFAULT_EDIT_MODE;
+    const editMode = EDIT_MODE;
     const durableInput = { videoUrls, videoUrl: videoUrls[0], brief, editMode };
     await createRenderJob({
       id: jobId,
@@ -81,9 +78,10 @@ export async function POST(req: Request) {
       userId: auth.userId,
       input: durableInput as Record<string, unknown>,
     });
+    await saveBriefRender(briefId, { jobId, status: "queued", url: null });
 
-    // Send BOTH so it works regardless of whether the Zo box was redeployed:
-    // - updated box prefers `videoUrls` and concatenates all clips
+    // Send both forms for backwards compatibility with older worker deployments:
+    // - current workers prefer `videoUrls` and concatenate all clips
     // - old box ignores `videoUrls` and renders the single `videoUrl` (first clip)
     const res = await fetch(`${RENDER_SERVICE_URL}/render`, {
       method: "POST",
@@ -98,12 +96,15 @@ export async function POST(req: Request) {
         videoUrl: videoUrls[0],
         brief,
         editMode,
-        premium: PREMIUM_RENDER,
       }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       await failRenderJob(jobId, data?.error ?? `render service returned ${res.status}`).catch(() => {});
+      await saveBriefRender(briefId, {
+        status: "error",
+        expectedJobId: jobId,
+      }).catch(() => {});
       await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
       return NextResponse.json(
         { error: data?.error ?? `render service returned ${res.status}` },
@@ -115,15 +116,24 @@ export async function POST(req: Request) {
     if (!queuedJobId || queuedJobId !== jobId) {
       // Nothing was queued - don't charge for a no-op.
       await failRenderJob(jobId, "Render service did not accept the durable job id.").catch(() => {});
+      await saveBriefRender(briefId, {
+        status: "error",
+        expectedJobId: jobId,
+      }).catch(() => {});
       await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
       return NextResponse.json({ jobId: null, creditsRemaining: spend.remaining + CREDIT_COSTS.render });
     }
-    await saveBriefRender(briefId, { jobId, status: "queued", url: "" }).catch(() => {});
     return NextResponse.json({ jobId, creditsRemaining: spend.remaining });
   } catch (err) {
     await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
     const message = err instanceof Error ? err.message : "Unknown error";
-    if (durableJobId) await failRenderJob(durableJobId, message).catch(() => {});
+    if (durableJobId) {
+      await failRenderJob(durableJobId, message).catch(() => {});
+      await saveBriefRender(briefId, {
+        status: "error",
+        expectedJobId: durableJobId,
+      }).catch(() => {});
+    }
     return NextResponse.json(
       { error: `render service unreachable: ${message}` },
       { status: 502 },
@@ -133,7 +143,7 @@ export async function POST(req: Request) {
 
 /**
  * Poll a render job: GET /api/render?jobId=...&briefId=...
- * When the job is done, the finished MP4 (served by the Zo box at /out) is downloaded
+ * When the job is done, the finished MP4 served by the worker is downloaded
  * and re-uploaded to our Storage so it persists, then saved on the brief.
  */
 export async function GET(req: Request) {
@@ -156,28 +166,25 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Not your brief." }, { status: 403 });
     }
 
-    // If we already persisted this brief's render, short-circuit.
-    if (briefId) {
-      const existing = await getBriefById(briefId).catch(() => null);
-      if (existing?.renderUrl) {
-        return NextResponse.json({ status: "done", url: existing.renderUrl });
+    const durable = await getRenderJob({ id: jobId, briefId, userId: auth.userId });
+    const durableResult = resolveRenderPoll({ durable });
+    if (durableResult) {
+      if ("url" in durableResult) {
+        const finalized = await saveBriefRender(briefId, {
+          status: "done",
+          url: durableResult.url,
+          expectedJobId: jobId,
+        });
+        if (!finalized) {
+          return NextResponse.json({ status: "superseded" }, { status: 409 });
+        }
+      } else if (durableResult.status === "error") {
+        await saveBriefRender(briefId, {
+          status: "error",
+          expectedJobId: jobId,
+        });
       }
-    }
-
-    const durable = await getRenderJob({ id: jobId, briefId, userId: auth.userId }).catch(() => null);
-    if (durable) {
-      if (durable.status === "done" && durable.outputUrl) {
-        await saveBriefRender(briefId, { status: "done", url: durable.outputUrl }).catch(() => {});
-        return NextResponse.json({ status: "done", url: durable.outputUrl, progress: 100 });
-      }
-      if (durable.status === "error") {
-        await saveBriefRender(briefId, { status: "error" }).catch(() => {});
-        return NextResponse.json({ status: "error", error: durable.error, progress: durable.progress });
-      }
-      return NextResponse.json({
-        status: durable.phase || durable.status,
-        progress: durable.progress,
-      });
+      return NextResponse.json(durableResult);
     }
 
     const res = await fetch(`${RENDER_SERVICE_URL}/render/${encodeURIComponent(jobId)}`, {
@@ -200,16 +207,23 @@ export async function GET(req: Request) {
         try {
           persistedUrl = await persistRender(briefId, sourceUrl);
         } catch (e) {
-          console.error("persistRender failed, falling back to Zo URL:", e);
+          console.error("persistRender failed, falling back to worker URL:", e);
           persistedUrl = sourceUrl;
         }
-        await saveBriefRender(briefId, { status: "done", url: persistedUrl }).catch(() => {});
+        const finalized = await saveBriefRender(briefId, {
+          status: "done",
+          url: persistedUrl,
+          expectedJobId: jobId,
+        });
+        if (!finalized) {
+          return NextResponse.json({ status: "superseded" }, { status: 409 });
+        }
       }
       return NextResponse.json({ status: "done", url: persistedUrl ?? sourceUrl });
     }
 
     if (briefId) {
-      await saveBriefRender(briefId, { status }).catch(() => {});
+      await saveBriefRender(briefId, { status, expectedJobId: jobId }).catch(() => {});
     }
     return NextResponse.json({ status, error: data?.error });
   } catch (err) {
@@ -238,18 +252,22 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "Not your brief." }, { status: 403 });
   }
 
-  // Best-effort remove the persisted file; the brief-state wipe is the source of truth.
-  try {
-    const supabase = getSupabaseAdmin();
-    await supabase.storage.from(FOOTAGE_BUCKET).remove([`renders/${briefId}.mp4`]);
-  } catch (e) {
-    console.error("failed to remove stored render (continuing):", e);
+  const existing = await getBriefById(briefId);
+  const storagePaths = [`renders/${briefId}.mp4`];
+  if (existing?.renderJobId) storagePaths.push(`renders/${briefId}/${existing.renderJobId}.mp4`);
+  const supabase = getSupabaseAdmin();
+  const { error: removeError } = await supabase.storage.from(FOOTAGE_BUCKET).remove(storagePaths);
+  if (removeError) {
+    return NextResponse.json(
+      { error: `Could not delete the stored video: ${removeError.message}` },
+      { status: 502 },
+    );
   }
   await clearBriefRender(briefId);
   return NextResponse.json({ ok: true });
 }
 
-/** Download the finished MP4 from the Zo box and re-upload to our Storage. */
+/** Download the finished MP4 from the render worker and re-upload to Storage. */
 async function persistRender(briefId: string, sourceUrl: string): Promise<string> {
   const res = await fetch(sourceUrl);
   if (!res.ok) throw new Error(`download edited.mp4 failed (${res.status})`);

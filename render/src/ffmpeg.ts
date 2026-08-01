@@ -1,9 +1,23 @@
 import { spawn } from "node:child_process";
+import { copyFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { KeepSegment } from "./types.js";
 
 const FFMPEG = process.env.FFMPEG_PATH || "ffmpeg";
 const FFPROBE = process.env.FFPROBE_PATH || "ffprobe";
+
+// Convert straight to the 10-bit alpha format the encoder wants, then drawbox.
+//
+// Do NOT route this through `format=rgba` first. HyperFrames emits ProRes 4444 as yuva444p12le, and
+// the 12-bit -> rgba -> yuva444p10le chain SEGFAULTS ffmpeg 5.1 (verified in the production image:
+// exit 139 / SIGSEGV, reproducible on any scene mov). Because this mask only runs for `overlay`-mode
+// scenes, that crash silently killed EVERY overlay scene — they fell back to base while full-frame
+// scenes rendered fine, which looked like "the animations are half missing".
+// Staying in yuva444p10le also avoids an 8-bit rgba round-trip that was quietly throwing away
+// alpha precision.
+export const SPEAKER_SAFE_ALPHA_FILTER =
+  "format=yuva444p10le," +
+  "drawbox=x=0:y=1450:w=iw:h=470:color=black@0:t=fill:replace=1";
 
 function run(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -29,6 +43,29 @@ function runCapture(cmd: string, args: string[]): Promise<string> {
       code === 0 ? resolve(stdout) : reject(new Error(`${cmd} exited ${code}:\n${stderr.slice(-1200)}`)),
     );
   });
+}
+
+/**
+ * Clear authored pixels only over the burned-in caption band. Face overlap remains visible:
+ * readable essential wording takes priority, and vision QA judges the resulting composition.
+ */
+export async function maskOverlaySafeZones(overlayPath: string): Promise<void> {
+  const maskedPath = `${overlayPath}.speaker-safe.mov`;
+  try {
+    await run(FFMPEG, [
+      "-y",
+      "-i", overlayPath,
+      "-vf", SPEAKER_SAFE_ALPHA_FILTER,
+      "-an",
+      "-c:v", "prores_ks",
+      "-profile:v", "4",
+      "-pix_fmt", "yuva444p10le",
+      maskedPath,
+    ]);
+    await copyFile(maskedPath, overlayPath);
+  } finally {
+    await rm(maskedPath, { force: true });
+  }
 }
 
 /** Extract mono 16kHz mp3 audio — small, fast, well under Whisper's 25MB limit. */
@@ -166,6 +203,31 @@ export async function compositeOverlay(
   ]);
 }
 
+/** Composite a time slice from a full-length transparent overlay onto a reset-to-zero base window. */
+export async function compositeOverlaySlice(
+  basePath: string,
+  overlayPath: string,
+  startMs: number,
+  durationMs: number,
+  outPath: string,
+): Promise<void> {
+  await run(FFMPEG, [
+    "-y",
+    "-i", basePath,
+    "-ss", (startMs / 1000).toFixed(3),
+    "-t", (durationMs / 1000).toFixed(3),
+    "-i", overlayPath,
+    "-filter_complex", "[0:v][1:v]overlay=format=auto:eof_action=pass[v]",
+    "-map", "[v]",
+    "-map", "0:a?",
+    "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
+    "-r", "30", "-fps_mode", "cfr",
+    "-c:a", "aac", "-b:a", "192k",
+    "-movflags", "+faststart",
+    outPath,
+  ]);
+}
+
 /**
  * Extract still PNG frames at the given timestamps (seconds). Used by the premium vision-QA
  * pass — a handful of frames per scene is enough for GPT-4o to judge it. One ffmpeg call per
@@ -200,7 +262,12 @@ export async function extractFrames(
  */
 export async function overlayScenesAtOffsets(
   basePath: string,
-  scenes: { movPath: string; startMs: number; endMs: number }[],
+  scenes: {
+    movPath: string;
+    startMs: number;
+    endMs: number;
+    backgroundTreatment?: "footage" | "black";
+  }[],
   outPath: string,
 ): Promise<void> {
   if (scenes.length === 0) throw new Error("overlayScenesAtOffsets: no scenes");
@@ -215,11 +282,19 @@ export async function overlayScenesAtOffsets(
     const endS = (s.endMs / 1000).toFixed(3);
     const inIdx = i + 1;
     parts.push(`[${inIdx}:v]setpts=PTS-STARTPTS+${startS}/TB[m${i}]`);
+    let sceneBase = prev;
+    if (s.backgroundTreatment === "black") {
+      const blackLabel = `[b${i}]`;
+      parts.push(
+        `${prev}drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill:enable='between(t,${startS},${endS})'${blackLabel}`,
+      );
+      sceneBase = blackLabel;
+    }
     const outLbl = i === scenes.length - 1 ? "[v]" : `[v${i}]`;
     parts.push(
-      `${prev}[m${i}]overlay=format=auto:eof_action=pass:enable='between(t,${startS},${endS})'${outLbl}`,
+      `${sceneBase}[m${i}]overlay=format=auto:eof_action=pass:enable='between(t,${startS},${endS})'${outLbl}`,
     );
-    prev = `[v${i}]`;
+    prev = outLbl;
   });
 
   await run(FFMPEG, [

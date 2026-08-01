@@ -277,6 +277,8 @@ export interface Profile {
   onboardingState: OnboardingState;
   onboardingVersion: number;
   onboardingCompletedAt: string | null;
+  /** GitHub App installation id, or null when private repos aren't connected. Not a secret. */
+  githubInstallationId: number | null;
   createdAt: string;
 }
 
@@ -288,6 +290,7 @@ interface ProfileRow {
   onboarding_state?: OnboardingState;
   onboarding_version?: number;
   onboarding_completed_at?: string | null;
+  github_installation_id?: number | string | null;
   created_at: string;
 }
 
@@ -300,6 +303,9 @@ function mapProfile(r: ProfileRow): Profile {
     onboardingState: r.onboarding_state ?? "not_started",
     onboardingVersion: r.onboarding_version ?? 1,
     onboardingCompletedAt: r.onboarding_completed_at ?? null,
+    // bigint can arrive as a string from postgrest; normalise to number | null.
+    githubInstallationId:
+      r.github_installation_id == null ? null : Number(r.github_installation_id),
     createdAt: r.created_at,
   };
 }
@@ -328,6 +334,26 @@ export async function updateProfileGithub(
     .update({ github_username: githubUsername })
     .eq("user_id", userId);
   if (error) throw new Error(`updateProfileGithub failed: ${error.message}`);
+}
+
+/**
+ * Save (or clear, with null) the user's GitHub App installation id.
+ *
+ * Only the id is stored. It is not a credential, access tokens are minted per request from the app
+ * private key and never persisted, so a database leak cannot be replayed against anyone's private
+ * repositories. See `src/lib/github-app.ts`.
+ */
+export async function setProfileGithubInstallation(
+  userId: string,
+  installationId: number | null,
+): Promise<void> {
+  if (!realUserId(userId)) return;
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ github_installation_id: installationId })
+    .eq("user_id", userId);
+  if (error) throw new Error(`setProfileGithubInstallation failed: ${error.message}`);
 }
 
 export async function updateProfileOnboarding(
@@ -985,7 +1011,7 @@ export async function getBriefById(briefId: string): Promise<Brief | null> {
 
 /**
  * Ownership guard for service-role routes. The API routes use the service-role client,
- * which BYPASSES row-level security, so a briefId alone is not enough — we must confirm
+ * which BYPASSES row-level security, so a briefId alone is not enough, we must confirm
  * the caller owns the brief or any approved user could touch anyone's footage/renders.
  * Dev (auth off, DEV_USER_ID) is a single identity and always passes.
  */
@@ -1005,7 +1031,7 @@ export async function assertBriefOwnedBy(briefId: string, userId: string): Promi
 /**
  * Ownership guard for project-scoped service-role routes. Like assertBriefOwnedBy,
  * this exists because the API uses the service-role client (which BYPASSES RLS), so a
- * projectId from the request is not proof of ownership — without this any approved user
+ * projectId from the request is not proof of ownership, without this any approved user
  * could read/overwrite another user's project by supplying its id.
  * Dev (auth off, DEV_USER_ID) is a single identity and always passes.
  */
@@ -1025,16 +1051,26 @@ export async function assertProjectOwnedBy(projectId: string, userId: string): P
 /** Persist the render state (job id / status / finished MP4 URL) on a brief. */
 export async function saveBriefRender(
   briefId: string,
-  patch: { jobId?: string; status?: string; url?: string },
-): Promise<void> {
+  patch: {
+    jobId?: string;
+    status?: string;
+    url?: string | null;
+    expectedJobId?: string;
+  },
+): Promise<boolean> {
   const supabase = getSupabaseAdmin();
   const row: Record<string, unknown> = {};
   if (patch.jobId !== undefined) row.render_job_id = patch.jobId;
   if (patch.status !== undefined) row.render_status = patch.status;
   if (patch.url !== undefined) row.render_url = patch.url;
-  if (Object.keys(row).length === 0) return;
-  const { error } = await supabase.from("briefs").update(row).eq("id", briefId);
+  if (Object.keys(row).length === 0) return true;
+  let query = supabase.from("briefs").update(row).eq("id", briefId);
+  if (patch.expectedJobId !== undefined) {
+    query = query.eq("render_job_id", patch.expectedJobId);
+  }
+  const { data, error } = await query.select("id");
   if (error) throw new Error(`saveBriefRender failed: ${error.message}`);
+  return (data?.length ?? 0) > 0;
 }
 
 export interface DurableRenderJob {
@@ -1053,14 +1089,19 @@ export async function createRenderJob(args: {
   input: Record<string, unknown>;
 }): Promise<void> {
   const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
   const { error } = await supabase.from("render_jobs").insert({
     id: args.id,
     brief_id: args.briefId,
     user_id: args.userId,
-    status: "queued",
+    // Reserve the job for the worker selected by this request. Recovery workers may only
+    // reclaim it after the lease becomes stale, preventing two workers from rendering it.
+    status: "processing",
     phase: "queued",
     progress: 0,
     input: args.input,
+    started_at: now,
+    locked_at: now,
   });
   if (error) throw new Error(`createRenderJob failed: ${error.message}`);
 }

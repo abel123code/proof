@@ -1,5 +1,5 @@
 // One-off setup helper: allowlist an email and (if possible) make them admin.
-// Usage: node scripts/setup-user.mjs binghengabellee@gmail.com
+// Usage: node scripts/setup-user.mjs builder@example.com
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 

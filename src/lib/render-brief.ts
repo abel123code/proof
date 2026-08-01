@@ -1,8 +1,8 @@
 import type { BriefScene } from "@/lib/types";
 
 /**
- * The brief shape the Zo render service consumes (see render/src/types.ts on the
- * feat/zo-remotion-render branch). Kept local to avoid coupling to that package.
+ * The brief shape the standalone render worker consumes. Kept local to avoid
+ * coupling the Next.js app to the worker package.
  */
 export interface RenderBrief {
   /** Full script the user read; load-bearing for the service's script-guided cut. */

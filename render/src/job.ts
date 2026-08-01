@@ -3,13 +3,13 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
-import type { JobState, RenderBrief, RenderJobInput, RenderProps } from "./types.js";
+import type { JobState, RenderBrief, RenderJobInput, RenderProps, SceneReport } from "./types.js";
 import { getCaptureWithScript, createTranscript, createRender, updateRender } from "./db.js";
 import { extractAudio, buildCutVideo, compositeOverlay, probeVideo, concatClips } from "./ffmpeg.js";
 import { transcribeWords, scriptToVocabPrompt } from "./transcribe.js";
 import { planCut } from "./cut.js";
 import { remap } from "./remap.js";
-import { buildKeywordCues, buildOverlayCues } from "./cues.js";
+import { buildKeywordCuesForMode, buildOverlayCuesForMode } from "./cues.js";
 import { cleanTerms } from "./terms.js";
 import {
   anchorVisualCuesToTranscript,
@@ -19,6 +19,7 @@ import {
 import { planBriefVisuals } from "./visual-planner.js";
 import { renderOverlay, RENDER_ROOT } from "./render.js";
 import { runPremium } from "./premium/index.js";
+import { premiumFallbackReport } from "./premium/fallback.js";
 import { FOOTAGE_BUCKET, getSupabaseAdmin, RENDER_BUCKET } from "./supabase.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -150,11 +151,13 @@ export async function runJob(
       editMode === "brief-driven"
         ? applyCaptionCopyAndEmphasis(cleanedWords, brief)
         : cleanedWords;
-    const keywordCues = buildKeywordCues(captionWords, brief.keywordFlags);
-    const overlayCues =
-      editMode === "brief-driven"
-        ? []
-        : buildOverlayCues(captionWords, brief.overlays ?? [], r.totalMs);
+    const keywordCues = buildKeywordCuesForMode(captionWords, brief.keywordFlags, editMode);
+    const overlayCues = buildOverlayCuesForMode(
+      captionWords,
+      brief.overlays ?? [],
+      r.totalMs,
+      editMode,
+    );
     const sceneWindows = buildSceneWindows(
       brief.scenes ?? [],
       sourceDurationsMs,
@@ -195,13 +198,15 @@ export async function runJob(
     const captionedAbs = join(workDir, "captioned.mp4");
     await compositeOverlay(baseTmpPath, overlayAbs, captionedAbs);
 
-    // 8b. Premium tier: layer bespoke GPT-authored scenes (storyboard -> HyperFrames HTML ->
-    //     vision-QA loop) on top of the captioned base. Any failure or timeout falls back to
-    //     the fixed-component output, so the user always gets a video.
+    // 8b. Premium tier: creator visuals composite onto the CLEAN cut first; runPremium burns the
+    //     Remotion caption layer last so opaque full-frame explanations cannot hide captions.
+    //     Any failure still falls back to captioned.mp4.
+    let sceneReports: SceneReport[] = []; // auditable per-scene QA verdicts, surfaced to the studio
     if (editMode === "generated-experimental") {
       try {
         const pr = await runPremium({
-          basePath: captionedAbs,
+          basePath: baseTmpPath,
+          captionOverlayPath: overlayAbs,
           outPath: outAbs,
           brief,
           words: captionWords,
@@ -209,11 +214,23 @@ export async function runJob(
           workDir,
           log: (m) => console.log(`[premium ${jobId}] ${m}`),
         });
-        console.log(`[premium ${jobId}] composited ${pr.sceneCount} bespoke scene(s)`);
-      } catch (e) {
-        console.warn(
-          `[premium ${jobId}] failed, using fixed-component render: ${(e as Error).message}`,
+        sceneReports = pr.reports;
+        console.log(
+          `[premium ${jobId}] composited ${pr.sceneCount} bespoke scene(s); ` +
+            `${pr.reports.filter((r) => r.verdict === "flagged").length} flagged`,
         );
+      } catch (e) {
+        // The whole bespoke-scene tier fell back to the caption-only base. This used to be a silent
+        // console.warn — the job still shipped "done" and nobody could tell a premium render from the
+        // old base (the "why is my output the old one?" report). Make it LOUD and record the reason as
+        // an auditable report so it persists on the brief and shows in the studio.
+        const reason = (e as Error).message;
+        console.error(
+          `\n[premium ${jobId}] ‼ BESPOKE SCENES FELL BACK to the captioned base.\n` +
+            `[premium ${jobId}]   reason: ${reason}\n` +
+            `[premium ${jobId}]   the output is the caption-only base video, NOT the premium render.\n`,
+        );
+        sceneReports = [premiumFallbackReport(reason)];
         await copyFile(captionedAbs, outAbs);
       }
     } else {
@@ -234,17 +251,22 @@ export async function runJob(
     if (input.briefId) {
       const supabase = getSupabaseAdmin();
       const fileBuf = await readFile(outAbs);
-      const storagePath = `renders/${input.briefId}.mp4`;
+      if (!input.jobId) throw new Error("DB-backed render is missing its durable job id");
+      const storagePath = `renders/${input.briefId}/${input.jobId}.mp4`;
       const up = await supabase.storage
         .from(FOOTAGE_BUCKET)
         .upload(storagePath, fileBuf, { contentType: "video/mp4", upsert: true });
       if (up.error) throw new Error(`upload failed: ${up.error.message}`);
       const publicUrl = supabase.storage.from(FOOTAGE_BUCKET).getPublicUrl(storagePath).data.publicUrl;
       mp4Url = `${publicUrl}?v=${Date.now()}`;
-      await supabase
+      const reportUpdate = await supabase
         .from("briefs")
-        .update({ render_status: "done", render_url: mp4Url })
-        .eq("id", input.briefId);
+        .update({ scene_reports: sceneReports })
+        .eq("id", input.briefId)
+        .eq("render_job_id", input.jobId);
+      if (reportUpdate.error) {
+        throw new Error(`scene report persistence failed: ${reportUpdate.error.message}`);
+      }
     } else if (renderId) {
       try {
         const supabase = getSupabaseAdmin();
@@ -262,7 +284,6 @@ export async function runJob(
       }
     }
 
-    onStatus("done", { mp4Url, renderId });
     return {
       mp4Url,
       localPath: outAbs,

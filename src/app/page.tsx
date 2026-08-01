@@ -1,24 +1,31 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 import { ProofMark } from "@/components/proof-mark";
+import { LandingDemo } from "@/components/landing-demo";
+import { Reveal } from "@/components/reveal";
 import Link from "next/link";
+
+/** Inline `--stagger` custom property for the entrance/reveal animations. */
+const stagger = (ms: number): CSSProperties => ({ "--stagger": `${ms}ms` } as CSSProperties);
 
 export const metadata: Metadata = {
   // Brand comes from the root layout's "%s · proof" template, so don't repeat it here.
-  title: "We turn boring github repos into viral tiktok videos.",
+  title: "Turn your GitHub work into a video people watch",
   description:
-    "Connect a repo. Get a video you'd actually post. Proof reverse-engineers what already works in your niche and turns your shipped project into recruiter-facing UGC.",
+    "Proof uses OpenAI GPT-5.6, Whisper, HyperFrames, and vision QA to research, script, cut, animate, and review product videos for founders.",
 };
 
 const teleprompterTags = ["teleprompter", "auto-edit", "captions + overlays"];
 
 const pipeline = [
   { label: "repo" },
-  { label: "Exa", key: true },
+  { label: "Luna", key: true },
+  { label: "Sol + web", key: true },
   { label: "brief" },
-  { label: "script" },
-  { label: "teleprompter" },
-  { label: "cut" },
-  { label: "Zo", key: true },
+  { label: "record" },
+  { label: "Whisper", key: true },
+  { label: "HyperFrames" },
+  { label: "Sol vision", key: true },
   { label: "mp4" },
 ];
 
@@ -43,13 +50,13 @@ export default function Landing() {
               How it works
             </a>
             <a href="#compare" className="transition-colors hover:text-foreground">
-              Proof vs. slop
+              Side by side
             </a>
           </nav>
 
           <div className="flex items-center gap-2">
             <Link
-              href="/connect"
+              href="#demo"
               className="hidden rounded-full px-4 py-2 font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
             >
               Demo
@@ -67,20 +74,26 @@ export default function Landing() {
       <main>
         {/* ---------- Hero ---------- */}
         <section className="relative overflow-hidden">
-          <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 sm:px-8 md:grid-cols-[1.15fr_0.85fr] md:py-28 lg:py-32">
+          <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 sm:px-8 md:py-28 lg:grid-cols-[0.92fr_1.08fr] lg:py-32">
             <div>
-              <h1 className="font-display text-5xl font-medium leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl">
-                We turn <span className="text-primary">boring</span> github
-                repos into <span className="text-primary">viral</span> tiktok
-                videos.
+              <p className="enter mb-5 font-mono text-xs uppercase tracking-[0.18em] text-primary" style={stagger(0)}>
+                OpenAI Build Week · GPT-5.6 + Codex
+              </p>
+              <h1 className="enter font-display text-5xl font-medium leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl" style={stagger(90)}>
+                Turn your GitHub work into a video people
+                <span className="text-primary"> watch.</span>
               </h1>
 
-              <p className="mt-7 max-w-md text-lg leading-relaxed text-muted-foreground">
-                Connect a repo. Get a video you&apos;d actually post. You film —
-                Proof does the rest.
+              <p className="enter mt-7 max-w-md text-lg leading-relaxed text-muted-foreground" style={stagger(190)}>
+                <span className="font-medium text-foreground">
+                  Writing code is cheap now. Distribution is the moat.
+                </span>{" "}
+                Proof researches the angle, writes the brief, gives you a
+                teleprompter, cuts the take, and authors the graphics. You choose
+                the story and record it.
               </p>
 
-              <div className="mt-9 flex flex-wrap items-center gap-4">
+              <div className="enter mt-9 flex flex-wrap items-center gap-4" style={stagger(280)}>
                 <Link
                   href="/connect"
                   className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 font-mono text-sm font-medium text-primary-foreground transition-all hover:translate-x-0.5 hover:brightness-105"
@@ -88,28 +101,27 @@ export default function Landing() {
                   connect your repo <span aria-hidden>→</span>
                 </Link>
                 <Link
-                  href="/login"
+                  href="#demo"
                   className="inline-flex items-center gap-2 font-mono text-sm text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
                 >
-                  log in
+                  or try it yourself, no account
                 </Link>
               </div>
 
-              <p className="mt-10 font-mono text-sm text-muted-foreground">
-                recruiters spend{" "}
-                <span className="font-medium text-primary">11 seconds</span> on
-                your github.
+              <p className="enter mt-10 font-mono text-sm text-muted-foreground" style={stagger(360)}>
+                your repo proves you built it.
+                <span className="font-medium text-primary"> nobody outside GitHub reads it.</span>
+              </p>
+
+              {/* Beta users asked this unprompted, twice. Say it before they have to wonder. */}
+              <p className="enter mt-4 max-w-md font-mono text-[11px] leading-relaxed text-muted-foreground/70" style={stagger(420)}>
+                Proof reads your README, file names and language stats. It never reads your source
+                code, and the README is used to write your script, not stored.
               </p>
             </div>
 
-            <div className="relative">
-              <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[2rem] bg-primary/5 blur-2xl" />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/hero.png"
-                alt="A humanoid robot balancing TikTok and Instagram app icons"
-                className="mx-auto w-full max-w-md rounded-3xl"
-              />
+            <div className="enter" style={stagger(220)}>
+              <LandingDemo />
             </div>
           </div>
         </section>
@@ -119,10 +131,12 @@ export default function Landing() {
           id="problem"
           className="border-t border-border/60 bg-card/40"
         >
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
+          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
             <p className="kicker">the problem</p>
             <h2 className="mt-5 max-w-[16ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
-              Good code <span className="text-primary">isn&apos;t enough.</span>
+              Projects don&apos;t die because they&apos;re bad.
+              <br />
+              <span className="text-primary">They die because nobody sees them.</span>
             </h2>
 
             <ul className="mt-10 grid max-w-2xl gap-5">
@@ -133,7 +147,7 @@ export default function Landing() {
                   isn&apos;t.
                 </>,
                 <>
-                  Traction comes from marketing — not from the code being good.
+                  Traction comes from marketing, not from the code being good.
                 </>,
                 <>
                   And marketing is the one thing developers{" "}
@@ -152,15 +166,43 @@ export default function Landing() {
             </ul>
 
             <p className="mt-10 max-w-[24ch] font-display text-2xl font-medium leading-tight tracking-tight sm:text-3xl">
-              So the best work goes unseen —{" "}
+              So the best work goes unseen,{" "}
               <span className="text-primary">and no one ever hears about you.</span>
             </p>
-          </div>
+          </Reveal>
+        </section>
+
+        {/* ---------- Why now (the insight beat) ---------- */}
+        <section id="why-now" className="border-t border-border/60">
+          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
+            <p className="kicker">why now</p>
+            <h2 className="mt-5 max-w-[20ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
+              Everyone can build now.
+              <br />
+              <span className="text-primary">Almost nobody can get seen.</span>
+            </h2>
+
+            <div className="mt-10 grid max-w-3xl gap-6 sm:grid-cols-2">
+              <p className="text-lg leading-relaxed text-muted-foreground">
+                AI collapsed the cost of shipping. A weekend gets you a working product, so a working
+                product stopped being the thing that sets you apart.
+              </p>
+              <p className="text-lg leading-relaxed text-muted-foreground">
+                What did not get cheaper is attention. The bottleneck moved, and it moved to the one
+                job most developers will not do for themselves.
+              </p>
+            </div>
+
+            <p className="mt-10 max-w-[26ch] font-display text-2xl font-medium leading-tight tracking-tight sm:text-3xl">
+              Writing code is cheap now.{" "}
+              <span className="text-primary">Distribution is the moat.</span>
+            </p>
+          </Reveal>
         </section>
 
         {/* ---------- What it is ---------- */}
         <section className="border-t border-border/60">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
+          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
             <p className="kicker">what it is</p>
             <h2 className="mt-5 font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
               Connect a repo.
@@ -180,33 +222,32 @@ export default function Landing() {
                 </span>
               ))}
             </div>
-          </div>
+          </Reveal>
         </section>
 
         {/* ---------- Side by side ---------- */}
         <section id="compare" className="border-t border-border/60 bg-card/40">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
+          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
             <p className="kicker">side by side</p>
             <h2 className="mt-5 font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
-              Same project. <span className="text-primary">One is slop.</span>
+              Same project. <span className="text-primary">One gets watched.</span>
             </h2>
 
             <div className="mt-10 grid gap-5 md:grid-cols-2">
               {/* Bad */}
               <article className="rounded-2xl border border-border bg-card p-7">
                 <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  generic ai
+                  how devs write it
                 </p>
                 <p className="mt-4 font-display text-xl leading-snug text-muted-foreground">
-                  &ldquo;Hi everyone! Today I want to share a project I&apos;ve
-                  been working on called Proof, an AI-powered platform that helps
-                  developers…&rdquo;
+                  &ldquo;I built a CLI that parses OpenAPI specs and generates
+                  typed clients with full runtime validation.&rdquo;
                 </p>
                 <ul className="mt-6 grid gap-2.5 font-mono text-sm text-muted-foreground">
                   {[
-                    "opens on a throat-clear",
-                    '"platform," "powerful," "engaging"',
-                    "recruiter already scrolled",
+                    "technically correct, zero reason to care",
+                    "opens on the what, never the why",
+                    "scrolled past in half a second",
                   ].map((item) => (
                     <li key={item} className="relative pl-6">
                       <span className="absolute left-0 font-bold text-primary/70">
@@ -221,18 +262,17 @@ export default function Landing() {
               {/* Good */}
               <article className="rounded-2xl border border-primary/40 bg-background p-7 shadow-sm">
                 <p className="font-mono text-xs uppercase tracking-[0.2em] text-primary">
-                  proof
+                  what proof writes
                 </p>
                 <p className="mt-4 font-display text-xl leading-snug text-foreground">
-                  &ldquo;I spent the weekend making my AI app feel less like a
-                  vibe-coded demo and more like an actual product. here&apos;s
-                  the part that took three rewrites.&rdquo;
+                  &ldquo;I got tired of hand-writing the same API client every
+                  time the backend changed. So I made it generate itself.&rdquo;
                 </p>
                 <ul className="mt-6 grid gap-2.5 font-mono text-sm text-muted-foreground">
                   {[
-                    "opens on the real decision",
-                    "names the mechanic, no filler",
-                    "keywords flagged for overlays",
+                    "opens on the problem you actually had",
+                    "one idea, said like a person",
+                    "keywords flagged for on-screen overlays",
                   ].map((item) => (
                     <li key={item} className="relative pl-6">
                       <span className="absolute left-0 font-bold text-primary">
@@ -244,12 +284,12 @@ export default function Landing() {
                 </ul>
               </article>
             </div>
-          </div>
+          </Reveal>
         </section>
 
         {/* ---------- How it works ---------- */}
         <section id="how" className="border-t border-border/60">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
+          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
             <p className="kicker">how it works</p>
             <h2 className="mt-5 font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
               Repo in. <span className="text-primary">MP4 out.</span>
@@ -276,28 +316,42 @@ export default function Landing() {
               ))}
             </div>
 
-            <div className="mt-10 grid gap-8 md:max-w-3xl md:grid-cols-2">
+            <div className="mt-10 grid gap-8 md:grid-cols-3">
               <div className="border-l-2 border-primary pl-4">
-                <p className="font-mono text-base font-bold text-primary">Exa</p>
+                <p className="font-mono text-base font-bold text-primary">
+                  OpenAI GPT-5.6
+                </p>
                 <p className="mt-1.5 text-base leading-relaxed text-muted-foreground">
-                  finds what&apos;s working in your niche — so the script is
-                  grounded, not generic.
+                  Luna handles structured extraction and drafting. Sol researches
+                  current demand, ranks angles, authors scenes, and reviews the result.
                 </p>
               </div>
               <div className="border-l-2 border-primary pl-4">
-                <p className="font-mono text-base font-bold text-primary">Zo</p>
+                <p className="font-mono text-base font-bold text-primary">
+                  Whisper + FFmpeg
+                </p>
                 <p className="mt-1.5 text-base leading-relaxed text-muted-foreground">
-                  renders on a real machine — the full Linux workload serverless
-                  can&apos;t hold.
+                  Word timestamps drive dead-space removal, cuts, captions, and
+                  scene anchors without chopping speech mid-word.
+                </p>
+              </div>
+              <div className="border-l-2 border-primary pl-4">
+                <p className="font-mono text-base font-bold text-primary">
+                  HyperFrames + Sol Vision
+                </p>
+                <p className="mt-1.5 text-base leading-relaxed text-muted-foreground">
+                  Bespoke motion graphics are rendered, composited over the real
+                  footage, inspected across five frames, and repaired or omitted.
                 </p>
               </div>
             </div>
-          </div>
+
+          </Reveal>
         </section>
 
         {/* ---------- Why us ---------- */}
         <section className="border-t border-border/60 bg-card/40">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
+          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
             <p className="kicker">why us</p>
             <h2 className="mt-5 max-w-[20ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
               We&apos;re devs who never market our own work.
@@ -308,14 +362,15 @@ export default function Landing() {
             <div className="mt-8 flex flex-wrap items-center gap-x-12 gap-y-3 font-mono text-base">
               <span className="text-primary">Abel</span>
               <span className="text-primary">Abhishek</span>
-              <span className="text-muted-foreground">built in 12 hours</span>
+              <span className="text-muted-foreground">built with Codex</span>
+              <span className="text-muted-foreground">powered by OpenAI</span>
             </div>
-          </div>
+          </Reveal>
         </section>
 
         {/* ---------- Final CTA ---------- */}
         <section className="border-t border-border/60">
-          <div className="mx-auto max-w-6xl px-5 py-24 text-center sm:px-8 md:py-32">
+          <Reveal className="mx-auto max-w-6xl px-5 py-24 text-center sm:px-8 md:py-32">
             <p className="kicker justify-center">demo</p>
             <h2 className="mx-auto mt-5 max-w-[18ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-6xl">
               The best version of you.{" "}
@@ -335,7 +390,7 @@ export default function Landing() {
                 log in
               </Link>
             </div>
-          </div>
+          </Reveal>
         </section>
       </main>
 

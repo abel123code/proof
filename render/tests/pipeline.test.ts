@@ -1,9 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildKeywordCues, buildOverlayCues } from "../src/cues.js";
+import {
+  buildKeywordCues,
+  buildKeywordCuesForMode,
+  buildOverlayCues,
+  buildOverlayCuesForMode,
+} from "../src/cues.js";
 import { cleanTerms } from "../src/terms.js";
 import { remap } from "../src/remap.js";
+import { enforceWorkerEditMode, resolveWorkerEditMode } from "../src/edit-mode.js";
 import type { KeepSegment, WhisperWord, Word } from "../src/types.js";
 
 const w = (text: string, startMs: number, endMs: number): Word => ({ text, startMs, endMs });
@@ -41,6 +47,14 @@ test("keyword cue does not match a partial prefix of a longer word", () => {
   assert.equal(buildKeywordCues(words, [{ phrase: "ai" }]).length, 0);
 });
 
+test("premium mode removes fixed keyword chips before vision QA", () => {
+  const words = [w("eDimension", 0, 500)];
+  const flags = [{ phrase: "eDimension" }];
+  assert.deepEqual(buildKeywordCuesForMode(words, flags, "generated-experimental"), []);
+  assert.equal(buildKeywordCuesForMode(words, flags, "brief-driven").length, 1);
+  assert.equal(buildKeywordCuesForMode(words, flags, "classic").length, 1);
+});
+
 test("overlay cue anchored to a merged keyword resolves", () => {
   const merged = cleanTerms([w("uses", 0, 300), w("next", 300, 600), w("js", 600, 900)]);
   const cues = buildOverlayCues(
@@ -50,6 +64,32 @@ test("overlay cue anchored to a merged keyword resolves", () => {
   );
   assert.equal(cues.length, 1);
   assert.equal(cues[0].startMs, 300);
+});
+
+test("premium mode removes fixed text cards before vision QA", () => {
+  const words = [w("ship", 0, 300)];
+  const overlays = [
+    { type: "text-card" as const, content: "SHIP IT", anchor: { kind: "ratio" as const, at: 0.5 } },
+  ];
+  assert.deepEqual(buildOverlayCuesForMode(words, overlays, 1000, "generated-experimental"), []);
+  assert.deepEqual(buildOverlayCuesForMode(words, overlays, 1000, "brief-driven"), []);
+  assert.equal(buildOverlayCuesForMode(words, overlays, 1000, "classic").length, 1);
+});
+
+test("the worker owns the render mode and rejects invalid configuration", () => {
+  assert.equal(resolveWorkerEditMode(undefined), "generated-experimental");
+  assert.equal(resolveWorkerEditMode("classic"), "classic");
+  assert.equal(resolveWorkerEditMode("brief-driven"), "brief-driven");
+  assert.equal(resolveWorkerEditMode("generated-experimental"), "generated-experimental");
+  assert.throws(() => resolveWorkerEditMode("client-choice"), /Invalid RENDER_EDIT_MODE/);
+  const callerInput = {
+    captureId: "capture-1",
+    editMode: "classic" as const,
+  };
+  assert.equal(
+    enforceWorkerEditMode(callerInput, "generated-experimental").editMode,
+    "generated-experimental",
+  );
 });
 
 test("remap gives a zero-duration whisper word a visible caption window", () => {

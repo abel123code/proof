@@ -1,36 +1,56 @@
-# proof — Roadmap / Current State
+# Proof roadmap
 
-**Where are we now** (the doc `/compacting-ready` audits). For **why** decisions were made → [DECISIONS.md](DECISIONS.md). For **what proof is** → [README.md](README.md).
+Last updated: 2026-07-30.
 
-_Last updated: 2026-07-10._
+## Shipped foundation
 
-## One-liner
-Point proof at your GitHub repo. It studies what's working in your niche, writes a film-ready script, you read it off a teleprompter, and it edits the finished video. Built at 'Sup hackathon #6 (Build2026) by Abhishek Vulla + Abel Lee, placed 2nd.
+Proof already runs one product path from repository analysis to a final vertical MP4:
 
-## Status: prepping for the SUTD hackathon demo
-Plan: give students free access (10k+ OpenAI credits), 1000 credits/new user, waitlist for the first 50.
+- GPT-5.6 Luna extracts repository proof and drafts structured briefs
+- GPT-5.6 Sol researches current demand, ranks angles, authors scenes, and reviews rendered frames
+- Whisper word timestamps drive cutting, captions, and scene anchors
+- HyperFrames creates transparent creator-native scenes; FFmpeg places full-frame explanations over footage or hard-cuts them to black
+- FFmpeg composes footage, creator visuals, then captions last; every scene carries an auditable QA verdict
+- Supabase stores durable jobs, credits, progress, and final videos
+- Railway runs the resource-heavy rendering service
 
-## Render service (`render/`) — DEPLOYED & WORKING
-- Live on Railway: `https://proof-render-production.up.railway.app` (migrated off Zo).
-- Pipeline: recording → whisper-1 word-level transcribe → cut fillers/dead-space → ffmpeg concat → Remotion transparent overlay → ffmpeg composite → Supabase upload. `render/README.md` is authoritative.
-- Concurrency capped at 2 (measured; `RENDER_CONCURRENCY` env var) — see DECISIONS.md 2026-07-10.
-- Optional `RENDER_TOKEN` shared-secret auth on `/render`.
-- Decision locked: staying on **Remotion**, not switching to HyperFrames (they render the same frames; the quality lever is design + a QA loop, not the engine).
+The current verification baseline is recorded in `README.md` and `OPENAI_BUILD_WEEK.md`.
 
-## In flight
-- **PR [#1](https://github.com/abel123code/proof/pull/1)** (Abhishek): Railway deploy + cue-anchor/caption bug fixes + render concurrency gate. Awaiting Abel's review/merge.
-- **Abel:** auth, 1000-credit system, waitlist for first 50 (product/frontend; doesn't touch the render service).
+## Next quality bar
 
-## Next / TODO
-- [ ] Merge PR #1.
-- [ ] Set `RENDER_SERVICE_URL` + `RENDER_TOKEN` in the Next app's Vercel env (or renders 401 / hit localhost).
-- [ ] Update GitHub repo homepage to the live URL (needs repo admin — Abel).
-- [ ] (Before scale) transcription accuracy: pass `brief.script` as the whisper prompt, or swap to a better word-timestamp transcriber (Groq whisper-large-v3 / ElevenLabs Scribe). See memory `whisper-script-prompt`.
-- [ ] (Backlog) port a frame-extraction visual-QA loop into the Remotion pipeline (kills the manual eyeball-and-re-render grind).
-- [ ] (Backlog) `cut.ts` 650ms word-cap can clip a long word before a cut (latent; doesn't bite current content).
-- [ ] (Backlog) persist job state so a Railway redeploy doesn't lose in-flight renders.
+### 1. Brand-aware scene direction
 
-## Known limitations (accepted for now)
-- Render job state is in-memory: a redeploy/restart mid-render loses that job (client re-submits).
-- `render/tmp` + `out` are ephemeral; DB-backed jobs persist finals to Supabase Storage.
-- Demo video experiment (`render/tmp/`, gitignored) proved the HyperFrames-vs-Remotion question — kept out of the repo.
+Let a founder attach a repository or assets folder, then extract its visual language: real
+screenshots, logos, typography, colour, spacing, interface patterns, and recurring motifs. Carry
+that design system into every authored scene instead of asking the model to invent one from text.
+
+### 2. A stronger visual correction loop
+
+Turn QA findings into explicit composition changes, compare repaired frames against the rejected
+candidate, and measure whether the issue was actually fixed. Track acceptance rate, repair count,
+fallback rate, and the defects that recur across projects.
+
+### 3. Shot-aware composition
+
+Detect the subject and crop per clip, and normalise framing before scene authoring. Feed the
+detected speaker position to the author and replace the current fixed overlay-only safety mask with
+shot-aware geometry. Full-frame scenes intentionally do not use a speaker mask.
+
+### 4. Agent-authored scene systems (creator-native foundation shipped)
+
+The global editor now selects clean A-roll, one-object overlays, and full-frame explanatory beats,
+then shares palette, typography, spacing, motif, and transition grammar across every scene. Next:
+add a real shot library, stronger product-proof capture, and continuity-aware scene transitions.
+
+### 5. Resumable, observable rendering
+
+Checkpoint completed scenes, resume after transient failures, record author and QA latency, and
+surface the correction history in the product. Re-measure concurrency with full-length clips
+before widening access.
+
+## Product principle
+
+The model may propose a scene, but it never self-approves. Deterministic safety checks and an
+editorial vision review judge every rendered scene; QA is an auditable advisor, so a scene may ship
+*flagged* - its unresolved issues surfaced to the user - rather than being silently dropped. The
+human decides what to re-render.

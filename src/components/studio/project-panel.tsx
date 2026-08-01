@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,11 +31,26 @@ function timeAgo(iso: string | null): string {
   return months < 12 ? `${months}mo ago` : `${Math.floor(months / 12)}y ago`;
 }
 
+/** A picker row: a public repo, or a private one granted via the GitHub App installation. */
+type PickerRepo = PublicRepo & { isPrivate?: boolean };
+
+/** Whether private-repo support is deployed, and whether this user connected it. */
+interface GithubAppState {
+  available: boolean;
+  connected: boolean;
+  privateCount: number;
+  error: string | null;
+}
+
 export function ProjectPanel() {
   const [handle, setHandle] = useState<string | null>(null);
+  // Lets the post-install effect refresh the picker without depending on `handle` state.
+  const handleRef = useRef<string | null>(null);
   const [resolving, setResolving] = useState(true);
 
-  const [repos, setRepos] = useState<PublicRepo[]>([]);
+  const [repos, setRepos] = useState<PickerRepo[]>([]);
+  const [githubApp, setGithubApp] = useState<GithubAppState | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -45,9 +60,11 @@ export function ProjectPanel() {
   // instead of re-analyzing from scratch.
   const [analyzedUrls, setAnalyzedUrls] = useState<Set<string>>(new Set());
 
-  const loadRepos = useCallback(async (h: string) => {
+  // `force` bypasses the cache: right after connecting an installation the cached list is stale
+  // (it has no private repos), so the user would connect and see nothing change.
+  const loadRepos = useCallback(async (h: string, force = false) => {
     // Serve from cache instantly on revisits; only hit GitHub on a cold handle.
-    const cached = getCachedRepos(h);
+    const cached = force ? null : getCachedRepos(h);
     if (cached) {
       setRepos(cached);
       return;
@@ -57,8 +74,9 @@ export function ProjectPanel() {
       const res = await fetch(`/api/github/repos?username=${encodeURIComponent(h)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to load repos");
-      const list: PublicRepo[] = data.repos ?? [];
+      const list: PickerRepo[] = data.repos ?? [];
       setRepos(list);
+      setGithubApp(data.githubApp ?? null);
       setCachedRepos(h, list);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load repos");
@@ -87,13 +105,62 @@ export function ProjectPanel() {
     (async () => {
       const h = await resolveHandle();
       setHandle(h);
+      handleRef.current = h;
       setResolving(false);
       if (h) loadRepos(h);
     })();
     loadProjects();
   }, [loadRepos, loadProjects]);
 
-  const analyzeRepo = useCallback(async (repo: PublicRepo) => {
+  // GitHub sends the user here after an install. Two shapes arrive:
+  //  - ?github=connected|... : our own callback finished and is reporting the outcome
+  //  - ?installation_id=N    : the user installed straight from github.com/apps/<slug>, so GitHub
+  //    used the app's setup URL and our callback never ran. Forward it so the id is actually saved,
+  //    otherwise they have installed but Proof would show "not connected" forever.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const installationId = params.get("installation_id");
+    const status = params.get("github");
+
+    if (installationId && !status) {
+      window.location.replace(`/api/github/callback?installation_id=${encodeURIComponent(installationId)}`);
+      return;
+    }
+    if (!status) return;
+
+    const messages: Record<string, [("success" | "error"), string]> = {
+      connected: ["success", "Private repos connected."],
+      state_invalid: ["error", "That connect link expired. Try again from this page."],
+      missing_installation: ["error", "GitHub did not send an installation. Try again."],
+      set_handle_first: ["error", "Save your GitHub handle in Settings first, then reconnect."],
+      owner_mismatch: [
+        "error",
+        "That installation belongs to a different GitHub account than the handle on your profile.",
+      ],
+    };
+    const entry = messages[status];
+    if (entry) toast[entry[0]](entry[1]);
+    // Clean the URL so a refresh doesn't re-toast.
+    window.history.replaceState({}, "", window.location.pathname);
+    if (status === "connected" && handleRef.current) loadRepos(handleRef.current, true);
+  }, [loadRepos]);
+
+    const disconnectGithub = useCallback(async () => {
+    setDisconnecting(true);
+    try {
+      const res = await fetch("/api/github/disconnect", { method: "POST" });
+      if (!res.ok) throw new Error("Could not disconnect");
+      setGithubApp((prev) => (prev ? { ...prev, connected: false, privateCount: 0 } : prev));
+      setRepos((prev) => prev.filter((r) => !r.isPrivate));
+      toast.success("Disconnected. Remove the app in GitHub settings to fully revoke access.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not disconnect");
+    } finally {
+      setDisconnecting(false);
+    }
+  }, []);
+
+  const analyzeRepo = useCallback(async (repo: PickerRepo) => {
     setAnalyzingRepo(repo.fullName);
     emitOnboardingAction("repo-selected");
     try {
@@ -104,6 +171,9 @@ export function ProjectPanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Analysis failed");
+      // e.g. "no README, so Proof had little to work from". Without this the user assumes the repo
+      // connection failed, when the real cause is simply that there is nothing to read.
+      if (data.warning) toast.warning(data.warning, { duration: 8000 });
       setProject(data.project);
       if (data.project?.id) {
         setActiveProject({ id: data.project.id, name: data.project.name ?? repo.name });
@@ -172,6 +242,51 @@ export function ProjectPanel() {
             </Link>
           </div>
 
+          {githubApp?.available && (
+            <div className="mt-3 rounded-lg border border-border bg-secondary/30 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                    {githubApp.connected ? "Private repos connected" : "Private repos"}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {githubApp.connected
+                      ? `${githubApp.privateCount} private ${
+                          githubApp.privateCount === 1 ? "repo" : "repos"
+                        } shared with Proof. You choose which ones in GitHub.`
+                      : "Working on something private? Pick the exact repos Proof can see."}
+                  </p>
+                </div>
+                {githubApp.connected ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={disconnectGithub}
+                    disabled={disconnecting}
+                    className="h-8 shrink-0 px-3 text-xs"
+                  >
+                    {disconnecting ? "Disconnecting..." : "Disconnect"}
+                  </Button>
+                ) : (
+                  <Button asChild size="sm" className="h-8 shrink-0 px-3 text-xs">
+                    <a href="/api/github/install">Connect private repos</a>
+                  </Button>
+                )}
+              </div>
+              {/* The privacy claim is the feature. It is true of fetchRepoSnapshot: README,
+                  language stats and file PATHS only, never source file contents. */}
+              <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground/70">
+ Proof reads your <span className="text-foreground">README</span>, that is what the
+ script is built from, plus file names and language stats. It never reads your source
+                code, so a repo with no README has almost nothing to work from. Access is scoped to
+                the repos you pick and you can revoke it any time in GitHub settings.
+              </p>
+              {githubApp.error && (
+                <p className="mt-2 font-mono text-[10px] text-destructive">{githubApp.error}</p>
+              )}
+            </div>
+          )}
+
           <div className="mt-3 overflow-hidden rounded-lg border border-border bg-card">
             <div className="border-b border-border p-2">
               <Input
@@ -205,7 +320,7 @@ export function ProjectPanel() {
             ) : filtered.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-muted-foreground">
                 {repos.length === 0
-                  ? `No public repos found for @${handle}.`
+                  ? `No repos found for @${handle}.`
                   : "No repos match your search."}
               </p>
             ) : (
@@ -226,6 +341,14 @@ export function ProjectPanel() {
                           <span className="truncate font-mono text-sm font-medium">
                             {r.name}
                           </span>
+                          {r.isPrivate && (
+                            <Badge
+                              variant="outline"
+                              className="shrink-0 border-primary/40 font-mono text-[10px] text-primary"
+                            >
+                              private
+                            </Badge>
+                          )}
                           {analyzed && (
                             <Badge className="shrink-0 bg-primary/15 font-mono text-[10px] text-primary">
                               analyzed

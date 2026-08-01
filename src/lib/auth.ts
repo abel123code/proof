@@ -3,7 +3,7 @@ import { DEV_USER_ID, getProfile, isAdminUser, type Profile } from "@/lib/db";
 
 /**
  * Auth is only enforced when the anon key is configured. Locally (or before the
- * GitHub OAuth provider is wired in the Supabase dashboard) it degrades to a
+ * Google OAuth provider is wired in the Supabase dashboard) it degrades to a
  * single "dev" identity so the pipeline stays usable.
  */
 export function isAuthConfigured(): boolean {

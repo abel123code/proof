@@ -1,14 +1,24 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { Readable } from "node:stream";
+import type { IncomingMessage } from "node:http";
 import {
   allowedAssetHosts,
-  fetchAssetBytes,
+  assertDecodedRasterImage,
+  fetchAssetBytesWithDeps,
   isPrivateAddress,
+  nodeResponseToWebResponse,
   parseMaxAssetBytes,
   readCapped,
   validateAssetSource,
+  type AssetFetchDeps,
 } from "../src/premium/asset-source.js";
+
+/** A minimal IncomingMessage stand-in for the response converter. */
+function fakeIncoming(statusCode: number, chunks: Buffer[] = []): IncomingMessage {
+  return Object.assign(Readable.from(chunks), { statusCode, headers: {} }) as unknown as IncomingMessage;
+}
 
 /** A body that streams `chunks` of `size` bytes — like a host ignoring content-length. */
 function streamOf(chunkSize: number, chunks: number): ReadableStream<Uint8Array> {
@@ -101,39 +111,96 @@ test("readCapped aborts a body that streams past the cap (memory-exhaustion DoS)
   await assert.rejects(() => readCapped(streamOf(1000, 1000), 5000), /asset too large/);
 });
 
-test("fetchAssetBytes cancels response bodies rejected before streaming", async () => {
-  const originalFetch = globalThis.fetch;
-  const originalHosts = process.env.PREMIUM_ASSET_HOSTS;
-  process.env.PREMIUM_ASSET_HOSTS = "8.8.8.8";
-  try {
-    const responseInits: ResponseInit[] = [
-      { status: 500, headers: { "content-type": "image/png" } },
-      { status: 200, headers: { "content-type": "text/plain" } },
-      {
-        status: 200,
-        headers: { "content-type": "image/png", "content-length": "15000001" },
+test("fetchAssetBytesWithDeps cancels response bodies for every pre-stream rejection", async () => {
+  const responseInits: ResponseInit[] = [
+    { status: 500, headers: { "content-type": "image/png" } }, // bad status
+    { status: 200, headers: { "content-type": "text/plain" } }, // non-image
+    { status: 200, headers: { "content-type": "image/png", "content-length": "15000001" } }, // too large
+  ];
+  for (const responseInit of responseInits) {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]));
       },
-    ];
-    for (const responseInit of responseInits) {
-      let cancelled = false;
-      const body = new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(new Uint8Array([1]));
-        },
-        cancel() {
-          cancelled = true;
-        },
-      });
-      globalThis.fetch = async () => new Response(body, responseInit);
-
-      await assert.rejects(() => fetchAssetBytes("https://8.8.8.8/asset.png"));
-      assert.equal(cancelled, true, `body was not cancelled for status ${responseInit.status}`);
-    }
-  } finally {
-    globalThis.fetch = originalFetch;
-    if (originalHosts === undefined) delete process.env.PREMIUM_ASSET_HOSTS;
-    else process.env.PREMIUM_ASSET_HOSTS = originalHosts;
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const deps: AssetFetchDeps = {
+      lookup: async () => ["93.184.216.34"], // public
+      request: async () => new Response(body, responseInit),
+    };
+    await assert.rejects(() => fetchAssetBytesWithDeps("https://cdn.example.com/a.png", ["cdn.example.com"], deps));
+    assert.equal(cancelled, true, `body was not cancelled for status ${responseInit.status}`);
   }
+});
+
+test("fetchAssetBytesWithDeps pins to the validated address and blocks a private DNS resolution (rebinding)", async () => {
+  // A host that resolves to a private/metadata address is rejected BEFORE any socket is opened.
+  let requested = false;
+  const rebind: AssetFetchDeps = {
+    lookup: async () => ["169.254.169.254"],
+    request: async () => {
+      requested = true;
+      return new Response(new Uint8Array());
+    },
+  };
+  await assert.rejects(
+    () => fetchAssetBytesWithDeps("https://cdn.example.com/a.png", ["cdn.example.com"], rebind),
+    /private address/,
+  );
+  assert.equal(requested, false, "must not open a socket to a host that resolves private");
+
+  // A public resolution pins the socket to exactly that address (closing the fetch() re-resolve window).
+  let pinnedTo = "";
+  const pinned: AssetFetchDeps = {
+    lookup: async () => ["93.184.216.34"],
+    request: async (_url, addr) => {
+      pinnedTo = addr;
+      return new Response(new Uint8Array(), { status: 500 });
+    },
+  };
+  await assert.rejects(() => fetchAssetBytesWithDeps("https://cdn.example.com/a.png", ["cdn.example.com"], pinned));
+  assert.equal(pinnedTo, "93.184.216.34", "the socket is pinned to the validated address");
+});
+
+test("isPrivateAddress catches ranges a naive regex misses", () => {
+  assert.equal(isPrivateAddress("100.64.0.1"), true, "CGNAT 100.64/10");
+  assert.equal(isPrivateAddress("198.18.0.1"), true, "benchmarking 198.18/15");
+  assert.equal(isPrivateAddress("2002:c0a8:0101::1"), true, "6to4");
+  assert.equal(isPrivateAddress("64:ff9b::7f00:1"), true, "NAT64 of 127.0.0.1");
+  assert.equal(isPrivateAddress("::ffff:169.254.169.254"), true, "IPv4-mapped metadata");
+  assert.equal(isPrivateAddress("not-an-ip"), true, "non-IP literal is unsafe");
+  assert.equal(isPrivateAddress("93.184.216.34"), false, "a real public host still passes");
+});
+
+test("nodeResponseToWebResponse gives null-body statuses a null body (no worker crash)", () => {
+  // `new Response(body, {status: 204})` throws — the source of the DoS codex flagged. These must
+  // convert to a null-body Response instead of throwing inside the async request callback.
+  for (const status of [204, 205, 304]) {
+    const resp = nodeResponseToWebResponse(fakeIncoming(status, [Buffer.from([1])]));
+    assert.equal(resp.status, status);
+    assert.equal(resp.body, null, `status ${status} must have a null body`);
+  }
+  // a normal 200 keeps its streamed body
+  const ok = nodeResponseToWebResponse(fakeIncoming(200, [Buffer.from([1, 2, 3])]));
+  assert.equal(ok.status, 200);
+  assert.ok(ok.body, "200 keeps its body");
+});
+
+test("assertDecodedRasterImage rejects SVG, spoofed types, and garbage bytes", async () => {
+  await assert.rejects(
+    () => assertDecodedRasterImage(Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'></svg>"), "image/png"),
+    /decoded raster/,
+    "an SVG declared as png must be rejected after decode",
+  );
+  await assert.rejects(
+    () => assertDecodedRasterImage(Buffer.from("x"), "image/svg+xml"),
+    /not an accepted raster type/,
+    "a non-raster declared type is rejected before decode",
+  );
+  await assert.rejects(() => assertDecodedRasterImage(Buffer.from("not an image at all")), /decoded raster/);
 });
 
 test("allowedAssetHosts falls back to the Supabase host, and PREMIUM_ASSET_HOSTS overrides", () => {

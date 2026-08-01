@@ -18,7 +18,6 @@ const WORDS: Record<string, string> = {
   typescript: "TypeScript",
   nextjs: "Next.js",
   triggerdev: "Trigger.dev",
-  gemini: "Gemini",
   cursor: "Cursor",
   claude: "Claude",
   supabase: "Supabase",

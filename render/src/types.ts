@@ -78,7 +78,7 @@ export interface RenderBriefScene {
   durationSeconds?: number;
 }
 
-/** The brief the render consumes (produced by the Exa/OpenAI half, or seeded for tests). */
+/** The brief the render worker consumes, produced by the web app or seeded for tests. */
 export interface RenderBrief {
   script: string;
   keywordFlags: KeywordFlag[];
@@ -94,6 +94,42 @@ export interface RenderBrief {
 
 export type EditMode = "brief-driven" | "classic" | "generated-experimental";
 
+export type SceneMode = "overlay" | "full-frame";
+export type SceneBackgroundTreatment = "footage" | "black";
+
+export interface CreativeDirection {
+  backgroundColor: string;
+  textColor: string;
+  emphasisColor: string;
+  successColor: string;
+  failureColor: string;
+  displayStyle: string;
+  technicalStyle: string;
+  transitionStyle: string;
+  motif: string;
+}
+
+export interface TimeInterval {
+  startMs: number;
+  endMs: number;
+}
+
+export interface EditCoverage {
+  overlayMs: number;
+  fullFrameMs: number;
+  cleanMs: number;
+  overlayRatio: number;
+  fullFrameRatio: number;
+  cleanRatio: number;
+}
+
+export interface EditPlan {
+  creativeDirection: CreativeDirection;
+  scenes: SceneSpec[];
+  cleanIntervals: TimeInterval[];
+  coverage: EditCoverage;
+}
+
 /** One bespoke scene the premium path storyboards, anchored to the cut timeline. */
 export interface SceneSpec {
   /** Stable id, e.g. "scene-1"; used as the HyperFrames composition id + output filename. */
@@ -102,6 +138,18 @@ export interface SceneSpec {
   anchorMs: number;
   /** How long the scene plays, in ms. */
   durMs: number;
+  /** Whether the speaker remains visible or the visual owns the complete frame. */
+  mode: SceneMode;
+  /** Whether the compositor keeps the source footage or hard-cuts it to black behind this scene. */
+  backgroundTreatment?: SceneBackgroundTreatment;
+  /** Planner importance used only by deterministic budget enforcement. */
+  priority: number;
+  /** Human-readable reason the planner selected this visual mode. */
+  rationale: string;
+  /** Optional presentation metadata used by stricter authoring-contract experiments. */
+  visualPurpose?: string;
+  headline?: string;
+  supportingVisual?: string;
   /** The recurring motif to honor (shared across scenes for continuity). */
   motif: string;
   /** What this beat should visually convey — the authoring prompt for this scene. */
@@ -110,18 +158,64 @@ export interface SceneSpec {
   captionText: string;
 }
 
-/** A scene after authoring — HTML composition + (once rendered) its alpha MOV path. */
+/**
+ * Whether a QA finding is an OBJECTIVE safety fault (breaks the talking head or hides the captions —
+ * drives an auto-repair) or a SUBJECTIVE editorial note (a creative/copy/polish preference — the
+ * HUMAN decides, it NEVER blocks shipping). This split is the core of the auditable QA model: the
+ * agent may only auto-act on `safety`; everything `subjective` is surfaced, never silently applied
+ * or used to omit a scene. See DECISIONS.md 2026-07-23 (auditable QA advisor).
+ */
+export type SceneIssueKind = "safety" | "subjective";
+export interface SceneIssue {
+  /** One concrete, human-readable observation/edit (the "why" behind a verdict). */
+  text: string;
+  kind: SceneIssueKind;
+}
+
+/** Tagged result of the vision-QA pass on one rendered scene. */
+export type SceneQAOutcome =
+  | "approved" // ship it, no issues
+  | "editorial_reject" // has issue(s) — see `issues` and their kinds
+  | "operational_error"; // empty/unparseable QA response: retry the JUDGMENT on the same render
+export interface SceneQA {
+  outcome: SceneQAOutcome;
+  /** Tagged findings. Empty when approved. Safety issues drive repair; subjective ones never block. */
+  issues: SceneIssue[];
+}
+
+/** A scene ALWAYS ships now (never silently omitted). `clean` = QA had nothing; `flagged` = it
+ *  shipped carrying unresolved issue(s) the user should see; `base_fallback` = the only non-ship
+ *  case, where the scene could not be rendered safely at all (e.g. HTML failed the security
+ *  validator) so its window shows the captioned base. */
+export type SceneVerdict = "clean" | "flagged" | "base_fallback";
+
+/** The auditable record that travels with every scene and is surfaced to the user: what shipped,
+ *  the QA verdict, and the exact reasoning behind it. This is what powers "explain why, then ask
+ *  the human whether to re-render." */
+export interface SceneReport {
+  sceneId: string;
+  anchorMs: number;
+  durMs: number;
+  mode?: SceneMode;
+  backgroundTreatment?: SceneBackgroundTreatment;
+  rationale?: string;
+  intent: string;
+  verdict: SceneVerdict;
+  /** True unless the scene fell back to base (could not be rendered safely). */
+  shipped: boolean;
+  /** The unresolved findings at ship time — the reasoning the user reads. Empty when `clean`. */
+  issues: SceneIssue[];
+  /** How many author/patch rounds it took. */
+  attempts: number;
+}
+
+/** A scene after authoring — HTML composition, (once rendered) its alpha MOV path, and the
+ *  auditable report. `movPath` is present unless the verdict is `base_fallback`. */
 export interface AuthoredScene {
   spec: SceneSpec;
   html: string;
   movPath?: string;
-}
-
-/** Result of the vision-QA pass on one rendered scene. */
-export interface SceneQA {
-  ok: boolean;
-  /** Concrete, fixable issues to feed back to the author on a re-render (empty when ok). */
-  issues: string[];
+  report: SceneReport;
 }
 
 /** A keyword overlay placed on the cut timeline. */

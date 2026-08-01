@@ -1,5 +1,78 @@
-<!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
+# Proof agent guide
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
-<!-- END:nextjs-agent-rules -->
+Proof turns a GitHub repository and a founder recording into a researched, scripted, cut,
+animated, vision-reviewed vertical video.
+
+## Read first
+
+1. `README.md` for the product and system map.
+2. `OPENAI_BUILD_WEEK.md` for the Sol, Luna, Whisper, and Codex evidence.
+3. `DECISIONS.md` for measured capacity and render-mode decisions.
+4. `render/README.md` for the worker contract.
+5. `ROADMAP.md` for the next quality bar.
+
+## Commands
+
+```bash
+npm ci
+npm run verify
+npm run lint
+npm run build
+
+npm --prefix render ci
+npm --prefix render run check
+npm --prefix render run test:unit
+```
+
+`npm run verify:openai` is an opt-in live API smoke test. It requires `OPENAI_API_KEY` and incurs
+API usage.
+
+## Invariants
+
+- GPT-5.6 Luna owns structured, high-volume work. GPT-5.6 Sol owns research, ranking, scene
+  design, and rendered-frame judgment. Whisper owns word timing.
+- TypeScript owns control flow and final score calculation. Models do not self-award final ranks.
+- FFmpeg owns source footage. Remotion and HyperFrames produce overlays.
+- Model-authored HTML is untrusted and must pass validation before Chromium renders it.
+- The normal generated path cannot bypass five-frame vision QA.
+- Scenes are never silently omitted. QA is an auditable advisor: objective SAFETY faults (graphic on
+  a face feature / in the caption band, garbled or clipped text, missing required asset) are auto-repaired
+  up to the retry budget, then the scene SHIPS FLAGGED; SUBJECTIVE notes (creative/copy/polish) never
+  block and never drive a re-author. Every scene carries a `SceneReport` (verdict + reasons + tags) so the
+  app can show the user why and ask whether to re-render. The captioned base is the per-scene fallback
+  (verdict `base_fallback`) only when a scene cannot be rendered safely at all.
+- The web route and render worker own `RENDER_EDIT_MODE`; callers cannot select a weaker mode.
+- Never commit credentials, local media paths, generated videos, or `.env` files.
+- Private repos are read through a per-user **GitHub App installation**, never an OAuth `repo` token.
+  Only the installation id is stored; access tokens are minted per request and never persisted. The
+  whole feature is gated on `GITHUB_APP_*`, so a deployment without those env vars behaves exactly as
+  a public-only one.
+- **Proof reads the README, file names and language stats. It never fetches source file contents.**
+  The privacy claim shown to users depends on `fetchRepoSnapshot` staying that way.
+- GitHub answers **404, not 403**, for private resources the caller cannot see. Never swallow a 404
+  from an access-bearing call, or an auth failure becomes "(no README found)" and the pipeline
+  scripts a video about an empty repo.
+
+## Definition of done
+
+- Add a regression test before changing behaviour.
+- Run the narrow test first, then the complete package checks above.
+- For UI changes, inspect desktop and mobile renders.
+- For render changes, inspect actual output frames or video, not only generated HTML.
+- For deployed changes, verify the live route and provider logs.
+- **A deploy is NOT verified until you have run a real render and looked at its frames.** A healthy
+  boot line, a passing health check and a green test suite are each necessary and none of them are
+  sufficient. Download the MP4 (`GET /out/edited-<jobId>.mp4` with `x-render-token`), extract frames,
+  look at them, and confirm the log reports `composited N bespoke scene(s)` with N > 0. Calling a
+  deploy "verified" off a boot line once put 0-animation videos in front of users — see
+  `POST_MORTEMS.md` (2026-07-29).
+- **`hyperframesAvailable()` does not mean HyperFrames works.** It only checks that the CLI resolves;
+  the browser is a separate requirement it cannot see. Same caution for any "is X installed" preflight.
+- **Railway is NOT connected to GitHub.** Merging to `main` deploys nothing. The render worker ships
+  only via `railway up` from `render/`, so production can silently run code days behind `main`.
+
+## Next.js rule
+
+This repository uses Next.js 16. APIs and conventions may differ from older training data. Read
+the relevant guide in `node_modules/next/dist/docs/` before changing framework behaviour and
+heed deprecation notices.

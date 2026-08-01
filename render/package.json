@@ -2,12 +2,12 @@
   "name": "proof-render",
   "private": true,
   "type": "module",
-  "description": "Zo-hosted render service: raw teleprompter take + brief -> cut, captioned, overlaid short-form MP4.",
+  "description": "Railway render worker: raw teleprompter take plus brief to a cut, captioned, vision-reviewed MP4.",
   "scripts": {
     "server": "tsx src/server.ts",
     "verify:whisper": "tsx scripts/verify-whisper.ts",
     "test:local": "tsx scripts/test-local.ts",
-    "test:zo": "tsx scripts/test-zo.ts",
+    "test:remote": "tsx scripts/test-remote.ts",
     "test:unit": "tsx --test tests/*.test.ts",
     "render": "remotion render remotion/index.ts Main",
     "studio": "remotion studio remotion/index.ts",
@@ -25,7 +25,8 @@
     "openai": "^6.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "remotion": "^4.0.0"
+    "remotion": "^4.0.0",
+    "sharp": "0.34.5"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

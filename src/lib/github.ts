@@ -36,24 +36,66 @@ export interface RepoSnapshot {
   description: string | null;
   languages: string[];
   readme: string;
+  /**
+   * False when the repo has no README. The README is the main thing Proof reads, so a repo without
+ * one yields a thin script, callers warn the user instead of silently under-delivering.
+   */
+  hasReadme: boolean;
   /** Top-level + shallow file paths to convey structure (truncated). */
   fileTree: string[];
 }
 
-/** Pull repo-level context: metadata, languages, README, and a shallow file tree. */
-export async function fetchRepoSnapshot(repoUrl: string): Promise<RepoSnapshot> {
-  const { owner, repo } = parseRepoUrl(repoUrl);
-  const gh = getOctokit();
+/**
+ * True when an Octokit error means "you are not allowed to see this" rather than "this is missing".
+ *
+ * GitHub answers **404, not 403**, for private resources the caller cannot see. A naive `catch {}`
+ * therefore turns an auth failure into "(no README found)" and the pipeline cheerfully scripts a
+ * video about an empty repo. Anything auth-shaped must be re-thrown.
+ */
+export function isAccessError(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  return status === 401 || status === 403 || status === 404;
+}
 
-  const { data: meta } = await gh.repos.get({ owner, repo });
+/**
+ * Pull repo-level context: metadata, languages, README, and a shallow file tree.
+ *
+ * NOTE: this reads the README, language stats and file *paths* only, never source file contents.
+ * The privacy claim shown to users in the connect UI depends on that staying true.
+ *
+ * `client` injects an installation-scoped Octokit for private repos; omitted, it uses the shared
+ * server token, which can only see public repos.
+ */
+export async function fetchRepoSnapshot(repoUrl: string, client?: Octokit): Promise<RepoSnapshot> {
+  const { owner, repo } = parseRepoUrl(repoUrl);
+  const gh = client ?? getOctokit();
+
+  // THIS is the call that fails when the repo is private or otherwise invisible, so the access
+ // check belongs here, not on the README below. GitHub answers 404 (not 403) in that case, and
+  // the raw error ("Not Found") gives the user nothing to act on.
+  let meta;
+  try {
+    ({ data: meta } = await gh.repos.get({ owner, repo }));
+  } catch (err) {
+    if (isAccessError(err)) {
+      throw new Error(
+        `Cannot read ${owner}/${repo}. If it is private, connect it to Proof from the repo picker so GitHub can grant access.`,
+      );
+    }
+    throw err;
+  }
 
   const { data: langs } = await gh.repos.listLanguages({ owner, repo });
 
+  let hasReadme = true;
   let readme = "";
   try {
     const { data } = await gh.repos.getReadme({ owner, repo });
     readme = Buffer.from(data.content, "base64").toString("utf8");
   } catch {
+    hasReadme = false;
+    // Access is already proven by repos.get above, so a failure here (including the 404 GitHub
+    // returns for a repo with no README at all) genuinely means "no README". Degrade quietly.
     readme = "(no README found)";
   }
 
@@ -80,6 +122,7 @@ export async function fetchRepoSnapshot(repoUrl: string): Promise<RepoSnapshot> 
 
   return {
     name: meta.name,
+    hasReadme,
     description: meta.description,
     languages: Object.keys(langs),
     readme: cappedReadme,
