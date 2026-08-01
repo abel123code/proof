@@ -14,6 +14,22 @@ export function normalizeVideoType(raw: string | undefined): { contentType: stri
 }
 
 /**
+ * Hard ceiling on a single clip, in bytes.
+ *
+ * Not our choice. Supabase enforces a per-project ceiling and on the current plan it is
+ * exactly 50MB: setting the footage bucket's file_size_limit to 51MB is rejected with a
+ * 413, 50MB is accepted. Raising this means changing the Supabase plan, not editing this
+ * constant, so move both together if that ever happens.
+ */
+export const MAX_CLIP_BYTES = 50 * 1024 * 1024;
+const MAX_CLIP_MB = Math.round(MAX_CLIP_BYTES / (1024 * 1024));
+
+/** One message for both the pre-flight check and the server's 413, so they cannot drift. */
+export function tooLargeMessage(): string {
+  return `That clip is over the ${MAX_CLIP_MB}MB upload limit. Record a shorter take or compress it.`;
+}
+
+/**
  * Upload a scene clip straight to Supabase Storage via a signed ticket, so the bytes never
  * transit the Vercel function (whose ~4.5MB request-body limit capped clips at ~30s).
  * Three steps: mint ticket -> PUT direct to Supabase (with progress) -> confirm the row.
@@ -26,6 +42,12 @@ export async function uploadSceneFootageDirect(input: {
   contentType?: string;
   onProgress?: (fraction: number) => void;
 }): Promise<string> {
+  // Checked before the ticket is minted, because the browser already knows the size and
+  // Supabase would only reject it after the whole file went up. On a slow connection that
+  // is minutes of progress bar ending in a failure the user could have been told about
+  // instantly.
+  if (input.file.size > MAX_CLIP_BYTES) throw new Error(tooLargeMessage());
+
   const { contentType } = normalizeVideoType(input.contentType || input.file.type);
 
  // 1. Mint a signed upload ticket (tiny JSON, immune to the body limit).
@@ -61,10 +83,13 @@ export async function uploadSceneFootageDirect(input: {
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) input.onProgress?.(e.loaded / e.total);
     };
-    xhr.onload = () =>
-      xhr.status >= 200 && xhr.status < 300
-        ? resolve()
-        : reject(new Error(`Upload failed (${xhr.status})`));
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve();
+      // Backstop for anything the pre-flight check missed, e.g. a stale tab running older
+      // JS after the limit changed. A bare "Upload failed (413)" tells the user nothing.
+      if (xhr.status === 413) return reject(new Error(tooLargeMessage()));
+      reject(new Error(`Upload failed (${xhr.status})`));
+    };
  xhr.onerror = () => reject(new Error("Upload failed, network error"));
     xhr.ontimeout = () => reject(new Error("Upload timed out"));
     xhr.onabort = () => reject(new Error("Upload aborted"));
