@@ -6,12 +6,16 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { openSignupEnabled } from "@/lib/signup";
 
 function LoginInner() {
   const params = useSearchParams();
   const next = params.get("next") ?? "/connect";
   const fromDemo = params.get("source") === "demo";
   const [loading, setLoading] = useState(false);
+  // Inlined at build time by Next, so this is a constant in the bundle rather than a
+  // runtime lookup. Flipping it needs a redeploy, which the server side does not.
+  const openSignup = openSignupEnabled(process.env.NEXT_PUBLIC_OPEN_SIGNUP);
 
   async function signIn() {
     setLoading(true);
@@ -34,11 +38,16 @@ function LoginInner() {
           {fromDemo ? "Ready to make your own?" : "Sign in to Proof"}
         </h1>
         <p className="mt-3 text-sm text-muted-foreground">
+          {/* Telling someone they need an invite while signup is open would talk them out
+              of the thing they can already do, so both variants react to the flag. */}
           {fromDemo ? (
             <>
               Sign in to start a real Proof project. Your demo take stays on your device and
-              will not be transferred. Proof is invite-only while we&apos;re in early access.
+              will not be transferred.
+              {openSignup ? "" : " Proof is invite-only while we're in early access."}
             </>
+          ) : openSignup ? (
+            <>Sign in with Google to start building. Free while we&apos;re in early access.</>
           ) : (
             <>
               Proof is invite-only while we&apos;re in early access. Sign in with the Google
