@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireApprovedUser } from "@/lib/auth";
 import {
   assertBriefOwnedBy,
+  claimRenderRefund,
   clearBriefRender,
   createRenderJob,
   failRenderJob,
@@ -183,6 +184,18 @@ export async function GET(req: Request) {
           status: "error",
           expectedJobId: jobId,
         });
+        // The render was paid for up front and then failed on our side, so give the
+        // credits back. claimRenderRefund is the idempotency guard: this handler runs
+        // every 4 seconds per open tab, and only the caller that wins the conditional
+        // update refunds. Never let a refund failure break the poll, the user still
+        // needs to be told the render died.
+        try {
+          if (await claimRenderRefund(jobId, auth.userId)) {
+            await refundCredits(auth.userId, CREDIT_COSTS.render);
+          }
+        } catch (err) {
+          console.error(`render refund failed for job ${jobId}:`, err);
+        }
       }
       return NextResponse.json(durableResult);
     }
