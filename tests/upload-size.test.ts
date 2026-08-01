@@ -12,25 +12,16 @@ const fakeFile = (bytes: number) => ({ size: bytes, type: "video/mp4" }) as Blob
 afterEach(() => vi.unstubAllGlobals());
 
 describe("tooLargeMessage", () => {
-  it("names the actual size, the limit, and what to do about it", () => {
-    const msg = tooLargeMessage(78 * 1024 * 1024);
-    expect(msg).toContain("78MB");
-    expect(msg).toContain("50MB");
-    expect(msg).toMatch(/shorter take|compress/i);
-  });
-
-  it("still states the limit when the size is unknown", () => {
-    const msg = tooLargeMessage();
-    expect(msg).toContain("50MB");
-    expect(msg).not.toContain("NaN");
+  it("states the limit and the two things the user can do", () => {
+    expect(tooLargeMessage()).toBe(
+      "That clip is over the 50MB upload limit. Record a shorter take or compress it.",
+    );
   });
 
   it("says nothing about plans or storage, which the user cannot act on", () => {
     // An earlier draft told users to "upgrade storage". That is the project owner's
     // Supabase plan; a person recording a video has no way to change it.
-    for (const msg of [tooLargeMessage(), tooLargeMessage(99 * 1024 * 1024)]) {
-      expect(msg).not.toMatch(/upgrade|plan|supabase|quota|storage/i);
-    }
+    expect(tooLargeMessage()).not.toMatch(/upgrade|plan|supabase|quota|storage/i);
   });
 });
 

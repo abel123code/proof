@@ -24,12 +24,9 @@ export function normalizeVideoType(raw: string | undefined): { contentType: stri
 export const MAX_CLIP_BYTES = 50 * 1024 * 1024;
 const MAX_CLIP_MB = Math.round(MAX_CLIP_BYTES / (1024 * 1024));
 
-const asMb = (bytes: number) => Math.round(bytes / (1024 * 1024));
-
 /** One message for both the pre-flight check and the server's 413, so they cannot drift. */
-export function tooLargeMessage(bytes?: number): string {
-  const lead = bytes && bytes > 0 ? `That clip is ${asMb(bytes)}MB, over` : "That clip is over";
-  return `${lead} the ${MAX_CLIP_MB}MB upload limit. Record a shorter take or compress it.`;
+export function tooLargeMessage(): string {
+  return `That clip is over the ${MAX_CLIP_MB}MB upload limit. Record a shorter take or compress it.`;
 }
 
 /**
@@ -49,7 +46,7 @@ export async function uploadSceneFootageDirect(input: {
   // Supabase would only reject it after the whole file went up. On a slow connection that
   // is minutes of progress bar ending in a failure the user could have been told about
   // instantly.
-  if (input.file.size > MAX_CLIP_BYTES) throw new Error(tooLargeMessage(input.file.size));
+  if (input.file.size > MAX_CLIP_BYTES) throw new Error(tooLargeMessage());
 
   const { contentType } = normalizeVideoType(input.contentType || input.file.type);
 
@@ -90,7 +87,7 @@ export async function uploadSceneFootageDirect(input: {
       if (xhr.status >= 200 && xhr.status < 300) return resolve();
       // Backstop for anything the pre-flight check missed, e.g. a stale tab running older
       // JS after the limit changed. A bare "Upload failed (413)" tells the user nothing.
-      if (xhr.status === 413) return reject(new Error(tooLargeMessage(input.file.size)));
+      if (xhr.status === 413) return reject(new Error(tooLargeMessage()));
       reject(new Error(`Upload failed (${xhr.status})`));
     };
  xhr.onerror = () => reject(new Error("Upload failed, network error"));
