@@ -16,9 +16,13 @@ const sans = Hanken_Grotesk({
   subsets: ["latin"],
 });
 
+// Mono is only used for small labels, kickers and meta, never for first paint. Preloading it made
+// the browser warn "preloaded with link preload was not used within a few seconds" on every load,
+// and it competed for bandwidth with the display and body faces. Let it load normally.
 const mono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  preload: false,
 });
 
 export const metadata: Metadata = {
