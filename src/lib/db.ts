@@ -385,20 +385,35 @@ export async function countProfiles(): Promise<number> {
   return count ?? 0;
 }
 
-/** Is this identity on the approved allowlist? Matched by email OR github handle. */
-export async function isAllowlisted(
-  email: string | null,
-  githubUsername: string | null,
-): Promise<boolean> {
+/**
+ * Is this identity on the approved allowlist? Matched on the provider-verified email
+ * ONLY, and never on a GitHub handle.
+ *
+ * This used to build a PostgREST `.or()` filter by string-interpolating both the email
+ * and the handle, and the handle came from `user.user_metadata.user_name`. Supabase lets
+ * the user write that field themselves (`auth.updateUser({ data: ... })`; `app_metadata`
+ * is the protected one). Setting it to `x,id.not.is.null` produced the filter
+ * `github_username.eq.x,id.not.is.null`, and the second term is true for every row, so
+ * the allowlist matched for anyone with a Google account. Verified against the live
+ * database on 2026-08-01: the benign handle returned [], the injected one returned a row.
+ *
+ * Both halves of that are fixed here, not just the injection. The value is bound as an
+ * argument so it cannot escape into the filter, AND the decision is made from the email,
+ * which comes from the identity provider and the user cannot alter. Escaping alone would
+ * have left plain impersonation open the moment somebody was allowlisted by handle.
+ *
+ * `allowed_users.github_username` still exists and is still displayed in /admin, but it
+ * carries no authorization weight. All 17 live rows were email-bearing when this changed,
+ * so nothing lost access; `addAllowedUser` now requires an email to keep it that way.
+ */
+export async function isAllowlisted(email: string | null): Promise<boolean> {
+  const normalized = email?.trim().toLowerCase();
+  if (!normalized) return false;
   const supabase = getSupabaseAdmin();
-  const ors: string[] = [];
-  if (email) ors.push(`email.eq.${email}`);
-  if (githubUsername) ors.push(`github_username.eq.${githubUsername}`);
-  if (ors.length === 0) return false;
   const { data, error } = await supabase
     .from("allowed_users")
     .select("id")
-    .or(ors.join(","))
+    .eq("email", normalized)
     .limit(1);
   if (error) throw new Error(`isAllowlisted failed: ${error.message}`);
   return (data?.length ?? 0) > 0;
@@ -424,7 +439,9 @@ export async function ensureProfile(input: {
   const existing = await getProfile(input.userId);
   if (existing) return "active";
 
-  const allowed = await isAllowlisted(input.email, input.githubUsername);
+  // Email only. `input.githubUsername` originates from user-writable auth metadata and
+  // must never influence an authorization decision. See isAllowlisted.
+  const allowed = await isAllowlisted(input.email);
   if (!allowed) {
     // Log the attempt so an admin can approve/reject it from the /admin page.
     // Best-effort, but surface failures so a broken insert isn't silent.
@@ -549,7 +566,13 @@ export async function listAccessRequests(): Promise<AccessRequest[]> {
   }));
 }
 
-/** Add an email (and optional handle/note) to the approved allowlist. */
+/**
+ * Add an email (and optional handle/note) to the approved allowlist.
+ *
+ * An email is REQUIRED. Access is granted by matching the provider-verified email, so a
+ * handle-only row would sit in the table looking approved while never letting anyone in.
+ * Rejecting it here is louder than that silent trap.
+ */
 export async function addAllowedUser(input: {
   email?: string | null;
   githubUsername?: string | null;
@@ -557,7 +580,7 @@ export async function addAllowedUser(input: {
 }): Promise<void> {
   const email = input.email?.trim().toLowerCase() || null;
   const githubUsername = input.githubUsername?.trim() || null;
-  if (!email && !githubUsername) throw new Error("email or githubUsername required");
+  if (!email) throw new Error("An email is required to allowlist someone.");
   const supabase = getSupabaseAdmin();
   // Partial unique index on email can't back ON CONFLICT, so check-then-insert.
   if (email) {
@@ -591,6 +614,11 @@ export async function approveAccessRequest(id: string): Promise<void> {
   if (error) throw new Error(`approveAccessRequest failed: ${error.message}`);
   if (!data) throw new Error("Request not found");
   const req = data as { email: string | null; github_username: string | null };
+  // Approval grants access by email, so a request without one cannot be approved into a
+  // working allowlist entry. Fail loudly rather than writing a row that never admits them.
+  if (!req.email) {
+    throw new Error("This request has no email, so it cannot be approved. Add the email manually.");
+  }
   await addAllowedUser({ email: req.email, githubUsername: req.github_username });
   const { error: updErr } = await supabase
     .from("access_requests")
