@@ -16,6 +16,7 @@ export function PendingActions() {
   const router = useRouter();
   const [checking, setChecking] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
 
   const recheck = useCallback(() => {
     setChecking(true);
@@ -27,11 +28,24 @@ export function PendingActions() {
 
   const signOut = useCallback(async () => {
     setSigningOut(true);
+    setSignOutError(null);
+    const supabase = createSupabaseBrowserClient();
     try {
-      await createSupabaseBrowserClient().auth.signOut();
+      // signOut RESOLVES with { error } for ordinary failures rather than throwing, so
+      // the returned value has to be inspected. A bare try/catch reports success for a
+      // sign-out that did nothing.
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+
+      // Then confirm the session is really gone before showing the login page. Saying
+      // "signed out" while the cookies are still valid is worse than an error: on a
+      // shared machine the next person walks straight back into the account.
+      const { data } = await supabase.auth.getSession();
+      if (data.session) throw new Error("session still present after signOut");
     } catch {
-      // Ignore and send them to login regardless; a failed sign-out must not trap them
-      // on the one page that exists because people were getting trapped.
+      setSignOutError("Could not sign you out. Check your connection and try again.");
+      setSigningOut(false);
+      return;
     }
     window.location.href = "/login";
   }, []);
@@ -54,6 +68,11 @@ export function PendingActions() {
       >
         {signingOut ? "Signing out…" : "Sign out or use a different account"}
       </button>
+      {signOutError && (
+        <p role="alert" className="max-w-xs font-mono text-[11px] leading-relaxed text-destructive">
+          {signOutError}
+        </p>
+      )}
     </div>
   );
 }
