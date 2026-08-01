@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { STARTING_CREDITS } from "@/lib/pricing";
 import type { OnboardingState } from "@/lib/onboarding";
 import { resolveResumeStage, type ProjectProgress } from "@/lib/resume";
+import { resolveUserCap } from "@/lib/pending";
 import type {
   Brief,
   BriefDoc,
@@ -418,11 +419,17 @@ export async function isAllowlisted(email: string | null): Promise<boolean> {
   return (data?.length ?? 0) > 0;
 }
 
-const USER_CAP = 50;
+// Env-overridable, like every credit constant already is. A cohort bigger than the
+// original 50 should not need a code change, and it is read per call so a Vercel env
+// update takes effect on the next request rather than the next cold start.
+const userCap = () => resolveUserCap(process.env.USER_CAP);
 
 /**
  * Ensure an approved profile exists for a freshly-signed-in user. Returns a
- * status the callback can use to route the user. Enforces the 50-user cap.
+ * status the caller can use to route the user. Enforces the early-access cap.
+ *
+ * Idempotent, and /pending depends on that: it re-runs this on every load so a user
+ * approved after signing in is let through without having to sign out and back in.
  */
 export async function ensureProfile(input: {
   userId: string;
@@ -445,7 +452,7 @@ export async function ensureProfile(input: {
   }
 
   const count = await countProfiles();
-  if (count >= USER_CAP) return "full";
+  if (count >= userCap()) return "full";
 
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("profiles").insert({
