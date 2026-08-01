@@ -36,16 +36,25 @@ export default async function PendingPage({
     const user = await getAuthUser();
     if (!user) redirect("/login");
 
-    // The whole point of this page now. A failure here must not strand anyone, so fall
-    // through to the waitlist copy rather than throwing a 500 at a signed-in user.
-    const result = await ensureProfile({
-      userId: user.id,
-      email: user.email,
-      githubUsername: user.githubUsername,
-    }).catch(() => null);
+    // A failure here must not throw a 500 at a signed-in user, but it must not be dressed
+    // up as "you are on the list" either: that tells an approved person something false
+    // and strands them here over what is usually a transient database error. Keep the
+    // three outcomes distinct, and log the failure instead of absorbing it silently.
+    let result: "active" | "pending" | "full" | null = null;
+    try {
+      result = await ensureProfile({
+        userId: user.id,
+        email: user.email,
+        githubUsername: user.githubUsername,
+      });
+    } catch (err) {
+      console.error("pending: ensureProfile failed", err);
+    }
 
+    // redirect() signals by throwing, so it has to sit outside the try above.
     if (result === "active") redirect("/connect");
     if (result === "full") status = "full";
+    if (result === null) status = "error";
   }
 
   const cap = resolveUserCap(process.env.USER_CAP);

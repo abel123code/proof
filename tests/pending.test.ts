@@ -50,17 +50,14 @@ describe("pendingCopy", () => {
   });
 });
 
+// The page's own behaviour is covered properly in pending-page.test.ts, which invokes it
+// with mocked dependencies. Source-text assertions used to live here and were removed:
+// `expect(page).toContain("ensureProfile")` passes if the word sits in a comment, which is
+// worse than no test because it reads as coverage.
 describe("the pending page itself", () => {
   const page = readFileSync("src/app/pending/page.tsx", "utf8").replace(/\s+/g, " ");
 
-  it("re-checks approval on load so an approved user is never stranded", () => {
-    // The trap: ensureProfile only ran in the OAuth callback, so a user approved AFTER
-    // signing in stayed on /pending forever, however many times they came back.
-    expect(page).toContain("ensureProfile");
-    expect(page).toMatch(/redirect\(/);
-  });
-
-  it("offers a way out, since sign-out otherwise only exists behind the approval gate", () => {
+  it("keeps the escape hatch mounted, since sign-out lives behind the approval gate", () => {
     expect(page).toContain("PendingActions");
   });
 });

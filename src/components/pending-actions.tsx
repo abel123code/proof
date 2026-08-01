@@ -40,7 +40,12 @@ export function PendingActions() {
       // Then confirm the session is really gone before showing the login page. Saying
       // "signed out" while the cookies are still valid is worse than an error: on a
       // shared machine the next person walks straight back into the account.
-      const { data } = await supabase.auth.getSession();
+      //
+      // getSession() also returns { error }, and a storage failure yields session: null
+      // ALONGSIDE an error. Reading only `session` would take "I could not tell you" as
+      // "definitely signed out", which is the exact confusion this check exists to stop.
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
       if (data.session) throw new Error("session still present after signOut");
     } catch {
       setSignOutError("Could not sign you out. Check your connection and try again.");

@@ -14,9 +14,13 @@ export function resolveUserCap(raw: string | undefined): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 50;
 }
 
-export type PendingStatus = "pending" | "full";
+export type PendingStatus = "pending" | "full" | "error";
 
-/** Only "full" is distinguishable; anything else (including junk) reads as pending. */
+/**
+ * Only "full" is distinguishable from the query param; anything else, junk included, reads
+ * as pending. "error" is never taken from the URL. It is set server-side when the approval
+ * check itself fails, so a broken lookup cannot be spoofed by editing the address bar.
+ */
 export function resolvePendingStatus(raw: string | null | undefined): PendingStatus {
   return raw === "full" ? "full" : "pending";
 }
@@ -27,6 +31,17 @@ export interface PendingCopy {
 }
 
 export function pendingCopy(status: PendingStatus, cap: number): PendingCopy {
+  if (status === "error") {
+    // Distinct from "pending" on purpose. An approved user whose lookup failed would
+    // otherwise be told they are waiting for approval, which is false and leaves them
+    // sitting here indefinitely for a problem that is ours and probably transient.
+    return {
+      title: "We could not check your access",
+      body:
+        "Something went wrong on our side, not with your account. Try again in a moment. " +
+        "If it keeps happening, sign out and back in.",
+    };
+  }
   if (status === "full") {
     return {
       title: "Early access is full",
