@@ -294,3 +294,70 @@ granted repo out of 18, and `installationCanAccess` refusing an ungranted repo.
 **References:** `src/lib/github-app.ts`, `src/lib/github.ts`, `src/app/api/github/*`,
 `supabase/migrations/0017_github_app_install.sql`, `tests/github-private-repos.test.ts`,
 `tests/github-install-callback.test.ts`, `tests/live-github-app.test.ts` (live, skipped in CI).
+
+---
+
+## 2026-08-01: Allowlist decisions come from the verified email, never from auth metadata
+
+**Context.** `isAllowlisted` built a PostgREST `.or()` filter by string-interpolating both the email
+and the GitHub handle. The handle came from `user.user_metadata.user_name`, and Supabase lets the
+user write that field themselves through `auth.updateUser({ data: ... })` — `app_metadata` is the
+protected one, `user_metadata` is not. Setting it to `x,id.not.is.null` produced the filter
+`github_username.eq.x,id.not.is.null`, whose second term is true for every row, so the allowlist
+matched for anyone holding a Google account. They then received a profile, beta access and a
+1000-credit balance.
+
+Reproduced read-only against production, before and after the fix:
+
+```
+or=(github_username.eq.notarealhandle)                -> []            no match
+or=(github_username.eq.notarealhandle,id.not.is.null) -> [{"id":...}]  EXPLOIT
+eq(email, "attacker@example.com,id.not.is.null")      -> []            closed
+eq(email, <a real allowlisted address>)               -> [{"id":...}]  still works
+```
+
+**Decision.** Authorization is decided from the **provider-verified email only**, bound as a query
+argument (`.eq("email", value)`), never concatenated into a filter string. The column
+`allowed_users.github_username` still exists and still shows in `/admin`, but carries no
+authorization weight. `addAllowedUser`, the admin route and `approveAccessRequest` all require an
+email, so a handle-only row can never sit in the table looking approved while admitting nobody.
+
+**Alternatives considered.** *Escape the interpolated value* — insufficient alone: it closes the
+injection but leaves plain impersonation open the moment anyone is allowlisted by handle, since the
+attacker can just set `user_name` to that handle. *Move the handle into `app_metadata`* — would work,
+but adds a write path we do not need; the email already identifies the person and comes from the
+identity provider.
+
+**Consequences.** All 17 live allowlist rows had an email, so nobody lost access. Any future identity
+signal must be checked for **who can write it** before it influences admission. Forensics after the
+fix: 0 of 13 profiles were off the allowlist, so the bypass was never exploited.
+
+**References:** `src/lib/db.ts` (`isAllowlisted`, `addAllowedUser`, `approveAccessRequest`),
+`src/app/api/admin/allow/route.ts`, `tests/allowlist.test.ts`, PR #24,
+[POST_MORTEMS.md](POST_MORTEMS.md) 2026-08-01.
+
+---
+
+## 2026-08-02: Open signup is a flag, and USER_CAP stays as the spend bound
+
+**Context.** Judges cannot evaluate a product they are locked out of, and approving each one by hand
+does not scale to a demo. The obvious move, deleting the invite gate, would have made re-closing it a
+code change and a deploy.
+
+**Decision.** `NEXT_PUBLIC_OPEN_SIGNUP=true` makes `ensureProfile` skip the allowlist check. It does
+**not** lift `USER_CAP`. The allowlist, the access-request log and every existing user keep working
+underneath, so closing signup again is one env change.
+
+**Alternatives considered.** *Delete the allowlist* — rejected: irreversible without a deploy, and it
+discards machinery a real beta needs afterwards. *Open signup and lift the cap* — rejected: an open
+door with no ceiling is exactly what lets a stranger drain the OpenAI budget and the 1GB Supabase
+storage allowance, which stood at 274MB before judging began.
+
+**Consequences.** Blast radius is bounded at `USER_CAP` users however widely the link spreads; 13
+profiles existed against a cap of 50, leaving 37 slots. Anyone arriving past the cap gets the "early
+access is full" page. Login copy reacts to the flag, because telling a judge they need an invite on a
+page that is about to admit them is its own kind of broken. Pair with a spend limit in the OpenAI
+dashboard for the other half of the bound.
+
+**References:** `src/lib/signup.ts`, `src/lib/db.ts` (`ensureProfile`), `src/app/login/page.tsx`,
+`tests/open-signup.test.ts`, PR #28.

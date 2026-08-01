@@ -1,5 +1,16 @@
 # Proof Render Pipeline Handoff
 
+> **Historical, as of 2026-07-25. Read AGENTS.md before acting on anything below.**
+>
+> This describes the deterministic FFmpeg **erase-mask** as the current architecture. That mask has
+> since been **removed**, and AGENTS.md lists it under "do NOT reintroduce" along with static face
+> coordinates, grid-cell masks, person matting and typed-template scene schemas. Graphics now
+> composite in front intact; captions are protected by a pixel check that relocates a graphic rather
+> than erasing it; the face is judged editorially by QA. See DECISIONS.md 2026-07-23.
+>
+> Kept because the diagnosis and the specific failing renders recorded here are still useful
+> evidence. Do not treat the prescriptions as current.
+
 This file summarizes the render-pipeline investigation and implementation so work can resume safely in the next session.
 
 ## Resume First
