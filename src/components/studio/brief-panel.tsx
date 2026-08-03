@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Kicker, SectionMarker } from "@/components/studio/primitives";
 import { emitCreditsChanged } from "@/components/studio/credits";
 import { getActiveProject, setActiveProject } from "@/components/studio/active-project";
+import { setReportContext } from "@/components/studio/report-context";
 import {
   BRIEF_INPUT_PENDING_KEY,
   shouldResumeSavedBrief,
@@ -110,6 +111,12 @@ export function BriefPanel() {
   useEffect(() => {
     setFilenames(readFootageNames(briefId));
   }, [briefId]);
+
+  // Leave breadcrumbs for the header's "report a bug" dialog, which lives outside this
+  // component and can't otherwise see which brief/render the user is looking at.
+  useEffect(() => {
+    setReportContext({ projectId, briefId, renderJobId, renderStatus, renderUrl });
+  }, [projectId, briefId, renderJobId, renderStatus, renderUrl]);
 
  // Recover the project on a hard refresh where ?project= isn't in the URL, the
   // brand-new-video path only sets it in state, and the top-nav stepper links to a
@@ -373,6 +380,9 @@ export function BriefPanel() {
           setRenderStatus("done");
           toast.success("Edited video ready");
         } else if (data.status === "error") {
+          // Keep the failure message for a bug report. It's the most useful string
+          // the app ever sees and it otherwise dies with the toast.
+          setReportContext({ lastError: data.error ?? "Render failed", renderStatus: "error" });
           toast.error(data.error ?? "Render failed");
           setRenderJobId(null);
         }

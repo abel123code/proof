@@ -19,6 +19,7 @@ import {
   OnboardingTour,
   ReplayOnboardingButton,
 } from "@/components/studio/onboarding-tour";
+import { BugReportDialog } from "@/components/studio/bug-report-dialog";
 
 export function StudioHeader() {
   const pathname = usePathname();
@@ -26,6 +27,7 @@ export function StudioHeader() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
 
   // One shared fetch drives admin and credits. Subscribe so any store refresh
   // (e.g. after a charged action) updates them at once.
@@ -161,9 +163,18 @@ export function StudioHeader() {
           >
             Settings
           </Link>
+          <button
+            type="button"
+            onClick={() => setReportOpen(true)}
+            title="Something broken? Tell us — we attach the technical details for you."
+            className="rounded-md px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            Report a bug
+          </button>
         </div>
       </div>
       <OnboardingTour />
+      <BugReportDialog open={reportOpen} onOpenChange={setReportOpen} />
     </header>
   );
 }
