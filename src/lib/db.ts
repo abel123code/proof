@@ -3,6 +3,7 @@ import { STARTING_CREDITS } from "@/lib/pricing";
 import type { OnboardingState } from "@/lib/onboarding";
 import { resolveResumeStage, type ProjectProgress } from "@/lib/resume";
 import { resolveUserCap } from "@/lib/pending";
+import { openSignupEnabled } from "@/lib/signup";
 import type {
   Brief,
   BriefDoc,
@@ -439,9 +440,14 @@ export async function ensureProfile(input: {
   const existing = await getProfile(input.userId);
   if (existing) return "active";
 
-  // Email only. `input.githubUsername` originates from user-writable auth metadata and
-  // must never influence an authorization decision. See isAllowlisted.
-  const allowed = await isAllowlisted(input.email);
+  // Open signup admits anyone who can sign in, so judges do not have to wait to be
+  // approved. The USER_CAP check below still runs: without a ceiling, an open door lets a
+  // stranger drain the OpenAI budget and the 1GB of Supabase storage.
+  //
+  // Email only when the allowlist IS in force. `input.githubUsername` originates from
+  // user-writable auth metadata and must never influence an authorization decision.
+  // See isAllowlisted.
+  const allowed = openSignupEnabled() || (await isAllowlisted(input.email));
   if (!allowed) {
     // Log the attempt so an admin can approve/reject it from the /admin page.
     // Best-effort, but surface failures so a broken insert isn't silent.

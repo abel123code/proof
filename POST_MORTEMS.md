@@ -4,6 +4,50 @@ Failure modes that cost real time, written down so they are not repeated. Newest
 
 ---
 
+## 2026-08-01: A full green gate sat next to a live auth bypass for weeks
+
+**Impact.** Anyone with a Google account could grant themselves beta access, a profile and 1000
+credits, by setting one field on their own auth record. It was live in production and had been for
+as long as `isAllowlisted` existed. Nobody found it, and forensics confirmed nobody used it (0 of 13
+profiles were off the allowlist), so the cost was zero by luck rather than by process.
+
+**What happened.** `isAllowlisted` interpolated the GitHub handle straight into a PostgREST `.or()`
+filter. That handle came from `user.user_metadata.user_name`, which Supabase lets the user write
+themselves. `x,id.not.is.null` turned the allowlist check into a filter that matches every row.
+
+The bug was found only because a change **near** it was flagged as security-sensitive and put through
+an adversarial review. The change itself was fine. The code it sat beside was not.
+
+**The uncomfortable part.** At the moment the review ran, the branch had: 121 unit tests passing,
+`tsc` clean, `lint` clean, a passing production build, and rendered screenshots checked at two
+viewports. Every gate was green. None of them were capable of finding this, because every one of
+them checks what somebody already thought to ask.
+
+**Lessons.**
+
+1. **Tests confirm your assumptions; they cannot audit them.** A test suite is a record of the
+   failure modes you imagined. It is structurally incapable of surfacing the ones you did not. Green
+   means "no known regression", never "no vulnerability".
+2. **Trace every identity signal to who can write it.** The bug was not really string interpolation,
+   it was treating an attacker-writable field as an identity claim. Escaping the value would have
+   closed the injection and left impersonation wide open. Ask "who controls this?" before "is this
+   escaped?".
+3. **Reviewing a diff means reviewing what the diff touches.** The vulnerability was not in the
+   change under review; it was in the function that change made easier to reach. Scope the review to
+   the blast radius, not the patch.
+4. **Reproduce a reported vulnerability before fixing it, and after.** A read-only query against
+   production turned "the reviewer says this is exploitable" into "here is the row it returns", and
+   the same query afterwards proved the fix without guessing. It also proved the fix did not break
+   legitimate access, which is the half that is easy to skip.
+5. **Run an adversarial pass on anything touching auth, credits or the allowlist**, rather than when
+   somebody remembers to ask for one. This one was requested by the founder, not by process. That is
+   the actual gap.
+
+**References:** [DECISIONS.md](DECISIONS.md) 2026-08-01, PR #24, `tests/allowlist.test.ts`.
+
+---
+
+
 ## 2026-07-29: A deploy was called "verified" off a boot log, and shipped 0-animation videos
 
 **Impact.** Production renders completed successfully and shipped with **zero bespoke animations** —

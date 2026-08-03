@@ -14,7 +14,7 @@
   <img src="https://github.com/abel123code/proof/actions/workflows/verify.yml/badge.svg" alt="Verification workflow" />
   <img src="https://img.shields.io/badge/built%20with-Codex-111111" alt="Built with Codex" />
   <img src="https://img.shields.io/badge/powered%20by-GPT--5.6-10A37F" alt="Powered by GPT-5.6" />
-  <img src="https://img.shields.io/badge/tests-186%20passing-2563EB" alt="186 tests passing" />
+  <img src="https://img.shields.io/badge/tests-253%20passing-2563EB" alt="253 tests passing" />
   <img src="https://img.shields.io/badge/license-MIT-F5C542" alt="MIT licence" />
 </p>
 

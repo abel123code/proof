@@ -1,6 +1,6 @@
 # Proof roadmap
 
-Last updated: 2026-07-30.
+Last updated: 2026-08-02.
 
 ## Shipped foundation
 

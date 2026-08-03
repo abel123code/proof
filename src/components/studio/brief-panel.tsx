@@ -856,8 +856,12 @@ function FootageModal({ url, onClose }: { url: string; onClose: () => void }) {
       >
         ✕
       </button>
+      {/* Definite height, not max-h. Both children below are `absolute inset-0`, so this box
+          has no in-flow content: with `max-h`/`w-auto` its height resolved to 0, and
+          aspect-ratio then derived a width of 0 from it, collapsing the modal to its 5px
+          border. Sized like the teleprompter's phone frame, which has always worked. */}
       <div
-        className="relative z-10 aspect-[9/16] max-h-[85vh] w-auto max-w-[92vw] overflow-hidden rounded-[2rem] border-[5px] border-neutral-800 bg-black shadow-2xl"
+        className="relative z-10 aspect-[9/16] h-[50vh] max-w-[92vw] overflow-hidden rounded-[2rem] border-[5px] border-neutral-800 bg-black shadow-2xl lg:h-[85vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {failed ? (
