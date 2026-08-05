@@ -40,4 +40,35 @@ describe("resolveAuthConfig", () => {
       missing: ["NEXT_PUBLIC_SUPABASE_ANON_KEY"],
     });
   });
+
+  it("does not fall back to dev-open when NODE_ENV is unset", () => {
+    // A container that skips the next build/start lifecycle can reach production
+    // with NODE_ENV unset. That must not read as "developer laptop".
+    expect(resolveAuthConfig(NEITHER, undefined)).toEqual({
+      mode: "misconfigured",
+      missing: ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
+    });
+    expect(resolveAuthConfig(NEITHER, "staging")).toEqual({
+      mode: "misconfigured",
+      missing: ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
+    });
+  });
+
+  it("is symmetric about which half is missing", () => {
+    expect(resolveAuthConfig({ url: undefined, anonKey: "anon-key" }, "development")).toEqual({
+      mode: "misconfigured",
+      missing: ["NEXT_PUBLIC_SUPABASE_URL"],
+    });
+  });
+
+  it("treats whitespace and stringified nullish values as absent", () => {
+    expect(resolveAuthConfig({ url: "https://x.supabase.co", anonKey: "   " }, "test")).toEqual({
+      mode: "misconfigured",
+      missing: ["NEXT_PUBLIC_SUPABASE_ANON_KEY"],
+    });
+    expect(resolveAuthConfig({ url: "https://x.supabase.co", anonKey: "undefined" }, "test")).toEqual({
+      mode: "misconfigured",
+      missing: ["NEXT_PUBLIC_SUPABASE_ANON_KEY"],
+    });
+  });
 });

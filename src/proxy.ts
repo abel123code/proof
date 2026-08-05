@@ -1,8 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { resolveAuthConfig } from "@/lib/auth-config";
 
 // Refreshes the Supabase session on every request and gates the studio routes.
-// If the anon key isn't configured (local / pre-OAuth), auth is a no-op.
+// If nothing is configured (local / pre-OAuth), auth is a no-op. If only ONE of
+// the two vars is present, that's a broken deploy, not a developer laptop: fail
+// closed rather than serving the studio shell with no session check.
 
 const PUBLIC_PREFIXES = ["/", "/login", "/pending", "/auth"];
 
@@ -14,13 +17,26 @@ export function isPublic(pathname: string): boolean {
 export async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const authConfig = resolveAuthConfig({ url, anonKey: anon }, process.env.NODE_ENV);
 
-  // Auth disabled: pass everything through untouched.
-  if (!url || !anon) return NextResponse.next({ request });
+  // Auth disabled (developer laptop): pass everything through untouched.
+  if (authConfig.mode === "dev-open") return NextResponse.next({ request });
+
+  // Half-configured deploy: fail closed. Public routes still render so the
+  // landing page and /login itself stay reachable; everything else redirects to
+  // /login instead of silently serving the studio shell with no session check.
+  if (authConfig.mode === "misconfigured") {
+    const { pathname } = request.nextUrl;
+    if (isPublic(pathname)) return NextResponse.next({ request });
+    const redirect = request.nextUrl.clone();
+    redirect.pathname = "/login";
+    redirect.searchParams.set("next", pathname);
+    return NextResponse.redirect(redirect);
+  }
 
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient(url, anon, {
+  const supabase = createServerClient(url!, anon!, {
     cookies: {
       getAll() {
         return request.cookies.getAll();
