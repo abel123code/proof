@@ -14,6 +14,7 @@ import {
   saveBriefRender,
   spendCredits,
 } from "@/lib/db";
+import { validateVideoUrls } from "@/lib/media-url";
 import { CREDIT_COSTS } from "@/lib/pricing";
 import { resolveRenderMode } from "@/lib/render-mode";
 import { resolveRenderPoll } from "@/lib/render-poll";
@@ -46,11 +47,12 @@ export async function POST(req: Request) {
   if (typeof briefId !== "string") {
     return NextResponse.json({ error: "briefId is required" }, { status: 400 });
   }
-  if (!Array.isArray(videoUrls) || videoUrls.length === 0 || !brief) {
-    return NextResponse.json(
-      { error: "videoUrls (non-empty) and brief are required" },
-      { status: 400 },
-    );
+  const clips = validateVideoUrls(videoUrls, process.env.NEXT_PUBLIC_SUPABASE_URL);
+  if (!clips.ok) {
+    return NextResponse.json({ error: clips.error }, { status: 400 });
+  }
+  if (!brief) {
+    return NextResponse.json({ error: "brief is required" }, { status: 400 });
   }
   // Service-role bypasses RLS, so confirm the caller owns this brief before rendering
   // it (and before spending anyone's credits).
@@ -72,7 +74,7 @@ export async function POST(req: Request) {
     const jobId = randomUUID();
     durableJobId = jobId;
     const editMode = EDIT_MODE;
-    const durableInput = { videoUrls, videoUrl: videoUrls[0], brief, editMode };
+    const durableInput = { videoUrls: clips.urls, videoUrl: clips.urls[0], brief, editMode };
     await createRenderJob({
       id: jobId,
       briefId,
@@ -93,8 +95,8 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         jobId,
         briefId,
-        videoUrls,
-        videoUrl: videoUrls[0],
+        videoUrls: clips.urls,
+        videoUrl: clips.urls[0],
         brief,
         editMode,
       }),
