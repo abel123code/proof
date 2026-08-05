@@ -35,6 +35,33 @@ describe("validateVideoUrls", () => {
     expect(validateVideoUrls(["https://yivjxeyokdeeyfmzhwcw.supabase.co.evil.com/a.mp4"], BASE).ok).toBe(false);
   });
 
+  it("rejects a foreign host even when the path mimics our bucket layout", () => {
+    // Paired deliberately with a path that passes the prefix check, so this case
+    // can only be rejected by the origin comparison. Without it the suite would
+    // still pass with the origin check deleted.
+    const r = validateVideoUrls(
+      ["https://evil.example.com/storage/v1/object/public/footage/a.mp4"],
+      BASE,
+    );
+    expect(r.ok).toBe(false);
+  });
+
+  it("rejects link-local metadata even when the path mimics our bucket layout", () => {
+    const r = validateVideoUrls(
+      ["http://169.254.169.254/storage/v1/object/public/footage/a.mp4"],
+      BASE,
+    );
+    expect(r.ok).toBe(false);
+  });
+
+  it("rejects a lookalike host even when the path mimics our bucket layout", () => {
+    const r = validateVideoUrls(
+      [`${BASE}.evil.com/storage/v1/object/public/footage/a.mp4`],
+      BASE,
+    );
+    expect(r.ok).toBe(false);
+  });
+
   it("caps the number of clips", () => {
     const many = Array.from({ length: MAX_CLIPS + 1 }, (_, i) => ok(`s${i}.webm`));
     expect(validateVideoUrls(many, BASE).ok).toBe(false);
@@ -46,6 +73,12 @@ describe("validateVideoUrls", () => {
 
   it("rejects non-string entries", () => {
     expect(validateVideoUrls([123 as unknown as string], BASE).ok).toBe(false);
+  });
+
+  it("rejects a non-array value", () => {
+    expect(validateVideoUrls("not-an-array", BASE).ok).toBe(false);
+    expect(validateVideoUrls(null, BASE).ok).toBe(false);
+    expect(validateVideoUrls({ 0: "x", length: 1 }, BASE).ok).toBe(false);
   });
 
   it("refuses everything when storage is not configured", () => {

@@ -6,6 +6,9 @@
  */
 export const MAX_CLIPS = 12;
 
+// If the `footage` bucket ever becomes private, clip URLs move to
+// `/storage/v1/object/sign/footage/...` (signed URLs), and this prefix has to accept
+// that shape in the same change, or every legitimate render gets rejected here.
 const BUCKET_PREFIX = "/storage/v1/object/public/footage/";
 
 export type UrlCheck = { ok: true; urls: string[] } | { ok: false; error: string };
