@@ -1215,6 +1215,35 @@ export async function claimRenderRefund(jobId: string, userId: string): Promise<
   return (data?.length ?? 0) > 0;
 }
 
+/**
+ * The newest still-running job for a brief, or null. Used to make a repeated submit
+ * return the job already in flight instead of reserving a second lot of credits.
+ *
+ * Scoped to the owning user as well as the brief, so a guessed brief id cannot reveal
+ * somebody else's job. Ordered newest-first because a brief can accumulate terminal
+ * jobs over time and only the latest matters.
+ */
+export async function findActiveRenderJob(
+  briefId: string,
+  userId: string,
+): Promise<{ id: string; status: string } | null> {
+  const uid = realUserId(userId);
+  // Local dev has no real wallet and no durable jobs to collide with.
+  if (!uid) return null;
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("render_jobs")
+    .select("id,status")
+    .eq("brief_id", briefId)
+    .eq("user_id", uid)
+    .in("status", ["queued", "processing"])
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(`findActiveRenderJob failed: ${error.message}`);
+  const row = data?.[0];
+  return row ? { id: row.id as string, status: row.status as string } : null;
+}
+
 /** Wipe the render state on a brief (used when deleting an edited video). */
 export async function clearBriefRender(briefId: string): Promise<void> {
   const supabase = getSupabaseAdmin();

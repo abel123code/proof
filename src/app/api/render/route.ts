@@ -8,6 +8,7 @@ import {
   clearBriefRender,
   createRenderJob,
   failRenderJob,
+  findActiveRenderJob,
   getBriefById,
   getRenderJob,
   refundCredits,
@@ -18,6 +19,7 @@ import { validateVideoUrls } from "@/lib/media-url";
 import { CREDIT_COSTS } from "@/lib/pricing";
 import { resolveRenderMode } from "@/lib/render-mode";
 import { resolveRenderPoll } from "@/lib/render-poll";
+import { decideSubmission } from "@/lib/render-submit";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -58,6 +60,14 @@ export async function POST(req: Request) {
   // it (and before spending anyone's credits).
   if (!(await assertBriefOwnedBy(briefId, auth.userId))) {
     return NextResponse.json({ error: "Not your brief." }, { status: 403 });
+  }
+
+  // A repeated submit for the same brief must not reserve a second lot of credits.
+  // Checked before spending, because the charge is the thing being made idempotent.
+  const active = await findActiveRenderJob(briefId, auth.userId);
+  const submission = decideSubmission(active);
+  if (submission.action === "reuse") {
+    return NextResponse.json({ jobId: submission.jobId, reused: true });
   }
 
   // Reserve credits before kicking off the render; refund if it never starts.
