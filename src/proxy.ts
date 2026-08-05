@@ -25,9 +25,17 @@ export async function proxy(request: NextRequest) {
   // Half-configured deploy: fail closed. Public routes still render so the
   // landing page and /login itself stay reachable; everything else redirects to
   // /login instead of silently serving the studio shell with no session check.
+  //
+  // Skip the redirect for /api/* : those routes self-gate via requireApprovedUser
+  // / requireAdmin, which now returns a 503 for this same misconfigured state, and
+  // redirecting a fetch() to /login is worse than useless — fetch follows it, the
+  // caller gets the login HTML back with status 200, and res.json() throws a parse
+  // error instead of surfacing the handler's "sign-in unavailable" response.
   if (authConfig.mode === "misconfigured") {
     const { pathname } = request.nextUrl;
-    if (isPublic(pathname)) return NextResponse.next({ request });
+    if (isPublic(pathname) || pathname.startsWith("/api")) {
+      return NextResponse.next({ request });
+    }
     const redirect = request.nextUrl.clone();
     redirect.pathname = "/login";
     redirect.searchParams.set("next", pathname);

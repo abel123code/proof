@@ -49,4 +49,13 @@ describe("proxy (misconfigured auth)", () => {
     const response = await proxy(request);
     expect(response.headers.get("location")).toBeFalsy();
   });
+
+  it("lets /api/* through so the route handler can answer with a 503", async () => {
+    // Redirecting a fetch() to /login is worse than useless: fetch follows it,
+    // the caller gets the login HTML with status 200, and res.json() throws a
+    // parse error instead of surfacing the handler's "sign-in unavailable" 503.
+    const request = new NextRequest("http://localhost/api/render");
+    const response = await proxy(request);
+    expect(response.headers.get("location")).toBeFalsy();
+  });
 });
