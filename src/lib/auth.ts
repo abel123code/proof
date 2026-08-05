@@ -1,15 +1,17 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { DEV_USER_ID, getProfile, isAdminUser, type Profile } from "@/lib/db";
+import { currentAuthConfig } from "@/lib/auth-config";
 
 /**
- * Auth is only enforced when the anon key is configured. Locally (or before the
- * Google OAuth provider is wired in the Supabase dashboard) it degrades to a
- * single "dev" identity so the pipeline stays usable.
+ * Auth is only enforced when both Supabase public env vars are configured. Locally
+ * (or before the Google OAuth provider is wired in the Supabase dashboard) it
+ * degrades to a single "dev" identity so the pipeline stays usable. A half-configured
+ * environment (one var present, one missing) is never treated as dev mode — it is
+ * refused, because in production that shape used to silently disable auth while
+ * service-role database access kept working.
  */
 export function isAuthConfigured(): boolean {
-  return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  );
+  return currentAuthConfig().mode === "enforce";
 }
 
 export interface AuthedUser {
@@ -20,7 +22,9 @@ export interface AuthedUser {
 
 /** The signed-in Supabase user, or null. Returns a dev identity if auth is off. */
 export async function getAuthUser(): Promise<AuthedUser | null> {
-  if (!isAuthConfigured()) {
+  const config = currentAuthConfig();
+  if (config.mode === "misconfigured") return null;
+  if (config.mode === "dev-open") {
     return { id: DEV_USER_ID, email: null, githubUsername: "dev" };
   }
   const supabase = await createSupabaseServerClient();
@@ -50,7 +54,12 @@ export type AuthResult =
  * of issuing a second identical DB query. In dev (auth off) there is no profile.
  */
 export async function requireApprovedUser(): Promise<AuthResult> {
-  if (!isAuthConfigured()) {
+  const config = currentAuthConfig();
+  if (config.mode === "misconfigured") {
+    console.error(`auth misconfigured, missing: ${config.missing.join(", ")}`);
+    return { ok: false, status: 503, error: "Sign-in is unavailable. Please try again shortly." };
+  }
+  if (config.mode === "dev-open") {
     return { ok: true, userId: DEV_USER_ID, profile: null };
   }
   const user = await getAuthUser();
@@ -67,7 +76,12 @@ export async function requireApprovedUser(): Promise<AuthResult> {
  * In dev (auth off) it passes so the /admin tools are usable locally.
  */
 export async function requireAdmin(): Promise<AuthResult> {
-  if (!isAuthConfigured()) {
+  const config = currentAuthConfig();
+  if (config.mode === "misconfigured") {
+    console.error(`auth misconfigured, missing: ${config.missing.join(", ")}`);
+    return { ok: false, status: 503, error: "Sign-in is unavailable. Please try again shortly." };
+  }
+  if (config.mode === "dev-open") {
     return { ok: true, userId: DEV_USER_ID, profile: null };
   }
   const user = await getAuthUser();
