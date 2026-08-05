@@ -65,7 +65,7 @@ export async function POST(req: Request) {
   // A repeated submit for the same brief must not reserve a second lot of credits.
   // Checked before spending, because the charge is the thing being made idempotent.
   const active = await findActiveRenderJob(briefId, auth.userId);
-  const submission = decideSubmission(active);
+  const submission = decideSubmission(active, Date.now());
   if (submission.action === "reuse") {
     return NextResponse.json({ jobId: submission.jobId, reused: true });
   }

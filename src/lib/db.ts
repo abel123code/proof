@@ -1226,14 +1226,14 @@ export async function claimRenderRefund(jobId: string, userId: string): Promise<
 export async function findActiveRenderJob(
   briefId: string,
   userId: string,
-): Promise<{ id: string; status: string } | null> {
+): Promise<{ id: string; status: string; updatedAt: string | null } | null> {
   const uid = realUserId(userId);
   // Local dev has no real wallet and no durable jobs to collide with.
   if (!uid) return null;
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("render_jobs")
-    .select("id,status")
+    .select("id,status,updated_at")
     .eq("brief_id", briefId)
     .eq("user_id", uid)
     .in("status", ["queued", "processing"])
@@ -1241,7 +1241,13 @@ export async function findActiveRenderJob(
     .limit(1);
   if (error) throw new Error(`findActiveRenderJob failed: ${error.message}`);
   const row = data?.[0];
-  return row ? { id: row.id as string, status: row.status as string } : null;
+  return row
+    ? {
+        id: row.id as string,
+        status: row.status as string,
+        updatedAt: (row.updated_at as string | null) ?? null,
+      }
+    : null;
 }
 
 /** Wipe the render state on a brief (used when deleting an edited video). */
