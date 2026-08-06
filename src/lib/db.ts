@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { STARTING_CREDITS } from "@/lib/pricing";
 import type { OnboardingState } from "@/lib/onboarding";
@@ -1087,6 +1088,62 @@ export async function assertProjectOwnedBy(projectId: string, userId: string): P
   if (error) throw new Error(`project ownership check failed: ${error.message}`);
   if (!data) return false;
   return (data as { user_id: string | null }).user_id === userId;
+}
+
+// ---- brand assets ----
+const BRAND_ASSETS_BUCKET = "brand-assets";
+
+/** image/png -> png, image/webp -> webp; everything else (image/jpeg, the only other
+ *  content type the route allows) becomes .jpg. */
+function assetExt(contentType: string): string {
+  if (contentType === "image/png") return "png";
+  if (contentType === "image/webp") return "webp";
+  return "jpg";
+}
+
+/**
+ * Mint a short-lived signed upload URL so the browser can PUT a brand screenshot or
+ * logo straight to Supabase Storage, the same pattern (and the same reason - the
+ * Vercel serverless body limit) as createFootageUploadTicket. Returns the same
+ * { path, token } shape so the client upload code is identical.
+ */
+export async function createAssetUploadTicket(input: {
+  briefId: string;
+  contentType: string;
+}): Promise<{ path: string; token: string; signedUrl: string }> {
+  const supabase = getSupabaseAdmin();
+  const path = `${input.briefId}/${randomUUID()}.${assetExt(input.contentType)}`;
+  const { data, error } = await supabase.storage
+    .from(BRAND_ASSETS_BUCKET)
+    .createSignedUploadUrl(path, { upsert: true });
+  if (error) throw new Error(`asset sign failed: ${error.message}`);
+  return { path, token: data.token, signedUrl: data.signedUrl };
+}
+
+/**
+ * Persist a brief's brand assets into the `assets` jsonb column the render worker
+ * reads (RenderAssets: images, brandColor, brandVoice, motif). Reads the row first and
+ * merges rather than overwriting, because the worker also reads brandVoice/motif off
+ * this same column and a future feature may set those independently - a blind
+ * overwrite here would silently erase them the next time someone updated their images.
+ */
+export async function setBriefAssets(
+  briefId: string,
+  assets: { images: string[]; brandColor?: string },
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { data, error: readError } = await supabase
+    .from("briefs")
+    .select("assets")
+    .eq("id", briefId)
+    .maybeSingle();
+  if (readError) throw new Error(`setBriefAssets read failed: ${readError.message}`);
+  const existing = (data as { assets: Record<string, unknown> | null } | null)?.assets ?? {};
+  const merged: Record<string, unknown> = { ...existing, images: assets.images };
+  if (assets.brandColor !== undefined) merged.brandColor = assets.brandColor;
+
+  const { error } = await supabase.from("briefs").update({ assets: merged }).eq("id", briefId);
+  if (error) throw new Error(`setBriefAssets failed: ${error.message}`);
 }
 
 /** Persist the render state (job id / status / finished MP4 URL) on a brief. */
