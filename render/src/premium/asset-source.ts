@@ -1,5 +1,5 @@
 import { lookup } from "node:dns/promises";
-import { BlockList, isIP } from "node:net";
+import { BlockList, isIP, type LookupFunction } from "node:net";
 import { request as httpsRequest } from "node:https";
 import type { IncomingMessage } from "node:http";
 import { Readable } from "node:stream";
@@ -236,6 +236,29 @@ export function nodeResponseToWebResponse(response: IncomingMessage): Response {
   return new Response(Readable.toWeb(response) as ReadableStream<Uint8Array>, { status, headers });
 }
 
+/**
+ * Custom `lookup` for the pinned https.request below: always hands back the address we already
+ * DNS-rebinding-checked, never a fresh (and potentially re-poisoned) resolution.
+ *
+ * Node 22's HTTPS agent calls this with `{ all: true }` on some code paths, and per Node's own
+ * `LookupFunction` contract that means the callback must receive an ARRAY of `{address, family}`
+ * — not a bare address string. The original shim ignored `options.all` and always called back
+ * with a bare string; when Node invoked it with `all: true` it tried to read `.address` off that
+ * string, got `undefined`, and threw "Invalid IP address: undefined" from `emitLookup
+ * (node:net:1495)`. That broke EVERY premium asset download in production (Node 22, matching
+ * `node:22-bookworm-slim`) — see tests/pinned-lookup.test.ts for the reproduction.
+ */
+export function pinnedLookup(pinnedAddress: string): LookupFunction {
+  const family = isIP(pinnedAddress);
+  return (_hostname, options, callback) => {
+    if (options && typeof options === "object" && options.all) {
+      callback(null, [{ address: pinnedAddress, family }]);
+    } else {
+      callback(null, pinnedAddress, family);
+    }
+  };
+}
+
 async function pinnedHttpsRequest(url: URL, pinnedAddress: string): Promise<Response> {
   return new Promise((resolve, reject) => {
     const request = httpsRequest(
@@ -244,7 +267,7 @@ async function pinnedHttpsRequest(url: URL, pinnedAddress: string): Promise<Resp
         servername: url.hostname,
         headers: { host: url.host },
         timeout: ASSET_FETCH_TIMEOUT_MS,
-        lookup: (_hostname, _options, callback) => callback(null, pinnedAddress, isIP(pinnedAddress)),
+        lookup: pinnedLookup(pinnedAddress),
       },
       (response) => {
         try {
