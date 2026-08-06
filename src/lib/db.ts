@@ -5,6 +5,7 @@ import type { OnboardingState } from "@/lib/onboarding";
 import { resolveResumeStage, type ProjectProgress } from "@/lib/resume";
 import { resolveUserCap } from "@/lib/pending";
 import { openSignupEnabled } from "@/lib/signup";
+import type { CleanupCandidate } from "@/lib/footage-cleanup";
 import type {
   Brief,
   BriefDoc,
@@ -995,6 +996,83 @@ export async function deleteSceneFootage(briefId: string, sceneIndex: number): P
     .eq("brief_id", briefId)
     .eq("scene_index", sceneIndex);
   if (delErr) throw new Error(`deleteSceneFootage failed: ${delErr.message}`);
+}
+
+// Cap how many briefs a single drain call can touch, so it stays a bounded piece of
+// render-request work and never turns into an unbounded sweep across a user's history.
+const FOOTAGE_CLEANUP_CAP = 20;
+
+/**
+ * Candidate briefs for footage cleanup, scoped to the briefs this user owns. Feeds
+ * decideFootageCleanup (see footage-cleanup.ts) which decides what actually qualifies;
+ * this just gathers the raw facts.
+ */
+export async function listFootageCleanupCandidates(userId: string): Promise<CleanupCandidate[]> {
+  const uid = realUserId(userId);
+  if (!uid) return [];
+
+  const supabase = getSupabaseAdmin();
+  const { data: briefRows, error } = await supabase
+    .from("briefs")
+    .select("id, render_status, render_url")
+    .eq("user_id", uid)
+    .order("created_at", { ascending: false })
+    .limit(FOOTAGE_CLEANUP_CAP);
+  if (error) throw new Error(`listFootageCleanupCandidates failed: ${error.message}`);
+
+  const rows = (briefRows ?? []) as {
+    id: string;
+    render_status: string | null;
+    render_url: string | null;
+  }[];
+  if (rows.length === 0) return [];
+
+  const ids = rows.map((r) => r.id);
+  const { data: footageRows, error: footageErr } = await supabase
+    .from("scene_footage")
+    .select("brief_id")
+    .in("brief_id", ids);
+  if (footageErr) {
+    throw new Error(`listFootageCleanupCandidates footage count failed: ${footageErr.message}`);
+  }
+  const counts = new Map<string, number>();
+  for (const row of (footageRows ?? []) as { brief_id: string }[]) {
+    counts.set(row.brief_id, (counts.get(row.brief_id) ?? 0) + 1);
+  }
+
+  return rows.map((r) => ({
+    id: r.id,
+    renderStatus: r.render_status ?? null,
+    renderUrl: r.render_url ?? null,
+    footageCount: counts.get(r.id) ?? 0,
+  }));
+}
+
+/**
+ * Remove everything under `<briefId>/` in the footage bucket. An empty listing means
+ * there is nothing left to remove, and that is success, not failure: this must be a
+ * true no-op on already-cleared footage, or a retry after a partial-success crash (the
+ * remove succeeded but the process died before the row was forgotten) lands the brief
+ * in `failed` forever. A real storage error, from either the list or the remove, still
+ * throws, because that is the case actually worth retrying.
+ */
+export async function removeBriefFootage(briefId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { data, error: listErr } = await supabase.storage.from(FOOTAGE_BUCKET).list(briefId);
+  if (listErr) throw new Error(`removeBriefFootage list failed: ${listErr.message}`);
+
+  const paths = (data ?? []).map((f) => `${briefId}/${f.name}`);
+  if (paths.length === 0) return;
+
+  const { error: removeErr } = await supabase.storage.from(FOOTAGE_BUCKET).remove(paths);
+  if (removeErr) throw new Error(`removeBriefFootage remove failed: ${removeErr.message}`);
+}
+
+/** Delete the scene_footage rows tracking a brief's (now removed) clips. */
+export async function forgetBriefFootage(briefId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("scene_footage").delete().eq("brief_id", briefId);
+  if (error) throw new Error(`forgetBriefFootage failed: ${error.message}`);
 }
 
 // ---- briefs ----

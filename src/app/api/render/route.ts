@@ -9,12 +9,16 @@ import {
   createRenderJob,
   failRenderJob,
   findActiveRenderJob,
+  forgetBriefFootage,
   getBriefById,
   getRenderJob,
+  listFootageCleanupCandidates,
   refundCredits,
+  removeBriefFootage,
   saveBriefRender,
   spendCredits,
 } from "@/lib/db";
+import { decideFootageCleanup, drainFootage } from "@/lib/footage-cleanup";
 import { validateVideoUrls } from "@/lib/media-url";
 import { CREDIT_COSTS } from "@/lib/pricing";
 import { resolveRenderMode } from "@/lib/render-mode";
@@ -32,6 +36,27 @@ const FOOTAGE_BUCKET = "footage";
 // The server owns this choice so a stale or modified client cannot bypass vision QA.
 // Operators can select a supported fallback through RENDER_EDIT_MODE.
 const EDIT_MODE = resolveRenderMode(process.env.RENDER_EDIT_MODE);
+
+/**
+ * There is no scheduler in this repo, so footage cleanup rides on the traffic that
+ * creates the mess: every render submission for this user is a chance to drain other
+ * finished briefs' raw clips out of the footage bucket. `activeBriefId` is excluded
+ * before the cleanup policy even runs, because that brief's clips are in use by the
+ * render job we just queued — deleting them out from under an in-flight job would
+ * corrupt it. This must never throw: a cleanup problem is never worth turning a
+ * successful render submission into an error response.
+ */
+async function drainFinishedFootage(userId: string, activeBriefId: string): Promise<void> {
+  try {
+    const candidates = await listFootageCleanupCandidates(userId);
+    const eligible = candidates.filter((c) => c.id !== activeBriefId);
+    const ids = decideFootageCleanup(eligible);
+    if (ids.length === 0) return;
+    await drainFootage(ids, { remove: removeBriefFootage, forget: forgetBriefFootage });
+  } catch (err) {
+    console.error("footage drain failed:", err);
+  }
+}
 
 /**
  * Kick off a render. Body: { briefId, videoUrls: string[], brief }.
@@ -136,6 +161,11 @@ export async function POST(req: Request) {
       await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
       return NextResponse.json({ jobId: null, creditsRemaining: spend.remaining + CREDIT_COSTS.render });
     }
+
+    // The render is dispatched and accepted; only now, with the success response ready
+    // to go, do we piggyback the footage drain for this user. Never before dispatch,
+    // and wrapped so it can never turn this response into an error.
+    await drainFinishedFootage(auth.userId, briefId);
     return NextResponse.json({ jobId, creditsRemaining: spend.remaining });
   } catch (err) {
     await refundCredits(auth.userId, CREDIT_COSTS.render).catch(() => {});
