@@ -1187,6 +1187,34 @@ export async function failRenderJob(id: string, errorMessage: string): Promise<v
   if (error) throw new Error(`failRenderJob failed: ${error.message}`);
 }
 
+/**
+ * Claim the right to refund a failed render. Returns true for exactly one caller.
+ *
+ * The browser polls a job every 4 seconds and a user can have several tabs open, so a
+ * refund written wherever the failure is *observed* pays out over and over. This is a
+ * conditional update instead: `refunded_at is null` is part of the WHERE clause, so
+ * Postgres picks the winner and every other caller gets zero rows back. No transaction and
+ * no lock needed, because the guard is the update itself.
+ *
+ * Scoped to the owning user too, so a guessed job id cannot move somebody else's balance.
+ */
+export async function claimRenderRefund(jobId: string, userId: string): Promise<boolean> {
+  const uid = realUserId(userId);
+  // Local dev has no real wallet, so there is nothing to claim.
+  if (!uid) return false;
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("render_jobs")
+    .update({ refunded_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("id", jobId)
+    .eq("user_id", uid)
+    .eq("status", "error")
+    .is("refunded_at", null)
+    .select("id");
+  if (error) throw new Error(`claimRenderRefund failed: ${error.message}`);
+  return (data?.length ?? 0) > 0;
+}
+
 /** Wipe the render state on a brief (used when deleting an edited video). */
 export async function clearBriefRender(briefId: string): Promise<void> {
   const supabase = getSupabaseAdmin();
