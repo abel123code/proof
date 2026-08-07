@@ -19,6 +19,7 @@ import { renderComposition, hyperframesAvailable } from "./hyperframes.js";
 import { validateComposition } from "./sanitize.js";
 import { fetchAssetBytes } from "./asset-source.js";
 import { assetsNamedInIntent, missingAssets } from "./assets-gate.js";
+import { DEFAULT_ACCENT } from "./accent.js";
 import { checkSceneMotion } from "./motion-gate.js";
 import { createSemaphore } from "../semaphore.js";
 import { captionIntrusionIssue, overlayIntrudesCaptionBand } from "./caption-guard.js";
@@ -145,7 +146,7 @@ export async function produceScene(
   const creativeDirection = args.creativeDirection ?? {
     backgroundColor: "#101114",
     textColor: "#ffffff",
-    emphasisColor: brief.assets?.brandColor || brief.accentColor || "#d9ff45",
+    emphasisColor: brief.assets?.brandColor || brief.accentColor || DEFAULT_ACCENT,
     successColor: "#79f28b",
     failureColor: "#ff4f9a",
     displayStyle: "bold geometric sans serif",

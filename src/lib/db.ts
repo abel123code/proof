@@ -51,6 +51,7 @@ interface BriefRow {
   render_job_id: string | null;
   render_status: string | null;
   render_url: string | null;
+  assets: { images?: string[]; brandColor?: string } | null;
   created_at: string;
 }
 
@@ -78,6 +79,9 @@ function mapBrief(r: BriefRow): Brief {
     renderJobId: r.render_job_id ?? null,
     renderStatus: r.render_status ?? null,
     renderUrl: r.render_url ?? null,
+    // Without this a returning user opens a brief with assets attached, sees an empty grid,
+    // and re-uploads what is already there.
+    assetImages: r.assets?.images ?? [],
     createdAt: r.created_at,
   };
 }

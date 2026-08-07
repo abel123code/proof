@@ -34,6 +34,9 @@ export async function GET(req: Request) {
         renderJobId: brief.renderJobId ?? null,
         renderStatus: brief.renderStatus ?? null,
         renderUrl: brief.renderUrl ?? null,
+        // So a returning user sees the brand assets already attached instead of an empty
+        // grid, and does not re-upload what is already there.
+        assetImages: brief.assetImages ?? [],
       },
     });
   } catch (err) {

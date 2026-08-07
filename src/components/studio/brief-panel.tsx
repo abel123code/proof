@@ -246,6 +246,7 @@ export function BriefPanel() {
           setPhase("brief");
           setRenderUrl(briefRes.brief.renderUrl || null);
           setRenderStatus(briefRes.brief.renderStatus ?? null);
+          setAssetImages(briefRes.brief.assetImages ?? []);
           // Resume polling whenever a job exists but we don't yet have the final
           // video URL. The durable render_jobs row (updated by the render service)
  // is the source of truth, so even if the brief's status looks stale, or
@@ -1022,7 +1023,9 @@ function BrandAssetsSection({
 }) {
   const attachedCount = images.length + Object.keys(uploading).length;
   const atLimit = attachedCount >= MAX_ASSETS;
-  const disabled = !briefId || atLimit;
+  // Also blocked while a save is in flight: `setBriefAssets` is a read-merge-write, so a second
+  // batch started mid-caption would race the first and one set of images would be lost.
+  const disabled = !briefId || atLimit || saving;
   return (
     <div className="mt-7 rounded-lg border border-border bg-card p-4">
       <div className="flex flex-wrap items-center gap-2">

@@ -1,5 +1,6 @@
 import { getOpenAI } from "../openai.js";
 import { chatTuning, premiumRequestOptions } from "./model-params.js";
+import { DEFAULT_ACCENT } from "./accent.js";
 import type {
   CreativeDirection,
   EditPlan,
@@ -343,7 +344,7 @@ function normalizeDirection(
   fallbackColor: string,
   fallbackMotif = DEFAULT_MOTIF,
 ): CreativeDirection {
-  const emphasisColor = normalizeHex(raw?.emphasisColor, normalizeHex(fallbackColor, "#d9ff45"));
+  const emphasisColor = normalizeHex(raw?.emphasisColor, normalizeHex(fallbackColor, DEFAULT_ACCENT));
   return {
     backgroundColor: normalizeHex(raw?.backgroundColor, "#101114"),
     textColor: normalizeHex(raw?.textColor, "#ffffff"),
@@ -579,7 +580,7 @@ export async function planEdit(args: {
     raw,
     words,
     durationMs,
-    fallbackColor: brief.assets?.brandColor || brief.accentColor || "#d9ff45",
+    fallbackColor: brief.assets?.brandColor || brief.accentColor || DEFAULT_ACCENT,
     fallbackMotif: brief.assets?.motif || DEFAULT_MOTIF,
   });
 }
