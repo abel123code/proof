@@ -400,7 +400,13 @@ export async function runPremium(args: {
 
   // 2. Plan the whole edit before authoring individual scenes. TypeScript enforces the final
   //    coverage and recovery budgets; the model supplies semantic mode choices and shared direction.
-  const editPlan = await planEdit({ brief, words, durationMs, assetHints });
+  const editPlan = await planEdit({
+    brief,
+    words,
+    durationMs,
+    assetHints,
+    assetDescriptions: brief.assets?.imageDescriptions,
+  });
   const specs = editPlan.scenes;
   for (const spec of specs) {
     for (const [svg, png] of svgToPng) spec.intent = spec.intent.split(svg).join(png);

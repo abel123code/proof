@@ -72,6 +72,9 @@ Creator-native doctrine:
 - reuse one palette, typography system, spacing rhythm, and transition grammar across every beat;
 - use real staged assets when they materially prove the claim; otherwise use a restrained conceptual visual.
 
+Each asset in "assets" carries a "depicts" description of what it actually shows; "unknown" means its content
+is not known, so it must NOT be treated as proof of a specific claim — fall back to a restrained conceptual visual.
+
 Return JSON:
 {
   "creativeDirection": {
@@ -532,9 +535,11 @@ export async function planEdit(args: {
   words: Word[];
   durationMs: number;
   assetHints: string[];
+  assetDescriptions?: Record<string, string>;
   generate?: (payload: string) => Promise<RawEditPlan>;
 }): Promise<EditPlan> {
   const { brief, words, durationMs, assetHints } = args;
+  const descriptions = args.assetDescriptions ?? {};
   const payload = JSON.stringify({
     script: brief.script,
     hook: brief.hook ?? null,
@@ -543,7 +548,7 @@ export async function planEdit(args: {
     brandColor: brief.assets?.brandColor || brief.accentColor || null,
     brandVoice: brief.assets?.brandVoice || null,
     motif: brief.assets?.motif || null,
-    assets: assetHints,
+    assets: assetHints.map((file) => ({ file, depicts: descriptions[file] ?? "unknown" })),
     totalMs: durationMs,
     timeline: words.map((word) => [Math.round(word.startMs), word.text]),
   });

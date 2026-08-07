@@ -68,6 +68,12 @@ export interface RenderAssets {
   brandVoice?: string;
   /** A recurring visual motif to carry across scenes (the "continuity" lever). */
   motif?: string;
+  /**
+   * What each image actually depicts, keyed by the filename the worker stages it under.
+   * Without this the planner sees only opaque UUIDs and cannot tell whether any asset proves a
+   * given claim, so it requests visuals that were never uploaded.
+   */
+  imageDescriptions?: Record<string, string>;
 }
 
 export interface RenderBriefScene {
