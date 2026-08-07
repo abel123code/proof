@@ -131,14 +131,26 @@ export function findAnchorMs(spokenLine: string, words: Word[]): number | null {
   return j >= 0 ? Math.round(words[j].startMs) : null;
 }
 
-/** Turn one brief scene into a rich author directive: the visual idea + headline + which asset to feature. */
-export function buildSceneIntent(scene: RenderBriefScene, assetHints: string[]): string {
+/**
+ * Turn one brief scene into a rich author directive: the visual idea + headline + which asset to
+ * feature. `assetDescriptions` (keyed by filename, from the upload-time caption in
+ * describe-image.ts) is optional and, when present, is folded into the asset mention so the author
+ * learns not just WHICH file to embed but what it depicts and where its important content sits —
+ * the crop the author must make, not just the file to place whole.
+ */
+export function buildSceneIntent(
+  scene: RenderBriefScene,
+  assetHints: string[],
+  assetDescriptions: Record<string, string> = {},
+): string {
   const cue = (scene.brollCue || "").trim() || (scene.label || "").trim() || "a bespoke visual for this beat";
   const headline = (scene.onScreenText || "").trim()
     ? ` The short on-screen headline is "${scene.onScreenText.trim()}" — render it as clean, premium editorial type.`
     : "";
   const asset = assetHints.length
-    ? ` Feature the provided asset(s) by embedding the real image: ${assetHints.join(", ")}.`
+    ? ` Feature the provided asset(s) by embedding the real image: ${assetHints
+        .map((file) => (assetDescriptions[file] ? `${file} (${assetDescriptions[file]})` : file))
+        .join(", ")}.`
     : "";
   return `${cue}.${headline}${asset} Build one bespoke, intentional visual authority for this beat — a bold editorial headline or one compact diagram/animation, not a generic decorated card.`;
 }
@@ -159,8 +171,9 @@ export function scenesFromBrief(args: {
   words: Word[];
   durationMs: number;
   assetHints: string[];
+  assetDescriptions?: Record<string, string>;
 }): SceneSpec[] {
-  const { brief, words, durationMs, assetHints } = args;
+  const { brief, words, durationMs, assetHints, assetDescriptions } = args;
   const scenes = brief.scenes ?? [];
   const motif = brief.assets?.motif?.trim() || DEFAULT_MOTIF;
   const wordStarts = words.map((w) => Math.round(w.startMs));
@@ -174,7 +187,7 @@ export function scenesFromBrief(args: {
     return {
       anchorMs: anchor,
       durMs,
-      intent: buildSceneIntent(s, assetHints),
+      intent: buildSceneIntent(s, assetHints, assetDescriptions),
       captionText: (s.spokenLine || "").trim(),
     };
   });
@@ -230,13 +243,14 @@ export async function planScenes(args: {
   words: Word[];
   durationMs: number;
   assetHints: string[];
+  assetDescriptions?: Record<string, string>;
 }): Promise<SceneSpec[]> {
-  const { brief, words, durationMs, assetHints } = args;
+  const { brief, words, durationMs, assetHints, assetDescriptions } = args;
   if (words.length === 0) return [];
 
   // Prefer the brief's own scenes — deterministic, no LLM re-storyboard.
   if ((brief.scenes?.length ?? 0) > 0) {
-    const fromBrief = scenesFromBrief({ brief, words, durationMs, assetHints });
+    const fromBrief = scenesFromBrief({ brief, words, durationMs, assetHints, assetDescriptions });
     if (fromBrief.length > 0) return fromBrief;
     // else fall through to the LLM storyboard (e.g. none of the spokenLines could be anchored)
   }
@@ -569,7 +583,7 @@ export async function planEdit(args: {
         durMs: Math.round((scene.durationSeconds ?? 3) * 1000),
         mode: fallbackMode(scene),
         priority: Math.max(1, 100 - index * 10),
-        intent: buildSceneIntent(scene, assetHints),
+        intent: buildSceneIntent(scene, assetHints, descriptions),
         captionText: scene.spokenLine || "",
         rationale: "global planner failed; deterministic semantic fallback",
       })),

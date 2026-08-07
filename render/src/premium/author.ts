@@ -92,13 +92,22 @@ HARD CONTRACT:
 
 DESIGN: creator-native, restrained, intentional, and on-brand. Animation must reveal, compare, count, connect,
 change state, confirm, fail, or transition. Do not add ambient motion merely to keep the frame busy.
+FRAMING (comes before motion — get the crop right first, then animate it): a provided screenshot is a wide
+desktop capture, not a pre-cropped portrait asset — placing it whole into a 1080x1920 frame is a failed scene,
+the interface text becomes unreadable. Each asset's description names where its important content sits (for
+example "the deadline panel occupies the center-right"); crop to that region and scale it up with CSS — a
+wrapper with overflow:hidden sized to the visible area, and a scaled/positioned <img> inside it — the source
+file itself is never pre-cropped, you make the crop. Essential interface text must still clear the 56px minimum
+after that scaling; if it cannot, show LESS of the image and scale further, not more of it. Nothing may be
+clipped at a frame edge — a label cut to "imension" is a failure, not an acceptable crop.
 MOTION DEVELOPMENT: the frame must keep developing across its full duration, not just at the start. Build
 at least TWO distinct beats: an entrance, then a second beat that starts after the scene's midpoint. This is
 NOT a licence for ambient motion — the ban above still applies. The difference is what the second beat DOES:
 it must carry meaning (reveal the next row or fact, push in on the thing being discussed, change a state,
 land the conclusion), never a wiggle, pulse, or loop added only to avoid a static frame. If the scene embeds
 a screenshot, a static screenshot placed and never moved is a failed scene — give it a motion verb: a slow
-push in, a pan across the region being discussed, or a progressive reveal of its parts.
+push in, a pan across the region being discussed, or a progressive reveal of its parts. That motion applies to
+the CROP, not the raw image: push in within the already-cropped region: never push in on a full-browser capture.
 FONTS: the render container only ships the Liberation family, so use ONLY these installed stacks —
 Arial, "Liberation Sans", Helvetica, sans-serif (weight via font-weight:700), or "Liberation Serif", Georgia,
 serif for a serif accent. Never name Impact, Haettenschweiler, Anton, Oswald, Bebas, or Arial Narrow, never use
@@ -148,10 +157,13 @@ export async function authorScene(args: {
   brief: RenderBrief;
   creativeDirection: CreativeDirection;
   assetHints: string[];
+  /** What each asset depicts and where its important content sits (upload-time caption, keyed by
+   *  filename) — without this the author only sees a bare filename and has no basis to crop. */
+  assetDescriptions?: Record<string, string>;
   priorIssues?: string[];
   priorHtml?: string;
 }): Promise<string> {
-  const { spec, brief, creativeDirection, assetHints, priorIssues, priorHtml } = args;
+  const { spec, brief, creativeDirection, assetHints, assetDescriptions, priorIssues, priorHtml } = args;
   const payload = {
     id: spec.id,
     durationSec: spec.durMs / 1000,
@@ -164,7 +176,7 @@ export async function authorScene(args: {
     creativeDirection,
     brandColor: brief.assets?.brandColor || brief.accentColor || creativeDirection.emphasisColor,
     brandVoice: brief.assets?.brandVoice || null,
-    assets: assetHints,
+    assets: assetHints.map((file) => ({ file, depicts: assetDescriptions?.[file] ?? "unknown" })),
   };
 
   const system = authorSystemPrompt(
