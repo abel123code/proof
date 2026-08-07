@@ -153,6 +153,40 @@ describe("POST /api/assets clearing", () => {
     expect(setBriefAssets).not.toHaveBeenCalled();
     expect(removeBrandAssetObjects).not.toHaveBeenCalled();
   });
+
+  // Removing ONE of several images is the common case, and it does not go through the
+  // empty-list path above. Production proved the gap: after deleting three screenshots one
+  // at a time, two were still fetchable on the public bucket - only the final delete, which
+  // happened to be the empty-list one, removed anything.
+  it("deletes the object dropped by a partial removal", async () => {
+    getBriefAssets.mockResolvedValue({ images: [ok("a.png"), ok("b.png"), ok("c.png")] });
+    const res = await call({ briefId: "brief-1", images: [ok("a.png"), ok("b.png")] });
+
+    expect(res.status).toBe(200);
+    expect(removeBrandAssetObjects).toHaveBeenCalledWith([ok("c.png")]);
+    expect(setBriefAssets).toHaveBeenCalledWith(
+      "brief-1",
+      expect.objectContaining({ images: [ok("a.png"), ok("b.png")] }),
+    );
+  });
+
+  it("deletes nothing when images are only added", async () => {
+    getBriefAssets.mockResolvedValue({ images: [ok("a.png")] });
+    await call({ briefId: "brief-1", images: [ok("a.png"), ok("b.png")] });
+
+    expect(removeBrandAssetObjects).not.toHaveBeenCalled();
+  });
+
+  it("leaves the brief alone when a partial removal cannot delete from storage", async () => {
+    // Same recoverable-failure contract as the empty-list path: the user still sees the image
+    // and can retry, instead of being told it is gone while it stays on a public URL.
+    getBriefAssets.mockResolvedValue({ images: [ok("a.png"), ok("b.png")] });
+    removeBrandAssetObjects.mockRejectedValueOnce(new Error("storage down"));
+    const res = await call({ briefId: "brief-1", images: [ok("a.png")] });
+
+    expect(res.status).toBe(502);
+    expect(setBriefAssets).not.toHaveBeenCalled();
+  });
 });
 });
 
