@@ -4,6 +4,48 @@ Failure modes that cost real time, written down so they are not repeated. Newest
 
 ---
 
+## 2026-08-07: Every premium asset download failed on Node 22, and the suite stayed green
+
+**What happened.** No user screenshot or logo had ever reached a generated scene in production. Each
+download threw `Invalid IP address: undefined` from `emitLookup`, the premium engine caught it and
+fell back to generic overlays, and the video still shipped. Nothing errored where anyone would see it.
+It was found only by running the worker's real fetch path by hand against a real storage URL while
+investigating why scenes looked generic.
+
+**The bug.** `pinnedHttpsRequest` overrides `https.request`'s `lookup` so the socket connects to an
+address already checked against private ranges, closing a DNS-rebinding window. The shim always called
+back with a bare address string. Node 22's agent calls `lookup` with `{ all: true }` on some paths, and
+per Node's contract that requires an ARRAY of `{ address, family }`. Node read `.address` off a string,
+got `undefined`, and threw. The production image is `node:22-bookworm-slim`, the same major version.
+
+**Why every test passed.** `render/tests/asset-source.test.ts` injects a fake `request` dependency.
+`pinnedHttpsRequest` — the one function containing the bug — was never executed by any test. The
+DNS-rebinding test asserted the *policy* while mocking away the *mechanism*. Dependency injection made
+the failure paths testable and simultaneously created a hole exactly the shape of the untested seam.
+
+**Cost.** Unknown duration of degraded output. Worse, the degradation was invisible: "the engine used
+generic graphics" is indistinguishable from "the model chose generic graphics", so it read as a
+quality problem rather than a bug, and quality problems get prompt-tuned instead of debugged.
+
+**Lessons.**
+
+- **An injected boundary needs one test that does not inject.** If every test replaces the transport,
+  the transport is unverified. Ship a probe that exercises the real socket.
+  `render/scripts/probe-asset-fetch.ts` now does this against public storage and needs no credentials.
+- **Silent degradation is worse than a crash.** The fallback path made a hard failure look like a soft
+  preference. A fallback that hides a systematic error should count the failures and surface them.
+- **Prove a fix by reverting it.** The regression test was confirmed by restoring the old one-line shim
+  and watching two tests fail, then restoring the fix and watching 110 pass. A test that has never been
+  seen to fail is not yet a regression test.
+- **Reproduce a library-contract bug against the real library.** The controlled experiment changed only
+  whether the shim honoured `options.all`; everything else was held constant. That is what turned a
+  plausible theory into a confirmed cause.
+
+**References:** `render/src/premium/asset-source.ts` (`pinnedLookup`),
+`render/tests/pinned-lookup.test.ts`, `render/scripts/probe-asset-fetch.ts`, PR #29.
+
+---
+
 ## 2026-08-01: A full green gate sat next to a live auth bypass for weeks
 
 **Impact.** Anyone with a Google account could grant themselves beta access, a profile and 1000
