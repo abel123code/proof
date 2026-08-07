@@ -78,7 +78,10 @@ HARD CONTRACT:
      const tl = gsap.timeline({ paused: true });
      window.__timelines = window.__timelines || {};
      window.__timelines["{{ID}}"] = tl;
-5. The timeline duration must be exactly ${durSec.toFixed(2)} seconds. Append an empty tween if needed.
+5. The timeline duration must be exactly ${durSec.toFixed(2)} seconds, reached through REAL motion — never
+   by padding the remainder with an empty tween. The final meaningful beat must land in the last third
+   of the scene (after ${(durSec * (2 / 3)).toFixed(2)}s). A trailing empty tween may only absorb a small
+   rounding remainder, under 0.5s — it is never how you fill the bulk of the duration.
 6. LOCAL ONLY. Assets may only use ./assets/<filename>. Do not use fetch, XMLHttpRequest, WebSocket,
    EventSource, dynamic import(), eval, new Function(), navigator.sendBeacon, or network URLs.
 7. ${layout}
@@ -89,6 +92,13 @@ HARD CONTRACT:
 
 DESIGN: creator-native, restrained, intentional, and on-brand. Animation must reveal, compare, count, connect,
 change state, confirm, fail, or transition. Do not add ambient motion merely to keep the frame busy.
+MOTION DEVELOPMENT: the frame must keep developing across its full duration, not just at the start. Build
+at least TWO distinct beats: an entrance, then a second beat that starts after the scene's midpoint. This is
+NOT a licence for ambient motion — the ban above still applies. The difference is what the second beat DOES:
+it must carry meaning (reveal the next row or fact, push in on the thing being discussed, change a state,
+land the conclusion), never a wiggle, pulse, or loop added only to avoid a static frame. If the scene embeds
+a screenshot, a static screenshot placed and never moved is a failed scene — give it a motion verb: a slow
+push in, a pan across the region being discussed, or a progressive reveal of its parts.
 FONTS: the render container only ships the Liberation family, so use ONLY these installed stacks —
 Arial, "Liberation Sans", Helvetica, sans-serif (weight via font-weight:700), or "Liberation Serif", Georgia,
 serif for a serif accent. Never name Impact, Haettenschweiler, Anton, Oswald, Bebas, or Arial Narrow, never use

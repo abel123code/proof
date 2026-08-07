@@ -19,6 +19,7 @@ import { renderComposition, hyperframesAvailable } from "./hyperframes.js";
 import { validateComposition } from "./sanitize.js";
 import { fetchAssetBytes } from "./asset-source.js";
 import { assetsNamedInIntent, missingAssets } from "./assets-gate.js";
+import { checkSceneMotion } from "./motion-gate.js";
 import { createSemaphore } from "../semaphore.js";
 import { captionIntrusionIssue, overlayIntrudesCaptionBand } from "./caption-guard.js";
 import { maskOverlaySafeZones } from "../ffmpeg.js";
@@ -258,6 +259,22 @@ export async function produceScene(
           continue;
         }
         deterministicFlags.push(mIssue); // last attempt: render + ship flagged
+      }
+
+      // Motion (objective): a timeline dominated by an empty padding tween, or with only one real
+      // beat, is a frozen scene wearing an animation's clothes — the #1 measured pass-rate failure
+      // (53s production render, mean pixel delta 0.0-1.9 between cuts for seconds at a time). Drives
+      // a patch; on the final attempt the scene still RENDERS and SHIPS FLAGGED (never omitted).
+      const motion = checkSceneMotion(html, spec.durMs / 1000);
+      if (!motion.ok) {
+        const motionIssue: SceneIssue = { kind: "safety", text: motion.reason! };
+        if (!last) {
+          safetyIssues = [motionIssue];
+          priorHtml = html;
+          log(`  ${spec.id}: re-author ${attempts} — frozen timeline (holdRatio ${motion.holdRatio.toFixed(2)})`);
+          continue;
+        }
+        deterministicFlags.push(motionIssue);
       }
 
       await deps.render({ html, sceneDir, outMovPath: movPath, fps });

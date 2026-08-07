@@ -41,10 +41,17 @@ import { DEFAULT_BRIEF_VISUAL_MODEL } from "../src/visual-planner.js";
 import { maskOverlaySafeZones, SPEAKER_SAFE_ALPHA_FILTER } from "../src/ffmpeg.js";
 import type { SceneSpec, RenderBrief, Word } from "../src/types.js";
 
+// Two real, non-empty tweens spanning the timeline (an entrance + a second beat past the midpoint) so
+// this fixture passes the motion gate (motion-gate.ts) the same way a real authored scene must.
 const VALID_HTML = `<!doctype html><html><head></head><body>
 <div id="stage" data-composition-id="scene-1" data-width="1080" data-height="1920" data-fps="30"></div>
 <script src="./gsap.min.js"></script>
-<script>const tl = gsap.timeline({ paused: true }); window.__timelines = { "scene-1": tl };</script>
+<script>
+const tl = gsap.timeline({ paused: true });
+window.__timelines = { "scene-1": tl };
+tl.to("#stage", { opacity: 1, duration: 0.6 });
+tl.to("#stage", { scale: 1.02, duration: 0.6 }, 1.1);
+</script>
 </body></html>`;
 
 const spec = (id: string): SceneSpec => ({
