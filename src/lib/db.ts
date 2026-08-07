@@ -1129,7 +1129,11 @@ export async function createAssetUploadTicket(input: {
  */
 export async function setBriefAssets(
   briefId: string,
-  assets: { images: string[]; brandColor?: string },
+  assets: {
+    images: string[];
+    brandColor?: string;
+    imageDescriptions?: Record<string, string>;
+  },
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
   const { data, error: readError } = await supabase
@@ -1141,9 +1145,28 @@ export async function setBriefAssets(
   const existing = (data as { assets: Record<string, unknown> | null } | null)?.assets ?? {};
   const merged: Record<string, unknown> = { ...existing, images: assets.images };
   if (assets.brandColor !== undefined) merged.brandColor = assets.brandColor;
+  if (assets.imageDescriptions !== undefined) merged.imageDescriptions = assets.imageDescriptions;
 
   const { error } = await supabase.from("briefs").update({ assets: merged }).eq("id", briefId);
   if (error) throw new Error(`setBriefAssets failed: ${error.message}`);
+}
+
+/** What we already know each of a brief's images shows, so re-uploading does not re-caption. */
+export async function getBriefAssetDescriptions(
+  briefId: string,
+): Promise<Record<string, string>> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("briefs")
+    .select("assets")
+    .eq("id", briefId)
+    .maybeSingle();
+  if (error) throw new Error(`getBriefAssetDescriptions failed: ${error.message}`);
+  const assets = (data as { assets: { imageDescriptions?: unknown } | null } | null)?.assets;
+  const descriptions = assets?.imageDescriptions;
+  return descriptions && typeof descriptions === "object"
+    ? (descriptions as Record<string, string>)
+    : {};
 }
 
 /** Persist the render state (job id / status / finished MP4 URL) on a brief. */

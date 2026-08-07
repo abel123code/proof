@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/lib/auth";
-import { assertBriefOwnedBy, setBriefAssets } from "@/lib/db";
+import { assertBriefOwnedBy, getBriefAssetDescriptions, setBriefAssets } from "@/lib/db";
 import { validateAssetUrls } from "@/lib/brand-assets";
+import { describeAssets } from "@/lib/asset-caption";
+import { describeImageUrl } from "@/lib/describe-image";
 
 export const runtime = "nodejs";
 
@@ -40,9 +42,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "brandColor must be a 6-digit hex code" }, { status: 400 });
     }
 
+    // Describe each image so the render planner knows what it actually has. Without this it
+    // sees only UUID filenames, cannot tell whether an asset proves a given claim, and has
+    // asked for visuals that were never uploaded. A caption failure is non-fatal: a missing
+    // entry reads as "unknown", which keeps the planner conservative.
+    const descriptions = await describeAssets(
+      images.urls,
+      { describe: describeImageUrl },
+      await getBriefAssetDescriptions(briefId),
+    );
+
     await setBriefAssets(briefId, {
       images: images.urls,
       brandColor: brandColor as string | undefined,
+      imageDescriptions: descriptions,
     });
     return NextResponse.json({ ok: true, images: images.urls });
   } catch (err) {

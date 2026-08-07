@@ -23,6 +23,12 @@ vi.mock("@/lib/db", () => ({
   assertBriefOwnedBy: (...a: unknown[]) => assertBriefOwnedBy(...a),
   setBriefAssets: (...a: unknown[]) => setBriefAssets(...a),
   createAssetUploadTicket: (...a: unknown[]) => createAssetUploadTicket(...a),
+  getBriefAssetDescriptions: async () => ({}),
+}));
+
+// Captioning is a vision call; stub it so the route tests stay offline and deterministic.
+vi.mock("@/lib/describe-image", () => ({
+  describeImageUrl: async () => "A deadline list, panel centred",
 }));
 
 const SUPABASE_URL = "https://yivjxeyokdeeyfmzhwcw.supabase.co";
@@ -82,7 +88,16 @@ describe("POST /api/assets", () => {
 
     expect(res.status).toBe(200);
     expect(body).toEqual({ ok: true, images });
-    expect(setBriefAssets).toHaveBeenCalledWith("brief-1", { images, brandColor: undefined });
+    // Each image is captioned on the way in, keyed by the filename the render worker will
+    // stage it under, so the planner can tell what it actually has.
+    expect(setBriefAssets).toHaveBeenCalledWith("brief-1", {
+      images,
+      brandColor: undefined,
+      imageDescriptions: {
+        "a.png": "A deadline list, panel centred",
+        "b.png": "A deadline list, panel centred",
+      },
+    });
   });
 });
 
