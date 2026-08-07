@@ -48,12 +48,22 @@ export async function POST(req: Request) {
     if (Array.isArray(body?.images) && body.images.length === 0) {
       const previous = await getBriefAssets(briefId);
       const previousImages = Array.isArray(previous?.images) ? (previous.images as string[]) : [];
+
+      // Storage FIRST, then the row. Clearing the row first and swallowing a storage error
+      // told the user their screenshot was deleted while it stayed reachable on a public
+      // bucket, and once the row was gone nothing knew which objects still needed removing.
+      // This order fails recoverably instead: the brief is untouched, the images are still
+      // listed, and the user can try again.
+      try {
+        await removeBrandAssetObjects(previousImages);
+      } catch (err) {
+        console.error("brand asset cleanup failed:", err);
+        return NextResponse.json(
+          { error: "Could not delete those images. Nothing was changed - please try again." },
+          { status: 502 },
+        );
+      }
       await setBriefAssets(briefId, { images: [], imageDescriptions: {} });
-      // After the row, so a storage failure cannot leave the brief pointing at objects that are
-      // already gone. Best-effort: the user's intent is recorded either way.
-      await removeBrandAssetObjects(previousImages).catch((err) =>
-        console.error("brand asset cleanup failed:", err),
-      );
       return NextResponse.json({ ok: true, images: [] });
     }
 

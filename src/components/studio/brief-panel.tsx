@@ -527,6 +527,10 @@ export function BriefPanel() {
   const saveAssetImages = useCallback(
     async (images: string[]) => {
       if (!briefId) return;
+      // Snapshot so a failed save can put the thumbnails back. Without this a rejected
+      // request left the image hidden on screen while the brief still carried it, which is
+      // the exact "deleted but still in the video" symptom this was meant to fix.
+      const previous = assetImages;
       setSavingAssets(true);
       try {
         const res = await fetch("/api/assets", {
@@ -538,12 +542,13 @@ export function BriefPanel() {
         if (!res.ok) throw new Error(data.error ?? "Could not save brand assets");
         setAssetImages(data.images ?? images);
       } catch (e) {
+        setAssetImages(previous);
         toast.error(e instanceof Error ? e.message : "Could not save brand assets");
       } finally {
         setSavingAssets(false);
       }
     },
-    [briefId],
+    [briefId, assetImages],
   );
 
   const addAssetFiles = useCallback(
@@ -1078,10 +1083,17 @@ function BrandAssetsSection({
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={url} alt="" className="h-full w-full object-cover" />
+              {/* Blocked while a save is in flight. Two overlapping removals used to race:
+                  the second could clear the row and delete both objects, then the first would
+                  land and write the other image back, leaving the brief pointing at a file
+                  that no longer exists. */}
               <button
                 onClick={() => onRemove(url)}
-                title="Remove"
-                className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[10px] text-white opacity-0 transition group-hover:opacity-100"
+                disabled={saving}
+                title={saving ? "Saving…" : "Remove"}
+                className={`absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[10px] text-white transition ${
+                  saving ? "cursor-not-allowed opacity-40" : "opacity-0 group-hover:opacity-100"
+                }`}
               >
                 ✕
               </button>

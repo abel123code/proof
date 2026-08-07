@@ -128,14 +128,16 @@ describe("POST /api/assets clearing", () => {
     expect(removeBrandAssetObjects).toHaveBeenCalledWith([ok("a.png"), ok("b.png")]);
   });
 
-  it("still clears the brief when storage cleanup fails", async () => {
-    // The user's intent is recorded either way; a stranded object is better than a brief
-    // that still points at an image the user deleted.
+  it("does not clear the brief when storage cleanup fails", async () => {
+    // Reporting success here left a private screenshot reachable on a public bucket while
+    // telling the user it was gone, and once the row was cleared nothing knew which objects
+    // still needed deleting. Failing with the brief untouched is recoverable: the images are
+    // still listed and the user can retry.
     getBriefAssets.mockResolvedValue({ images: [ok("a.png")] });
     removeBrandAssetObjects.mockRejectedValueOnce(new Error("storage down"));
     const res = await call({ briefId: "brief-1", images: [] });
-    expect(res.status).toBe(200);
-    expect(setBriefAssets).toHaveBeenCalled();
+    expect(res.status).toBe(502);
+    expect(setBriefAssets).not.toHaveBeenCalled();
   });
 
   it("still rejects a missing images field", async () => {
