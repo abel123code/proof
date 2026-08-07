@@ -9,6 +9,7 @@ import {
   createRenderJob,
   failRenderJob,
   findActiveRenderJob,
+  getBriefAssets,
   getBriefById,
   getRenderJob,
   refundCredits,
@@ -62,6 +63,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Not your brief." }, { status: 403 });
   }
 
+  // Brand assets come from the OWNED brief, never from the request body. The client used to
+  // omit them entirely, so every render silently ran without the screenshots the user had
+  // attached, and no error was produced. Reading them here also means a caller cannot point a
+  // render at another tenant's images by hand-writing the payload.
+  const ownedAssets = await getBriefAssets(briefId);
+  const briefWithAssets = ownedAssets ? { ...brief, assets: ownedAssets } : brief;
+
   // A repeated submit for the same brief must not reserve a second lot of credits.
   // Checked before spending, because the charge is the thing being made idempotent.
   const active = await findActiveRenderJob(briefId, auth.userId);
@@ -84,7 +92,7 @@ export async function POST(req: Request) {
     const jobId = randomUUID();
     durableJobId = jobId;
     const editMode = EDIT_MODE;
-    const durableInput = { videoUrls: clips.urls, videoUrl: clips.urls[0], brief, editMode };
+    const durableInput = { videoUrls: clips.urls, videoUrl: clips.urls[0], brief: briefWithAssets, editMode };
     await createRenderJob({
       id: jobId,
       briefId,
@@ -107,7 +115,7 @@ export async function POST(req: Request) {
         briefId,
         videoUrls: clips.urls,
         videoUrl: clips.urls[0],
-        brief,
+        brief: briefWithAssets,
         editMode,
       }),
     });

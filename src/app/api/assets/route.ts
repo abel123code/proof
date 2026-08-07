@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Not your brief." }, { status: 403 });
     }
 
-    const images = validateAssetUrls(body?.images, process.env.NEXT_PUBLIC_SUPABASE_URL);
+    const images = validateAssetUrls(body?.images, process.env.NEXT_PUBLIC_SUPABASE_URL, briefId);
     if (!images.ok) {
       return NextResponse.json({ error: images.error }, { status: 400 });
     }

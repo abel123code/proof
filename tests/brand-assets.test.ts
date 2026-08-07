@@ -63,3 +63,31 @@ describe("validateAssetUrls", () => {
     expect(validateAssetUrls([ok("brief-1/a.png")], undefined).ok).toBe(false);
   });
 });
+
+describe("validateAssetUrls brief scoping", () => {
+  const BRIEF = "brief-1";
+  const mine = (p: string) => `${BASE}/storage/v1/object/public/brand-assets/${BRIEF}/${p}`;
+
+  it("accepts images stored under the destination brief", () => {
+    const urls = [mine("a.png")];
+    expect(validateAssetUrls(urls, BASE, BRIEF)).toEqual({ ok: true, urls });
+  });
+
+  it("rejects a valid bucket image belonging to a different brief", () => {
+    // The bucket is shared and public, so owning the destination brief says nothing about
+    // owning the object. Without this an authenticated user could attach someone else's
+    // screenshot and have Proof's vision and render services process it.
+    const other = `${BASE}/storage/v1/object/public/brand-assets/brief-2/secret.png`;
+    expect(validateAssetUrls([other], BASE, BRIEF).ok).toBe(false);
+  });
+
+  it("rejects a brief id used as a prefix of another", () => {
+    const sneaky = `${BASE}/storage/v1/object/public/brand-assets/${BRIEF}-evil/a.png`;
+    expect(validateAssetUrls([sneaky], BASE, BRIEF).ok).toBe(false);
+  });
+
+  it("still accepts any bucket path when no brief is given, for existing callers", () => {
+    const any = `${BASE}/storage/v1/object/public/brand-assets/brief-9/a.png`;
+    expect(validateAssetUrls([any], BASE).ok).toBe(true);
+  });
+});

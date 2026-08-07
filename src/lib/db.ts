@@ -1155,6 +1155,27 @@ export async function setBriefAssets(
   if (error) throw new Error(`setBriefAssets failed: ${error.message}`);
 }
 
+/**
+ * The brand assets a brief owns, in the shape the render worker expects.
+ *
+ * Read server-side at render time rather than trusted from the request body. The client never
+ * sent them, so renders silently ran without the user's screenshots; and a body-supplied value
+ * would let a caller aim a render at images belonging to somebody else.
+ */
+export async function getBriefAssets(
+  briefId: string,
+): Promise<Record<string, unknown> | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("briefs")
+    .select("assets")
+    .eq("id", briefId)
+    .maybeSingle();
+  if (error) throw new Error(`getBriefAssets failed: ${error.message}`);
+  const assets = (data as { assets: Record<string, unknown> | null } | null)?.assets;
+  return assets && Object.keys(assets).length > 0 ? assets : null;
+}
+
 /** What we already know each of a brief's images shows, so re-uploading does not re-caption. */
 export async function getBriefAssetDescriptions(
   briefId: string,

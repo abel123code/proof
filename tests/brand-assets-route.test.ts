@@ -32,7 +32,9 @@ vi.mock("@/lib/describe-image", () => ({
 }));
 
 const SUPABASE_URL = "https://yivjxeyokdeeyfmzhwcw.supabase.co";
-const ok = (p: string) => `${SUPABASE_URL}/storage/v1/object/public/brand-assets/${p}`;
+// Real uploads always land under the brief folder, so fixtures must too: validateAssetUrls
+// now scopes to it so one brief cannot attach another brief's image.
+const ok = (p: string) => `${SUPABASE_URL}/storage/v1/object/public/brand-assets/brief-1/${p}`;
 
 function postJson(url: string, body: unknown) {
   return new Request(url, {

@@ -14,7 +14,17 @@ const BUCKET_PREFIX = "/storage/v1/object/public/brand-assets/";
 
 export type AssetCheck = { ok: true; urls: string[] } | { ok: false; error: string };
 
-export function validateAssetUrls(value: unknown, supabaseUrl: string | undefined): AssetCheck {
+export function validateAssetUrls(
+  value: unknown,
+  supabaseUrl: string | undefined,
+  /**
+   * The brief these images are being attached to. Uploads are stored under `<briefId>/`, so
+   * requiring that prefix stops an authenticated user attaching somebody else's image by URL:
+   * the bucket is shared and public, and owning the destination brief says nothing about
+   * owning the object. Optional so existing callers keep working, but the save route passes it.
+   */
+  briefId?: string,
+): AssetCheck {
   if (!supabaseUrl) return { ok: false, error: "Storage is not configured." };
   if (!Array.isArray(value) || value.length === 0) {
     return { ok: false, error: "assetUrls (non-empty) is required" };
@@ -52,6 +62,12 @@ export function validateAssetUrls(value: unknown, supabaseUrl: string | undefine
     // new URL() normalises ".." during parsing, so a path that tries to walk out of
     // the bucket no longer starts with the prefix by the time we check it.
     if (!parsed.pathname.startsWith(BUCKET_PREFIX)) {
+      return { ok: false, error: "Images must be uploaded to Proof." };
+    }
+    // Scope to the destination brief's own folder. Without this, owning brief A is enough to
+    // attach an image uploaded under brief B, and Proof's vision and render services would then
+    // process another tenant's screenshot.
+    if (briefId && !parsed.pathname.startsWith(`${BUCKET_PREFIX}${briefId}/`)) {
       return { ok: false, error: "Images must be uploaded to Proof." };
     }
     urls.push(parsed.toString());
