@@ -408,6 +408,8 @@ export interface Brief {
   gaps: InfoGap[] | null;
   /** The creator's answers, keyed by question id. */
   answers: Record<string, string> | null;
+  /** Brand screenshots/logos attached to this brief, so the studio can show what is already there. */
+  assetImages: string[];
   /** Render job id, once a render has been kicked off. */
   renderJobId: string | null;
   /** Latest status from the render worker. */

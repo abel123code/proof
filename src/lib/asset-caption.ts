@@ -53,15 +53,26 @@ export async function describeAssets(
   existing: AssetDescriptions = {},
 ): Promise<AssetDescriptions> {
   const out: AssetDescriptions = { ...existing };
-  for (const url of urls) {
-    const key = stagedFileName(url);
-    if (out[key]) continue;
-    try {
-      const text = normalizeDescription(await deps.describe(url));
-      if (text) out[key] = text;
-    } catch {
-      // Leave it out. The planner reads a missing entry as "unknown" and will not treat the
-      // image as proof of any specific claim.
+
+  // Only the ones we do not already know, deduped: a brief can list the same image twice, and
+  // describing it twice would pay for the same answer.
+  const pending = [...new Set(urls.map(stagedFileName).filter((key) => !out[key]))];
+  const byKey = new Map(urls.map((url) => [stagedFileName(url), url]));
+
+  // Concurrently, because this runs inside the upload request. Sequentially it was 26 seconds for
+  // five images, which is a visible hang on a button press.
+  const settled = await Promise.allSettled(
+    pending.map(async (key) => ({
+      key,
+      text: normalizeDescription(await deps.describe(byKey.get(key) as string)),
+    })),
+  );
+
+  for (const result of settled) {
+    // A rejection is dropped, not thrown: the asset is still usable and the planner reads a
+    // missing entry as "unknown", which keeps it from treating the image as proof of a claim.
+    if (result.status === "fulfilled" && result.value.text) {
+      out[result.value.key] = result.value.text;
     }
   }
   return out;

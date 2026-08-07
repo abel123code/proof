@@ -62,7 +62,7 @@ export interface OverlaySpec {
 export interface RenderAssets {
   /** URLs (or local paths) of screenshots / logos / UI captures to fetch into the workdir. */
   images?: string[];
-  /** Brand accent, e.g. "#d9ff45". Falls back to RenderBrief.accentColor. */
+  /** Brand accent, e.g. "#4da3ff". Falls back to RenderBrief.accentColor. */
   brandColor?: string;
   /** A sentence or two of brand voice/tone (mined from README / site) to steer copy. */
   brandVoice?: string;

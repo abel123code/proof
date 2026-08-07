@@ -18,7 +18,7 @@ import {
   assertDecodedRasterImage,
   fetchAssetBytes,
   MAX_ASSET_BYTES,
-} from "../src/premium/asset-source.ts";
+} from "../src/premium/asset-source.js";
 
 // `allowedAssetHosts()` reads process.env, so load render/.env when the var is not already set.
 if (!process.env.SUPABASE_URL && !process.env.NEXT_PUBLIC_SUPABASE_URL) {

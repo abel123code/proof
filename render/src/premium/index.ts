@@ -19,7 +19,9 @@ import { renderComposition, hyperframesAvailable } from "./hyperframes.js";
 import { validateComposition } from "./sanitize.js";
 import { fetchAssetBytes } from "./asset-source.js";
 import { assetsNamedInIntent, missingAssets } from "./assets-gate.js";
+import { DEFAULT_ACCENT } from "./accent.js";
 import { checkSceneMotion } from "./motion-gate.js";
+import { checkImageFraming } from "./framing-gate.js";
 import { createSemaphore } from "../semaphore.js";
 import { captionIntrusionIssue, overlayIntrudesCaptionBand } from "./caption-guard.js";
 import { maskOverlaySafeZones } from "../ffmpeg.js";
@@ -129,6 +131,9 @@ export async function produceScene(
     brief: RenderBrief;
     creativeDirection?: CreativeDirection;
     assetHints: string[];
+    /** What each asset depicts and where its important content sits, keyed by filename — forwarded
+     *  to the author so it can crop to the named region instead of placing a wide capture whole. */
+    assetDescriptions?: Record<string, string>;
     assetsDir: string;
     premiumDir: string;
     basePath: string;
@@ -141,11 +146,11 @@ export async function produceScene(
   },
   deps: SceneDeps = DEFAULT_DEPS,
 ): Promise<AuthoredScene> {
-  const { spec, brief, assetHints, assetsDir, premiumDir, basePath, captionOverlayPath, fps, log } = args;
+  const { spec, brief, assetHints, assetDescriptions, assetsDir, premiumDir, basePath, captionOverlayPath, fps, log } = args;
   const creativeDirection = args.creativeDirection ?? {
     backgroundColor: "#101114",
     textColor: "#ffffff",
-    emphasisColor: brief.assets?.brandColor || brief.accentColor || "#d9ff45",
+    emphasisColor: brief.assets?.brandColor || brief.accentColor || DEFAULT_ACCENT,
     successColor: "#79f28b",
     failureColor: "#ff4f9a",
     displayStyle: "bold geometric sans serif",
@@ -218,6 +223,7 @@ export async function produceScene(
         brief,
         creativeDirection,
         assetHints,
+        assetDescriptions,
         priorIssues: safetyIssues.length ? texts(safetyIssues) : undefined,
         priorHtml,
       });
@@ -259,6 +265,22 @@ export async function produceScene(
           continue;
         }
         deterministicFlags.push(mIssue); // last attempt: render + ship flagged
+      }
+
+      // Framing (objective): a staged screenshot placed with no cropping/scaling intent is the
+      // #1 production QA complaint — a wide desktop capture shrunk whole into a 1080x1920 frame
+      // leaves interface text unreadable and clips labels at the edge. Drives a patch; on the final
+      // attempt the scene still RENDERS and SHIPS FLAGGED (never omitted).
+      const framing = checkImageFraming(html);
+      if (!framing.ok) {
+        const framingIssue: SceneIssue = { kind: "safety", text: framing.reason! };
+        if (!last) {
+          safetyIssues = [framingIssue];
+          priorHtml = html;
+          log(`  ${spec.id}: re-author ${attempts} — asset placed with no cropping/scaling intent`);
+          continue;
+        }
+        deterministicFlags.push(framingIssue);
       }
 
       // Motion (objective): a timeline dominated by an empty padding tween, or with only one real
@@ -432,6 +454,7 @@ export async function runPremium(args: {
             brief,
             creativeDirection: editPlan.creativeDirection,
             assetHints,
+            assetDescriptions: brief.assets?.imageDescriptions,
             assetsDir,
             premiumDir,
             basePath,

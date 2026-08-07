@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/lib/auth";
-import { assertBriefOwnedBy, getBriefAssetDescriptions, setBriefAssets } from "@/lib/db";
+import {
+  assertBriefOwnedBy,
+  getBriefAssetDescriptions,
+  getBriefAssets,
+  removeBrandAssetObjects,
+  setBriefAssets,
+} from "@/lib/db";
 import { validateAssetUrls } from "@/lib/brand-assets";
 import { describeAssets } from "@/lib/asset-caption";
 import { describeImageUrl } from "@/lib/describe-image";
@@ -34,7 +40,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Not your brief." }, { status: 403 });
     }
 
-    const images = validateAssetUrls(body?.images, process.env.NEXT_PUBLIC_SUPABASE_URL);
+    // An explicit empty array is a real "remove everything", not a malformed request. A brief
+    // with no brand assets is a legitimate state, and without this the UI could only pretend to
+    // delete: the row kept the image and /api/render, which reads assets from the brief, would
+    // put it back in the next video. A MISSING images field is still a 400, so only a deliberate
+    // empty array clears.
+    if (Array.isArray(body?.images) && body.images.length === 0) {
+      const previous = await getBriefAssets(briefId);
+      const previousImages = Array.isArray(previous?.images) ? (previous.images as string[]) : [];
+
+      // Storage FIRST, then the row. Clearing the row first and swallowing a storage error
+      // told the user their screenshot was deleted while it stayed reachable on a public
+      // bucket, and once the row was gone nothing knew which objects still needed removing.
+      // This order fails recoverably instead: the brief is untouched, the images are still
+      // listed, and the user can try again.
+      try {
+        await removeBrandAssetObjects(previousImages);
+      } catch (err) {
+        console.error("brand asset cleanup failed:", err);
+        return NextResponse.json(
+          { error: "Could not delete those images. Nothing was changed - please try again." },
+          { status: 502 },
+        );
+      }
+      await setBriefAssets(briefId, { images: [], imageDescriptions: {} });
+      return NextResponse.json({ ok: true, images: [] });
+    }
+
+    const images = validateAssetUrls(body?.images, process.env.NEXT_PUBLIC_SUPABASE_URL, briefId);
     if (!images.ok) {
       return NextResponse.json({ error: images.error }, { status: 400 });
     }

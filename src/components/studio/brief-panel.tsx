@@ -26,6 +26,8 @@ import {
 } from "@/components/studio/footage-names";
 import { toRenderBrief } from "@/lib/render-brief";
 import { uploadSceneFootageDirect } from "@/lib/upload";
+import { ACCEPTED_ASSET_TYPES, uploadBrandAsset } from "@/lib/upload-asset";
+import { MAX_ASSETS } from "@/lib/brand-assets";
 import type { Angle, BriefDoc, InfoGap, Project, ReferencePattern } from "@/lib/types";
 
 // The research stage hands the chosen angle to the brief via sessionStorage
@@ -90,6 +92,19 @@ export function BriefPanel() {
  // localStorage-backed per brief, the DB stores footage at a fixed path, so this is what
   // lets a creator tell which of their recordings they attached. See footage-names.ts.
   const [filenames, setFilenames] = useState<Record<number, string>>({});
+  // Brand-asset screenshots/logo attached to this brief. NOT re-hydrated from the
+  // server on load: unlike footage (see the /api/footage fetch below), the brief doc
+  // and GET /api/brief response carry no `assets`/images field today, so a returning
+  // user with previously-uploaded assets currently sees an empty grid until they
+  // re-upload. See PROOF-notes in the PR description; wiring that read is a follow-up.
+  const [assetImages, setAssetImages] = useState<string[]>([]);
+  // Per-in-flight-upload progress (0..1), keyed by a locally generated id, so each
+  // thumbnail can show its own bar before it has a URL to be keyed by.
+  const [assetProgress, setAssetProgress] = useState<Record<string, number>>({});
+  // True while POST /api/assets is in flight, which also runs captioning (a vision
+  // call per image) - surfaced so the section doesn't look frozen for the few seconds
+  // that takes even parallelised.
+  const [savingAssets, setSavingAssets] = useState(false);
   const [recordScene, setRecordScene] = useState<number | null>(null);
   const [renderJobId, setRenderJobId] = useState<string | null>(null);
   const [renderStatus, setRenderStatus] = useState<string | null>(null);
@@ -231,6 +246,7 @@ export function BriefPanel() {
           setPhase("brief");
           setRenderUrl(briefRes.brief.renderUrl || null);
           setRenderStatus(briefRes.brief.renderStatus ?? null);
+          setAssetImages(briefRes.brief.assetImages ?? []);
           // Resume polling whenever a job exists but we don't yet have the final
           // video URL. The durable render_jobs row (updated by the render service)
  // is the source of truth, so even if the brief's status looks stale, or
@@ -505,6 +521,96 @@ export function BriefPanel() {
     [briefId],
   );
 
+  // Persist the full image set (POST /api/assets both saves the URLs on the brief and
+  // captions each one, so the render planner knows what it depicts). Called after every
+  // add and every remove, always with the complete list - the API replaces, not appends.
+  const saveAssetImages = useCallback(
+    async (images: string[]) => {
+      if (!briefId) return;
+      // Snapshot so a failed save can put the thumbnails back. Without this a rejected
+      // request left the image hidden on screen while the brief still carried it, which is
+      // the exact "deleted but still in the video" symptom this was meant to fix.
+      const previous = assetImages;
+      setSavingAssets(true);
+      try {
+        const res = await fetch("/api/assets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ briefId, images }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? "Could not save brand assets");
+        setAssetImages(data.images ?? images);
+      } catch (e) {
+        setAssetImages(previous);
+        toast.error(e instanceof Error ? e.message : "Could not save brand assets");
+      } finally {
+        setSavingAssets(false);
+      }
+    },
+    [briefId, assetImages],
+  );
+
+  const addAssetFiles = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      if (!briefId) {
+        toast.error("Generate the brief first.");
+        return;
+      }
+      const incoming = Array.from(files);
+      const alreadyAttached = assetImages.length + Object.keys(assetProgress).length;
+      const room = MAX_ASSETS - alreadyAttached;
+      if (room <= 0) {
+        toast.error(`A brief can carry at most ${MAX_ASSETS} images. Remove one before adding more.`);
+        return;
+      }
+      const toUpload = incoming.slice(0, room);
+      if (incoming.length > toUpload.length) {
+        toast.error(
+          `Only room for ${room} more image${room === 1 ? "" : "s"} (max ${MAX_ASSETS} per brief). The rest were skipped.`,
+        );
+      }
+
+      const uploaded: string[] = [];
+      for (const file of toUpload) {
+        const key = `${file.name}-${file.size}-${Date.now()}-${Math.random()}`;
+        setAssetProgress((m) => ({ ...m, [key]: 0 }));
+        try {
+          const url = await uploadBrandAsset({
+            briefId,
+            file,
+            onProgress: (f) => setAssetProgress((m) => ({ ...m, [key]: f })),
+          });
+          uploaded.push(url);
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Upload failed");
+        } finally {
+          setAssetProgress((m) => {
+            const next = { ...m };
+            delete next[key];
+            return next;
+          });
+        }
+      }
+      if (uploaded.length === 0) return;
+      await saveAssetImages([...assetImages, ...uploaded]);
+    },
+    [assetImages, assetProgress, briefId, saveAssetImages],
+  );
+
+  const removeAssetImage = useCallback(
+    (url: string) => {
+      const next = assetImages.filter((u) => u !== url);
+      setAssetImages(next);
+      // Persist every removal, including the last one. Clearing only on screen used to leave
+      // the image in the brief, and since the render reads assets from there it would come
+      // back in the next video.
+      void saveAssetImages(next);
+    },
+    [assetImages, saveAssetImages],
+  );
+
   const filmedCount = doc ? doc.scenes.filter((_, i) => footage[i]).length : 0;
   // An in-progress render should win over a stale renderUrl left from a prior render,
   // so this does NOT require renderUrl to be empty (a re-render clears it a beat later).
@@ -623,14 +729,24 @@ export function BriefPanel() {
       {phase === "drafting" && <BriefSkeleton />}
 
       {phase === "brief" && doc && (
-        <BriefView
-          doc={doc}
-          footage={footage}
-          filenames={filenames}
-          onRecord={(i) => setRecordScene(i)}
-          onUpload={uploadFootage}
-          onDelete={deleteFootage}
-        />
+        <>
+          <BrandAssetsSection
+            briefId={briefId}
+            images={assetImages}
+            uploading={assetProgress}
+            saving={savingAssets}
+            onAddFiles={addAssetFiles}
+            onRemove={removeAssetImage}
+          />
+          <BriefView
+            doc={doc}
+            footage={footage}
+            filenames={filenames}
+            onRecord={(i) => setRecordScene(i)}
+            onUpload={uploadFootage}
+            onDelete={deleteFootage}
+          />
+        </>
       )}
 
       {recordScene != null && doc && (
@@ -884,6 +1000,123 @@ function FootageModal({ url, onClose }: { url: string; onClose: () => void }) {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+// Screenshots/logo a brief carries. Beta: the caption call that runs after every save
+// takes a few seconds even parallelised, so uploads and saves both surface a pending
+// state rather than looking frozen. See upload-asset.ts for the pre-flight rules.
+function BrandAssetsSection({
+  briefId,
+  images,
+  uploading,
+  saving,
+  onAddFiles,
+  onRemove,
+}: {
+  briefId: string | null;
+  images: string[];
+  uploading: Record<string, number>;
+  saving: boolean;
+  onAddFiles: (files: FileList | null) => void;
+  onRemove: (url: string) => void;
+}) {
+  const attachedCount = images.length + Object.keys(uploading).length;
+  const atLimit = attachedCount >= MAX_ASSETS;
+  // Also blocked while a save is in flight: `setBriefAssets` is a read-merge-write, so a second
+  // batch started mid-caption would race the first and one set of images would be lost.
+  const disabled = !briefId || atLimit || saving;
+  return (
+    <div className="mt-7 rounded-lg border border-border bg-card p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Kicker>Brand assets</Kicker>
+        <Badge variant="secondary" className="font-mono text-[9px] uppercase tracking-wider">
+          beta
+        </Badge>
+      </div>
+      <p className="mt-1.5 max-w-xl text-xs leading-relaxed text-muted-foreground">
+        Screenshots and a logo help the editor build scenes around your real product. Wide
+        desktop captures often get cropped awkwardly in a vertical video — tall screenshots
+        work best. Check the result before you publish.
+      </p>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <label
+          title={atLimit ? `A brief can carry at most ${MAX_ASSETS} images` : "Upload screenshots or a logo"}
+          className={`rounded-full border border-border px-3 py-1 font-mono text-[11px] text-muted-foreground transition ${
+            disabled
+              ? "cursor-not-allowed opacity-50"
+              : "cursor-pointer hover:border-primary hover:text-primary"
+          }`}
+        >
+          ⬆ Add images
+          <input
+            type="file"
+            accept={ACCEPTED_ASSET_TYPES.join(",")}
+            multiple
+            disabled={disabled}
+            className="hidden"
+            onChange={(e) => {
+              onAddFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </label>
+        <span className="font-mono text-[11px] text-muted-foreground">
+          {attachedCount} / {MAX_ASSETS}
+        </span>
+        {saving && (
+          <span className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+            Captioning your images…
+          </span>
+        )}
+      </div>
+
+      {(images.length > 0 || Object.keys(uploading).length > 0) && (
+        <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6">
+          {images.map((url) => (
+            <div
+              key={url}
+              className="group relative aspect-square overflow-hidden rounded-md border border-border bg-muted"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt="" className="h-full w-full object-cover" />
+              {/* Blocked while a save is in flight. Two overlapping removals used to race:
+                  the second could clear the row and delete both objects, then the first would
+                  land and write the other image back, leaving the brief pointing at a file
+                  that no longer exists. */}
+              <button
+                onClick={() => onRemove(url)}
+                disabled={saving}
+                title={saving ? "Saving…" : "Remove"}
+                className={`absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[10px] text-white transition ${
+                  saving ? "cursor-not-allowed opacity-40" : "opacity-0 group-hover:opacity-100"
+                }`}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          {Object.entries(uploading).map(([key, fraction]) => (
+            <div
+              key={key}
+              className="relative flex aspect-square flex-col items-center justify-center gap-1 overflow-hidden rounded-md border border-dashed border-border bg-muted/50"
+            >
+              <span className="font-mono text-[10px] text-muted-foreground">
+                {Math.round(fraction * 100)}%
+              </span>
+              <span className="h-1 w-3/4 overflow-hidden rounded-full bg-border">
+                <span
+                  className="block h-full bg-primary transition-[width]"
+                  style={{ width: `${Math.round(fraction * 100)}%` }}
+                />
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

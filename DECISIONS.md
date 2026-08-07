@@ -361,3 +361,157 @@ dashboard for the other half of the bound.
 
 **References:** `src/lib/signup.ts`, `src/lib/db.ts` (`ensureProfile`), `src/app/login/page.tsx`,
 `tests/open-signup.test.ts`, PR #28.
+
+---
+
+## 2026-08-07: Auth fails closed, and a half-configured deploy is refused rather than degraded
+
+**Status:** Active.
+
+**Context:** `requireApprovedUser` treated any incomplete Supabase configuration as developer mode
+and handed the caller `DEV_USER_ID` with a PASSING result. Deleting one env var in Vercel would have
+made the entire app unauthenticated while service-role database access kept working, and nothing
+would have failed loudly. A second, independent copy of the same check lived in `src/proxy.ts` and
+gated every page route.
+
+**Decision:**
+
+- Three states, not a boolean: `enforce`, `dev-open`, `misconfigured`. `dev-open` requires BOTH public
+  vars absent. Exactly one present is `misconfigured` in every environment, because that is the shape
+  that used to look like dev mode and hid the hole.
+- `NODE_ENV` is an allowlist (`development`, `test`). Unset, empty, `staging` or a typo is treated
+  strictly. An exact match on `"production"` would have failed open on any container that skips the
+  `next build` / `next start` lifecycle.
+- `misconfigured` returns 503 from the API gates. `src/proxy.ts` redirects non-public pages to
+  `/login` but lets `/api/*` through, because redirecting a `fetch()` means the caller parses login
+  HTML and `res.json()` throws instead of surfacing the 503.
+- Empty strings and the literal `"undefined"` / `"null"` count as absent.
+
+**References:** `src/lib/auth-config.ts`, `src/lib/auth.ts`, `src/proxy.ts`,
+`tests/auth-config.test.ts`, `tests/proxy-auth.test.ts`.
+
+---
+
+## 2026-08-07: Clip and asset URLs are allowlisted to our own storage origin
+
+**Status:** Active.
+
+**Context:** `POST /api/render` checked only that `videoUrls` was a non-empty array, then forwarded
+every value to the worker, which fetches with redirects and buffers whole bodies. An approved user
+could aim it at cloud metadata or at anything large enough to exhaust the box.
+
+**Decision:** An allowlist against our own Supabase storage origin, not a denylist of bad hosts,
+because a denylist loses to DNS rebinding and to address literals nobody thought of. Full `origin`
+comparison so a lookalike like `ours.supabase.co.evil.com` fails, plus a bucket path prefix. One
+shared rejection message across host and path failures, so probing reveals nothing about which rule
+was hit. Same shape for brand assets.
+
+Test fixtures must pair a hostile origin with a path that WOULD pass the prefix check. The first
+version's fixtures all carried bad paths too, so the origin check could be deleted with the suite
+still green.
+
+**References:** `src/lib/media-url.ts`, `src/lib/brand-assets.ts`, `tests/media-url.test.ts`.
+
+---
+
+## 2026-08-07: A repeated render submit reuses the in-flight job, and an abandoned job never wedges a brief
+
+**Status:** Active.
+
+**Context:** Every POST reserved 80 credits and minted a new job id, so a retry, a timeout or a
+second tab paid twice for the same footage and queued it against only two worker slots.
+
+**Decision:** Before spending, look up the newest in-flight job for that brief and user and return it
+instead of starting a second. Scoped to the owner so a guessed brief id cannot reveal someone else's
+job, and placed after the ownership check and before `spendCredits`.
+
+A staleness cutoff is part of the decision, not an add-on: `render/src/durable.ts` gives up after 3
+attempts and never writes a terminal status, so a crashed job sits in `processing` forever. Reusing
+it unconditionally would have locked that brief out of rendering permanently, with the UI button
+disabled and `clearBriefRender` unable to help because it only clears the `briefs` row. A job
+untouched for longer than the worker's 15-minute lease is treated as dead.
+
+**Known limitation:** the check is check-then-act across separate round trips, so two genuinely
+concurrent submits can still both charge. This fixes sequential retries and double-clicks. Closing it
+properly needs a partial unique index on
+`render_jobs(brief_id) where status in ('queued','processing')`.
+
+**References:** `src/lib/render-submit.ts`, `src/lib/db.ts` (`findActiveRenderJob`),
+`tests/render-idempotency.test.ts`.
+
+---
+
+## 2026-08-07: Raw footage is never deleted after a render
+
+**Status:** Active. Reverses a change that was built, merged and reverted the same day.
+
+**Context:** Storage sat at 340 MB against what was assumed to be a 1 GB free-tier cap, growing about
+12 MB per brief. A drain was built to delete raw clips once a render succeeded, and merged.
+
+**Decision:** Reverted, for three independent reasons, any one of which is sufficient:
+
+- **Re-render dies.** `brief-panel.tsx` supports re-rendering a brief and the raw takes are its only
+  input. The button would have remained and simply failed, leaving users stuck with generation one.
+- **It is often the only copy.** The teleprompter records in the browser and uploads straight to
+  storage; nothing lands on the user's device. Only people who filmed on a phone keep an original.
+- **The premise was unverified.** The 1 GB figure is the free tier. This project's plan was never
+  confirmed, and on Pro the allowance is 100 GB, which at ~12 MB a brief is thousands of briefs from
+  mattering.
+
+If storage ever does bind, the answer is a longer retention window plus an explicit user-facing
+"delete raw takes" action, not a silent drain triggered by someone else's render.
+
+**References:** `d4263afa` (revert), `ef0dd136` and `43a15b53` (reverted).
+
+---
+
+## 2026-08-07: The planner is told what each staged asset depicts
+
+**Status:** Active.
+
+**Context:** The planner receives asset filenames, which are UUIDs, and has a rule to use real assets
+only when they materially prove a claim. It cannot apply that rule to an opaque name. On a brief whose
+script mentioned a Telegram chat with no Telegram screenshot uploaded, it requested one anyway, the
+author substituted the nearest screenshot, and the finished video showed the product while the
+voiceover said Telegram, which reads as the product BEING the chat.
+
+**Decision:** Each image is captioned once at upload and stored on the brief, keyed by the filename
+the worker stages it under (post-rasterisation for SVG). The planner payload carries
+`{ file, depicts }`. A missing description reads as `unknown`, which keeps the planner conservative.
+The existing rule then works unchanged: with descriptions present, a beat whose visual is not in the
+asset set falls back to clean A-roll instead of borrowing an unrelated screenshot. Measured on a real
+render, clean A-roll rose from 43% to 54% and the substitution stopped.
+
+A caption failure never blocks an upload. Descriptions are internal; the user is not asked to label
+anything.
+
+**References:** `src/lib/asset-caption.ts`, `src/lib/describe-image.ts`,
+`render/src/premium/scenes.ts`, `tests/asset-caption.test.ts`, PR #31.
+
+---
+
+## 2026-08-07: A scene must keep developing across its full duration
+
+**Status:** Active.
+
+**Context:** A measured production render was static for seconds at a time — mean pixel delta between
+0.0 and 1.9 out of 255 between cuts. The graphic scenes were stills held for three to four seconds.
+The author prompt caused it: rule 5 said "the timeline duration must be exactly N seconds. Append an
+empty tween if needed", and sitting next to "do not add ambient motion merely to keep the frame busy"
+the model reasonably concluded it should animate the entrance and then pad.
+
+**Decision:** The timeline must reach its duration through real motion, with the final meaningful beat
+landing in the last third. A deterministic pre-render gate rejects a timeline that is half or more
+empty hold, or that has fewer than two real tweens, and re-authors it the same way a missing asset
+does — before paying for a render and a vision call. A screenshot that is placed and never moved is a
+failed scene.
+
+This is not licence for ambient motion; the second beat must carry meaning.
+
+**Known tension:** motion and framing fight each other while a source screenshot is the wrong aspect.
+Adding a push-in to a wide desktop capture cropped into 1080x1920 makes the zoom worse, which is what
+happened on the first render after this shipped. Deterministic reframing should land before motion is
+tuned further.
+
+**References:** `render/src/premium/motion-gate.ts`, `render/src/premium/author.ts`,
+`render/tests/motion-gate.test.ts`, PR #30.

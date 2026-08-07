@@ -70,3 +70,9 @@ next-env.d.ts
 /ugc-proof.zip
 /ugc-proof/
 /weekend-build-log-making-peekaboo-less-l.json
+
+# Local capture output: rendered videos, extracted frames, e2e screenshots. These hold real
+# user recordings and run to hundreds of MB, so a stray `git add -A` should never sweep them in.
+/*-shots/
+/asset-proof-shots/
+/scene-eyeball/

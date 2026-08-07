@@ -81,3 +81,45 @@ describe("describeAssets", () => {
     expect(out).toEqual({ "a.png": "kept" });
   });
 });
+
+describe("describeAssets concurrency", () => {
+  it("describes images in parallel, not one after another", async () => {
+    // Sequentially this was 26s for five images, inside the upload request. Asserting overlap
+    // rather than wall-clock keeps the test honest on a slow machine.
+    let inFlight = 0;
+    let peak = 0;
+    const urls = Array.from({ length: 5 }, (_, i) => `${BASE}/img-${i}.png`);
+    await describeAssets(urls, {
+      describe: async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 20));
+        inFlight -= 1;
+        return "a screen";
+      },
+    });
+    expect(peak).toBe(5);
+  });
+
+  it("asks once for an image listed twice", async () => {
+    let calls = 0;
+    const out = await describeAssets([`${BASE}/a.png`, `${BASE}/a.png`], {
+      describe: async () => {
+        calls += 1;
+        return "a screen";
+      },
+    });
+    expect(calls).toBe(1);
+    expect(out).toEqual({ "a.png": "a screen" });
+  });
+
+  it("one failure does not lose the others", async () => {
+    const out = await describeAssets([`${BASE}/a.png`, `${BASE}/b.png`, `${BASE}/c.png`], {
+      describe: async (u) => {
+        if (u.endsWith("b.png")) throw new Error("vision down");
+        return "a screen";
+      },
+    });
+    expect(Object.keys(out).sort()).toEqual(["a.png", "c.png"]);
+  });
+});
