@@ -85,6 +85,27 @@ export async function POST(req: Request) {
       await getBriefAssetDescriptions(briefId),
     );
 
+    // Removing ONE of several images lands here, not in the empty-list branch above, so this
+    // is where most deletions actually happen. Without it the file stayed readable on the
+    // public bucket forever: in production, deleting three screenshots one at a time left two
+    // of them fetchable, because only the final delete emptied the list. Same storage-first
+    // ordering and the same recoverable failure as the clear-everything path.
+    const previous = await getBriefAssets(briefId);
+    const previousImages = Array.isArray(previous?.images) ? (previous.images as string[]) : [];
+    const kept = new Set(images.urls);
+    const dropped = previousImages.filter((url) => !kept.has(url));
+    if (dropped.length > 0) {
+      try {
+        await removeBrandAssetObjects(dropped);
+      } catch (err) {
+        console.error("brand asset cleanup failed:", err);
+        return NextResponse.json(
+          { error: "Could not delete those images. Nothing was changed - please try again." },
+          { status: 502 },
+        );
+      }
+    }
+
     await setBriefAssets(briefId, {
       images: images.urls,
       brandColor: brandColor as string | undefined,
