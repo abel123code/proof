@@ -15,6 +15,8 @@ const requireApprovedUser = vi.fn();
 const assertBriefOwnedBy = vi.fn();
 const setBriefAssets = vi.fn();
 const createAssetUploadTicket = vi.fn();
+const getBriefAssets = vi.fn();
+const removeBrandAssetObjects = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
   requireApprovedUser: (...a: unknown[]) => requireApprovedUser(...a),
@@ -24,6 +26,8 @@ vi.mock("@/lib/db", () => ({
   setBriefAssets: (...a: unknown[]) => setBriefAssets(...a),
   createAssetUploadTicket: (...a: unknown[]) => createAssetUploadTicket(...a),
   getBriefAssetDescriptions: async () => ({}),
+  getBriefAssets: (...a: unknown[]) => getBriefAssets(...a),
+  removeBrandAssetObjects: (...a: unknown[]) => removeBrandAssetObjects(...a),
 }));
 
 // Captioning is a vision call; stub it so the route tests stay offline and deterministic.
@@ -51,6 +55,8 @@ beforeEach(() => {
   assertBriefOwnedBy.mockResolvedValue(true);
   setBriefAssets.mockResolvedValue(undefined);
   createAssetUploadTicket.mockResolvedValue({ path: "brief-1/uuid.png", token: "tok" });
+  getBriefAssets.mockResolvedValue(null);
+  removeBrandAssetObjects.mockResolvedValue(undefined);
 });
 
 describe("POST /api/assets", () => {
@@ -101,6 +107,51 @@ describe("POST /api/assets", () => {
       },
     });
   });
+
+describe("POST /api/assets clearing", () => {
+  it("treats an explicit empty list as a real removal", async () => {
+    // Clearing only on screen used to leave the image on the brief, and /api/render reads
+    // assets from there, so a "deleted" screenshot came back in the next video.
+    getBriefAssets.mockResolvedValue({ images: [ok("a.png")] });
+    const res = await call({ briefId: "brief-1", images: [] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, images: [] });
+    expect(setBriefAssets).toHaveBeenCalledWith("brief-1", {
+      images: [],
+      imageDescriptions: {},
+    });
+  });
+
+  it("deletes the objects from storage, because the bucket is public", async () => {
+    getBriefAssets.mockResolvedValue({ images: [ok("a.png"), ok("b.png")] });
+    await call({ briefId: "brief-1", images: [] });
+    expect(removeBrandAssetObjects).toHaveBeenCalledWith([ok("a.png"), ok("b.png")]);
+  });
+
+  it("still clears the brief when storage cleanup fails", async () => {
+    // The user's intent is recorded either way; a stranded object is better than a brief
+    // that still points at an image the user deleted.
+    getBriefAssets.mockResolvedValue({ images: [ok("a.png")] });
+    removeBrandAssetObjects.mockRejectedValueOnce(new Error("storage down"));
+    const res = await call({ briefId: "brief-1", images: [] });
+    expect(res.status).toBe(200);
+    expect(setBriefAssets).toHaveBeenCalled();
+  });
+
+  it("still rejects a missing images field", async () => {
+    const res = await call({ briefId: "brief-1" });
+    expect(res.status).toBe(400);
+    expect(setBriefAssets).not.toHaveBeenCalled();
+  });
+
+  it("does not clear a brief the caller does not own", async () => {
+    assertBriefOwnedBy.mockResolvedValue(false);
+    const res = await call({ briefId: "brief-1", images: [] });
+    expect(res.status).toBe(403);
+    expect(setBriefAssets).not.toHaveBeenCalled();
+    expect(removeBrandAssetObjects).not.toHaveBeenCalled();
+  });
+});
 });
 
 describe("POST /api/assets/sign", () => {

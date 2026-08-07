@@ -598,13 +598,9 @@ export function BriefPanel() {
     (url: string) => {
       const next = assetImages.filter((u) => u !== url);
       setAssetImages(next);
-      if (next.length === 0) {
-        // The API requires a non-empty list (it has no "clear all" mode), so an empty
-        // set can't be persisted. It stays cleared locally; the next upload's full set
-        // (which will no longer include this image) is what actually gets saved.
-        toast.info("Removed. Upload a new image to finish clearing brand assets from this brief.");
-        return;
-      }
+      // Persist every removal, including the last one. Clearing only on screen used to leave
+      // the image in the brief, and since the render reads assets from there it would come
+      // back in the next video.
       void saveAssetImages(next);
     },
     [assetImages, saveAssetImages],

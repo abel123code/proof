@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/lib/auth";
-import { assertBriefOwnedBy, getBriefAssetDescriptions, setBriefAssets } from "@/lib/db";
+import {
+  assertBriefOwnedBy,
+  getBriefAssetDescriptions,
+  getBriefAssets,
+  removeBrandAssetObjects,
+  setBriefAssets,
+} from "@/lib/db";
 import { validateAssetUrls } from "@/lib/brand-assets";
 import { describeAssets } from "@/lib/asset-caption";
 import { describeImageUrl } from "@/lib/describe-image";
@@ -32,6 +38,23 @@ export async function POST(req: Request) {
     }
     if (!(await assertBriefOwnedBy(briefId, auth.userId))) {
       return NextResponse.json({ error: "Not your brief." }, { status: 403 });
+    }
+
+    // An explicit empty array is a real "remove everything", not a malformed request. A brief
+    // with no brand assets is a legitimate state, and without this the UI could only pretend to
+    // delete: the row kept the image and /api/render, which reads assets from the brief, would
+    // put it back in the next video. A MISSING images field is still a 400, so only a deliberate
+    // empty array clears.
+    if (Array.isArray(body?.images) && body.images.length === 0) {
+      const previous = await getBriefAssets(briefId);
+      const previousImages = Array.isArray(previous?.images) ? (previous.images as string[]) : [];
+      await setBriefAssets(briefId, { images: [], imageDescriptions: {} });
+      // After the row, so a storage failure cannot leave the brief pointing at objects that are
+      // already gone. Best-effort: the user's intent is recorded either way.
+      await removeBrandAssetObjects(previousImages).catch((err) =>
+        console.error("brand asset cleanup failed:", err),
+      );
+      return NextResponse.json({ ok: true, images: [] });
     }
 
     const images = validateAssetUrls(body?.images, process.env.NEXT_PUBLIC_SUPABASE_URL, briefId);

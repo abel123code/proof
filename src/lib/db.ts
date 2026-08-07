@@ -1151,8 +1151,43 @@ export async function setBriefAssets(
   if (assets.brandColor !== undefined) merged.brandColor = assets.brandColor;
   if (assets.imageDescriptions !== undefined) merged.imageDescriptions = assets.imageDescriptions;
 
+  // Drop captions for images that are no longer attached. They are keyed by staged filename, so
+  // without this they accumulate forever and a removed image keeps a description describing it.
+  const keep = new Set(assets.images.map((url) => url.split("?")[0].split("/").pop()));
+  const descriptions = merged.imageDescriptions;
+  if (descriptions && typeof descriptions === "object") {
+    merged.imageDescriptions = Object.fromEntries(
+      Object.entries(descriptions as Record<string, string>).filter(([file]) => {
+        // An SVG is staged as .png, so match either spelling of the same object.
+        return keep.has(file) || keep.has(file.replace(/\.png$/i, ".svg"));
+      }),
+    );
+  }
+
   const { error } = await supabase.from("briefs").update({ assets: merged }).eq("id", briefId);
   if (error) throw new Error(`setBriefAssets failed: ${error.message}`);
+}
+
+/**
+ * Remove brand-asset objects from storage.
+ *
+ * The bucket is public, so leaving the file behind means its URL still resolves after the user
+ * has "deleted" it. For an accidentally uploaded screenshot that is the whole point of deleting.
+ * A missing object is success, not failure, so a retry after a partial removal is safe.
+ */
+export async function removeBrandAssetObjects(urls: string[]): Promise<void> {
+  if (urls.length === 0) return;
+  const supabase = getSupabaseAdmin();
+  const paths = urls
+    .map((url) => {
+      const marker = "/object/public/brand-assets/";
+      const at = url.indexOf(marker);
+      return at < 0 ? null : decodeURIComponent(url.slice(at + marker.length).split("?")[0]);
+    })
+    .filter((p): p is string => Boolean(p));
+  if (paths.length === 0) return;
+  const { error } = await supabase.storage.from("brand-assets").remove(paths);
+  if (error) throw new Error(`removeBrandAssetObjects failed: ${error.message}`);
 }
 
 /**
