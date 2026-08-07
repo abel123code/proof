@@ -23,6 +23,13 @@ import { parse, HTMLElement } from "node-html-parser";
  * The fix: parse the HTML for real and walk each asset <img>'s actual ancestor chain, excluding
  * #stage explicitly (it is mandatory on every scene and says nothing about whether THIS image was
  * cropped), and only accept a scale that enlarges (> 1).
+ *
+ * That fix shipped its own false positive: the live author demonstrably writes crop rules as CSS
+ * classes in a <style> block, not inline, whatever the HARD CONTRACT's example markup shows — see
+ * the real `.crop { position:absolute; ...; overflow:hidden }` shape production actually emits. An
+ * ancestor walk that only reads the inline `style` attribute never sees that, so a genuinely-cropped
+ * scene was judged uncropped and re-authored for nothing. Class/id rules from <style> blocks are now
+ * resolved and merged under each ancestor's inline style (inline wins on conflict) before judging.
  */
 
 export interface FramingCheck {
@@ -37,7 +44,7 @@ const STAGE_HEIGHT = 1920;
 
 const ASSET_SRC = /assets\//i;
 
-/** Parse a `style="a:b;c:d"` attribute into a lowercase-keyed property map. */
+/** Parse a `style="a:b;c:d"` attribute (or a CSS rule's `{...}` body) into a lowercase-keyed map. */
 function parseStyle(style: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   if (!style) return out;
@@ -49,6 +56,51 @@ function parseStyle(style: string | undefined): Record<string, string> {
     if (prop) out[prop] = value;
   }
   return out;
+}
+
+/**
+ * A HEURISTIC stylesheet resolver, not a CSS engine: no cascade, no specificity, no media queries,
+ * no descendant/combinator selectors (`.crop img` is silently ignored, never crashes). It only
+ * extracts simple `.class` / `#id` rules — including comma-separated groups like `.a, .b { ... }` —
+ * because that covers what the author actually emits for crop wrappers. Later rules for the same
+ * selector overwrite earlier ones (source order), same as real CSS for equal specificity.
+ */
+function parseStyleBlocks(root: HTMLElement): Map<string, Record<string, string>> {
+  const rules = new Map<string, Record<string, string>>();
+  const SIMPLE_SELECTOR = /^[.#][a-zA-Z0-9_-]+$/;
+  for (const styleEl of root.querySelectorAll("style")) {
+    const css = (styleEl.text || "").replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const decl = parseStyle(m[2]);
+      for (const rawSelector of m[1].split(",")) {
+        const selector = rawSelector.trim();
+        // Anything but a bare .class or #id (descendant selectors, pseudo-classes, @media bodies
+        // that slipped through the naive brace match, etc.) carries no ancestor evidence here — skip
+        // it rather than mis-attribute its declarations to an unrelated simple selector.
+        if (!SIMPLE_SELECTOR.test(selector)) continue;
+        rules.set(selector, { ...rules.get(selector), ...decl });
+      }
+    }
+  }
+  return rules;
+}
+
+/**
+ * This element's effective style: matched `.class`/`#id` rules from <style> blocks, in class-then-id
+ * order (id overriding class, an approximation of real CSS's specificity ordering — not the whole
+ * cascade), with the element's own inline `style` attribute applied last so it always wins.
+ */
+function resolvedStyle(el: HTMLElement, sheet: Map<string, Record<string, string>>): Record<string, string> {
+  let merged: Record<string, string> = {};
+  for (const cls of (el.classNames || "").split(/\s+/).filter(Boolean)) {
+    const decl = sheet.get(`.${cls}`);
+    if (decl) merged = { ...merged, ...decl };
+  }
+  if (el.id) {
+    const decl = sheet.get(`#${el.id}`);
+    if (decl) merged = { ...merged, ...decl };
+  }
+  return { ...merged, ...parseStyle(el.getAttribute("style")) };
 }
 
 /** First numeric px value in a CSS length (e.g. "900px" -> 900). Null if absent/non-px. */
@@ -121,14 +173,14 @@ function isObjectFitCrop(el: HTMLElement, style: Record<string, string>): boolea
 }
 
 /**
- * Decide crop intent from an asset <img>'s REAL ancestor chain (styles are inline in this pipeline —
- * the author contract instructs the model to write inline styles — so reading the `style` attribute
- * off each ancestor is correct. A <style> BLOCK carrying the crop instead is out of scope: this walk
- * only sees inline styles, so a scene that puts its crop wrapper's rules in a <style> block will be
- * judged as uncropped even if it visually crops. That's a known, deliberate limitation, not a bug).
+ * Decide crop intent from an asset <img>'s REAL ancestor chain. Each ancestor's effective style is
+ * its matched class/id rules from <style> blocks merged with its own inline style (inline wins) —
+ * see {@link resolvedStyle}. Styles are otherwise inline in this pipeline in the sense that matters
+ * here: no cascade beyond that single merge, so a rule that only applies via a descendant selector
+ * (`.crop img { object-fit: cover }`) is invisible to this walk — out of scope by design, not a bug.
  */
-function hasCropIntent(img: HTMLElement): boolean {
-  const imgStyle = parseStyle(img.getAttribute("style"));
+function hasCropIntent(img: HTMLElement, sheet: Map<string, Record<string, string>>): boolean {
+  const imgStyle = resolvedStyle(img, sheet);
   if (hasEnlargingScale(imgStyle)) return true;
   if (isObjectFitCrop(img, imgStyle)) return true;
 
@@ -137,7 +189,7 @@ function hasCropIntent(img: HTMLElement): boolean {
     // #stage is the mandatory 1080x1920 root — every scene has it, so it says nothing about
     // whether THIS image was cropped. This is bypass 1: never let it count as crop evidence.
     if (node.id !== "stage") {
-      const style = parseStyle(node.getAttribute("style"));
+      const style = resolvedStyle(node, sheet);
       if (hasEnlargingScale(style)) return true;
       if (isCropWrapper(node, style)) return true;
     }
@@ -156,12 +208,14 @@ export function checkImageFraming(html: string): FramingCheck {
     return { ok: true };
   }
 
+  const sheet = parseStyleBlocks(root);
+
   for (const img of root.querySelectorAll("img")) {
     const src = img.getAttribute("src") || "";
     if (!ASSET_SRC.test(src)) continue;
     const file = src.split(/assets\//i).pop() || src;
 
-    if (!hasCropIntent(img)) {
+    if (!hasCropIntent(img, sheet)) {
       return {
         ok: false,
         reason:
