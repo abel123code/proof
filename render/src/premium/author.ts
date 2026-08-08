@@ -103,9 +103,11 @@ asset's uiText, copied character for character — same digits, casing and punct
 reconstruction in ONE element carrying data-ui-source="<that asset's file name>". Every string inside that
 element must appear in that asset's uiText; text you were not given must not be inferred, completed or invented,
 and a string that is missing simply does not appear. Outside that element you write the scene's own editorial
-copy freely. Because you are rebuilding rather than cropping, nothing is cut off: size type for the frame (56px
-minimum, 64-96px for anything the voiceover names) and reveal rows individually so a highlight lands on the row
-being spoken about.
+copy freely. The 56px minimum stated above governs the scene's own editorial wording and does NOT apply inside a
+reconstruction: an interface has its own hierarchy, and forcing every label to headline size makes a real page
+impossible to fit. Size the reconstruction so all of it sits inside the 1080x1920 frame — a viewer cannot read
+what is outside the frame, and content you cannot fit is content to leave out rather than to overflow. Reveal
+rows individually so a highlight lands on the row being spoken about.
 When an asset has NO uiText (a photograph, a logo, a phone capture), place it as an image instead: crop to the
 region its description names — a wrapper with overflow:hidden sized to the visible area and a scaled/positioned
 <img> inside it — and animate that crop rather than the raw image.

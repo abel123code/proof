@@ -21,8 +21,15 @@ export interface MotionCheck {
 const EMPTY_TWEEN = /(?:tl|gsap)\.to\(\s*\{\s*\}\s*,\s*\{([^}]*)\}/g;
 const DURATION_IN_CONFIG = /["']?duration["']?\s*:\s*["']?(-?[\d.]+)["']?/;
 
-// Any `.to(<target>, { ... }` call whose target is NOT an empty object — a real, meaningful tween.
-const ANY_TWEEN = /(?:tl|gsap)\.to\(\s*([^,]+?)\s*,\s*\{[^}]*\}/g;
+// Any tween whose target is NOT an empty object — a real, meaningful beat.
+//
+// `.from` and `.fromTo` are counted, not just `.to`. Counting only `.to` was a false-positive
+// factory: a reveal is idiomatically authored as `.from(".row", { opacity: 0 })` (animate rows IN
+// from an offset), so entire scenes that visibly animated were reported as "0 real tweens" and
+// re-authored twice against a defect that did not exist. That burned the whole retry budget and
+// starved the vision QA, whose real findings then shipped unfixed — a false alarm crowding out the
+// true one is worse than no alarm.
+const ANY_TWEEN = /(?:tl|gsap)\.(?:to|from|fromTo)\(\s*([^,]+?)\s*,\s*\{[^}]*\}/g;
 
 /** longestEmptyHold >= half the scene, or fewer than two real tweens, is the same defect: a frame
  *  that stops developing partway through instead of using its full duration. */
