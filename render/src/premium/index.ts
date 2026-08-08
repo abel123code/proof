@@ -20,6 +20,7 @@ import { validateComposition } from "./sanitize.js";
 import { fetchAssetBytes } from "./asset-source.js";
 import { assetsNamedInIntent, missingAssets } from "./assets-gate.js";
 import { DEFAULT_ACCENT } from "./accent.js";
+import { checkInvention } from "./invention-gate.js";
 import { checkSceneMotion } from "./motion-gate.js";
 import { checkImageFraming } from "./framing-gate.js";
 import { createSemaphore } from "../semaphore.js";
@@ -224,6 +225,7 @@ export async function produceScene(
         creativeDirection,
         assetHints,
         assetDescriptions,
+        uiRecords: brief.assets?.uiRecords,
         priorIssues: safetyIssues.length ? texts(safetyIssues) : undefined,
         priorHtml,
       });
@@ -244,6 +246,36 @@ export async function produceScene(
         safetyIssues = vIssues;
         priorHtml = html;
         log(`  ${spec.id}: re-author ${attempts} — unsafe HTML: ${violations.slice(0, 2).join("; ")}`);
+        continue;
+      }
+
+      // Whether a rebuilt interface says what the screenshot said is a string comparison, so check
+      // it here rather than hoping the vision pass notices. It is also far cheaper than a render:
+      // catching an invented course code now saves a full HyperFrames pass and a QA call. On the
+      // final attempt the reconstruction is refused rather than shipped — a video stating a course
+      // code the user never uploaded is worse than one that shows the plain footage.
+      const invention = checkInvention(html, brief.assets?.uiRecords ?? {});
+      if (!invention.ok) {
+        const detail =
+          invention.reason ??
+          `these strings are not in the uploaded screenshot: ${invention.invented.slice(0, 6).join(" | ")}`;
+        const iIssues: SceneIssue[] = [
+          {
+            kind: "safety",
+            text: `MUST FIX: ${detail}. Render only the exact strings supplied in that asset's uiText, or drop the element.`,
+          },
+        ];
+        if (last) {
+          if (hasRender) {
+            log(`  ${spec.id}: final HTML invents interface text — shipping the last clean render, flagged`);
+            return ship(iIssues, attempts);
+          }
+          log(`  ${spec.id}: invented interface text and no clean render — base shows for this beat: ${detail}`);
+          return baseFallback(iIssues, attempts);
+        }
+        safetyIssues = iIssues;
+        priorHtml = html;
+        log(`  ${spec.id}: re-author ${attempts} — invented interface text: ${detail.slice(0, 120)}`);
         continue;
       }
 

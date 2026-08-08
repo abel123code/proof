@@ -10,14 +10,27 @@
  *
  * Captioned once at upload and stored on the brief. The vision call is a rounding error next to a
  * render, which analyses ~90 frames.
+ *
+ * The same call also returns the screenshot's verbatim text (see ui-record.ts), which lets a scene
+ * rebuild an interface as HTML instead of cropping the bitmap.
  */
+import type { ImageReading } from "@/lib/describe-image";
+import type { UiRecord } from "@/lib/ui-record";
 
 /** Keyed by the filename the render worker stages the image under: the URL's basename. */
 export type AssetDescriptions = Record<string, string>;
 
+/** Verbatim on-screen text per image, keyed exactly like AssetDescriptions. */
+export type AssetUiRecords = Record<string, UiRecord>;
+
 export interface CaptionDeps {
-  /** Describe one image by URL. Injected so the failure paths are testable without a network. */
-  describe: (url: string) => Promise<string>;
+  /** Read one image by URL. Injected so the failure paths are testable without a network. */
+  describe: (url: string) => Promise<ImageReading>;
+}
+
+export interface AssetReadings {
+  descriptions: AssetDescriptions;
+  records: AssetUiRecords;
 }
 
 /**
@@ -51,29 +64,32 @@ export async function describeAssets(
   urls: string[],
   deps: CaptionDeps,
   existing: AssetDescriptions = {},
-): Promise<AssetDescriptions> {
-  const out: AssetDescriptions = { ...existing };
+  existingRecords: AssetUiRecords = {},
+): Promise<AssetReadings> {
+  const descriptions: AssetDescriptions = { ...existing };
+  const records: AssetUiRecords = { ...existingRecords };
 
   // Only the ones we do not already know, deduped: a brief can list the same image twice, and
   // describing it twice would pay for the same answer.
-  const pending = [...new Set(urls.map(stagedFileName).filter((key) => !out[key]))];
+  const pending = [...new Set(urls.map(stagedFileName).filter((key) => !descriptions[key]))];
   const byKey = new Map(urls.map((url) => [stagedFileName(url), url]));
 
   // Concurrently, because this runs inside the upload request. Sequentially it was 26 seconds for
   // five images, which is a visible hang on a button press.
   const settled = await Promise.allSettled(
-    pending.map(async (key) => ({
-      key,
-      text: normalizeDescription(await deps.describe(byKey.get(key) as string)),
-    })),
+    pending.map(async (key) => {
+      const reading = await deps.describe(byKey.get(key) as string);
+      return { key, text: normalizeDescription(reading.caption), record: reading.record };
+    }),
   );
 
   for (const result of settled) {
     // A rejection is dropped, not thrown: the asset is still usable and the planner reads a
     // missing entry as "unknown", which keeps it from treating the image as proof of a claim.
-    if (result.status === "fulfilled" && result.value.text) {
-      out[result.value.key] = result.value.text;
-    }
+    if (result.status !== "fulfilled") continue;
+    if (result.value.text) descriptions[result.value.key] = result.value.text;
+    // No record is a normal outcome, not a failure: a logo or a photo has no interface to rebuild.
+    if (result.value.record) records[result.value.key] = result.value.record;
   }
-  return out;
+  return { descriptions, records };
 }

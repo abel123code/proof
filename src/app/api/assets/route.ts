@@ -4,6 +4,7 @@ import {
   assertBriefOwnedBy,
   getBriefAssetDescriptions,
   getBriefAssets,
+  getBriefUiRecords,
   removeBrandAssetObjects,
   setBriefAssets,
 } from "@/lib/db";
@@ -79,10 +80,11 @@ export async function POST(req: Request) {
     // sees only UUID filenames, cannot tell whether an asset proves a given claim, and has
     // asked for visuals that were never uploaded. A caption failure is non-fatal: a missing
     // entry reads as "unknown", which keeps the planner conservative.
-    const descriptions = await describeAssets(
+    const readings = await describeAssets(
       images.urls,
       { describe: describeImageUrl },
       await getBriefAssetDescriptions(briefId),
+      await getBriefUiRecords(briefId),
     );
 
     // Removing ONE of several images lands here, not in the empty-list branch above, so this
@@ -109,7 +111,8 @@ export async function POST(req: Request) {
     await setBriefAssets(briefId, {
       images: images.urls,
       brandColor: brandColor as string | undefined,
-      imageDescriptions: descriptions,
+      imageDescriptions: readings.descriptions,
+      uiRecords: readings.records,
     });
     return NextResponse.json({ ok: true, images: images.urls });
   } catch (err) {

@@ -117,7 +117,9 @@ console.log(`verdict : ${result.report?.verdict ?? "(none)"}`);
 console.log(`mov     : ${result.movPath ?? "(none)"}`);
 
 // 3. Did the shipped HTML actually reference the real files?
-const html = result.attempts?.[result.attempts.length - 1]?.html ?? "";
+// `html` on the result IS the shipped attempt; there is no per-attempt history on AuthoredScene
+// (use the onAttempt callback if you need the earlier tries).
+const html = result.html ?? "";
 const embedded = assetHints.filter((n) => html.includes(n));
 console.log(`\nassets referenced in the final HTML: ${embedded.length}/${assetHints.length}`);
 for (const n of assetHints) console.log(`  ${html.includes(n) ? "embedded" : "absent  "}  ${n}`);

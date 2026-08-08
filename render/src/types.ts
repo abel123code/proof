@@ -74,6 +74,15 @@ export interface RenderAssets {
    * given claim, so it requests visuals that were never uploaded.
    */
   imageDescriptions?: Record<string, string>;
+  /**
+   * The verbatim on-screen text of each image, keyed the same way, extracted at upload.
+   *
+   * Lets a scene REBUILD an interface as HTML rather than cropping the bitmap. Cropping a wide
+   * desktop capture into a vertical frame cannot keep interface text both readable and unclipped,
+   * so labels shipped cut in half. The author lays out these strings and never reads the pixels,
+   * which is what keeps invented course codes out of a video.
+   */
+  uiRecords?: Record<string, { items: { text: string; region: string; legible: boolean }[] }>;
 }
 
 export interface RenderBriefScene {
