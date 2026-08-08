@@ -64,6 +64,45 @@ describe("describeImageUrl", () => {
     expect(out.record).toBeNull();
   });
 
+  // The densest screenshot is the one the feature exists for, and it is the one that overruns the
+  // token cap. Production truncated mid-string on the SUTD deadline panel and the catch threw away
+  // the caption too - so the hero image silently lost BOTH, having had a caption before.
+  it("salvages the caption and whole items from a reply truncated mid-string", async () => {
+    create.mockResolvedValue({
+      status: "incomplete",
+      incomplete_details: { reason: "max_output_tokens" },
+      output_text:
+        '{"caption":"Deadline Center over a calendar","items":[' +
+        '{"text":"Deadline Center","region":"header","legible":true},' +
+        '{"text":"SSW Homework 1","region":"list","legible":true},' +
+        '{"text":"Due date: 2/24/26, 5:00 PM (UTC',
+    });
+    const out = await describeImageUrl("https://x/dense.png");
+
+    expect(out.caption).toBe("Deadline Center over a calendar");
+    expect(out.record?.items.map((i) => i.text)).toEqual(["Deadline Center", "SSW Homework 1"]);
+  });
+
+  it("keeps the caption even when no item survives the truncation", async () => {
+    create.mockResolvedValue({
+      status: "incomplete",
+      output_text: '{"caption":"A busy dashboard","items":[{"text":"Deadl',
+    });
+    const out = await describeImageUrl("https://x/dense.png");
+
+    expect(out.caption).toBe("A busy dashboard");
+    expect(out.record).toBeNull();
+  });
+
+  it("asks for enough tokens that a dense screenshot is not truncated by default", async () => {
+    create.mockResolvedValue(reply({ caption: "x", items: [] }));
+    await describeImageUrl("https://x/a.png");
+
+    // 48 extracted strings measured on a real Gradescope capture came to roughly 2k tokens on
+    // their own, so the old 2000 cap could not fit a caption and a full page of interface text.
+    expect(create.mock.calls[0][0].max_output_tokens).toBeGreaterThanOrEqual(8000);
+  });
+
   it("survives an empty reply", async () => {
     create.mockResolvedValue({});
     const out = await describeImageUrl("https://x/a.png");
