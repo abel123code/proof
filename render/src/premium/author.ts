@@ -109,6 +109,12 @@ being spoken about.
 When an asset has NO uiText (a photograph, a logo, a phone capture), place it as an image instead: crop to the
 region its description names — a wrapper with overflow:hidden sized to the visible area and a scaled/positioned
 <img> inside it — and animate that crop rather than the raw image.
+TIMING (this is data, not a guideline — read the numbers): spokenWords lists every word spoken in this scene,
+each with atMs measured from the SCENE's own start, which is the same zero your timeline uses. Time your beats
+against it. When a beat introduces something the voiceover names, that beat lands within 150ms AFTER the atMs of
+the word naming it — never before it, because revealing a thing before it is mentioned is what makes a scene feel
+rushed and busy. Do not divide the duration into equal parts: speech is not evenly paced, and a beat placed by
+arithmetic will drift away from the voice. If spokenWords is empty the scene is silent and you may pace it freely.
 MOTION DEVELOPMENT: the frame must keep developing across its full duration, not just at the start. Build
 at least TWO distinct beats: an entrance, then a second beat that starts after the scene's midpoint. This is
 NOT a licence for ambient motion — the ban above still applies. The difference is what the second beat DOES:
@@ -171,6 +177,8 @@ export async function authorScene(args: {
   assetDescriptions?: Record<string, string>;
   /** Verbatim on-screen text per asset filename, so an interface is rebuilt rather than cropped. */
   uiRecords?: Record<string, { items: { text: string; region: string; legible: boolean }[] }>;
+  /** Words spoken during this scene, timed from the scene's start, so beats can land on them. */
+  spokenWords?: { text: string; atMs: number }[];
   priorIssues?: string[];
   priorHtml?: string;
 }): Promise<string> {
@@ -183,6 +191,7 @@ export async function authorScene(args: {
     rationale: spec.rationale,
     intent: spec.intent,
     spokenContext: spec.captionText,
+    spokenWords: args.spokenWords ?? [],
     motif: spec.motif,
     creativeDirection,
     brandColor: brief.assets?.brandColor || brief.accentColor || creativeDirection.emphasisColor,

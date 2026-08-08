@@ -21,6 +21,7 @@ import { fetchAssetBytes } from "./asset-source.js";
 import { assetsNamedInIntent, missingAssets } from "./assets-gate.js";
 import { DEFAULT_ACCENT } from "./accent.js";
 import { checkInvention } from "./invention-gate.js";
+import { sceneWords } from "./scene-words.js";
 import { checkSceneMotion } from "./motion-gate.js";
 import { checkImageFraming } from "./framing-gate.js";
 import { createSemaphore } from "../semaphore.js";
@@ -135,6 +136,8 @@ export async function produceScene(
     /** What each asset depicts and where its important content sits, keyed by filename — forwarded
      *  to the author so it can crop to the named region instead of placing a wide capture whole. */
     assetDescriptions?: Record<string, string>;
+    /** Full transcript. The scene's own slice is derived from spec.anchorMs / spec.durMs. */
+    words?: Word[];
     assetsDir: string;
     premiumDir: string;
     basePath: string;
@@ -226,6 +229,9 @@ export async function produceScene(
         assetHints,
         assetDescriptions,
         uiRecords: brief.assets?.uiRecords,
+        // Rebased onto this scene's clock so the author can time a reveal to the word that names
+        // the thing being revealed, instead of dividing the duration into equal beats.
+        spokenWords: sceneWords(args.words ?? [], spec.anchorMs, spec.durMs),
         priorIssues: safetyIssues.length ? texts(safetyIssues) : undefined,
         priorHtml,
       });
@@ -487,6 +493,7 @@ export async function runPremium(args: {
             creativeDirection: editPlan.creativeDirection,
             assetHints,
             assetDescriptions: brief.assets?.imageDescriptions,
+            words,
             assetsDir,
             premiumDir,
             basePath,
