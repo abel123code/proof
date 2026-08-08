@@ -10,6 +10,13 @@ describe("isPublic (route gating)", () => {
     expect(isPublic("/proof-deck.html")).toBe(false);
   });
 
+  it("treats the legal pages as public", () => {
+    // A privacy policy you have to sign in to read is not a privacy policy. Both were behind the
+    // auth wall on first deploy: the page returned 200, but the body was the login screen.
+    expect(isPublic("/privacy")).toBe(true);
+    expect(isPublic("/terms")).toBe(true);
+  });
+
   it("gates the studio + api routes", () => {
     expect(isPublic("/connect")).toBe(false);
     expect(isPublic("/research")).toBe(false);

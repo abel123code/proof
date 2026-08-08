@@ -7,7 +7,10 @@ import { resolveAuthConfig } from "@/lib/auth-config";
 // the two vars is present, that's a broken deploy, not a developer laptop: fail
 // closed rather than serving the studio shell with no session check.
 
-const PUBLIC_PREFIXES = ["/", "/login", "/pending", "/auth"];
+// /privacy and /terms are public because they have to be: someone deciding whether to hand over
+// their repository and a recording of their face needs to read them BEFORE signing in, and a
+// policy behind an auth wall is no policy at all.
+const PUBLIC_PREFIXES = ["/", "/login", "/pending", "/auth", "/privacy", "/terms"];
 
 export function isPublic(pathname: string): boolean {
   if (pathname === "/") return true;
