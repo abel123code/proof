@@ -1137,6 +1137,7 @@ export async function setBriefAssets(
     images: string[];
     brandColor?: string;
     imageDescriptions?: Record<string, string>;
+    uiRecords?: Record<string, unknown>;
   },
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
@@ -1150,18 +1151,22 @@ export async function setBriefAssets(
   const merged: Record<string, unknown> = { ...existing, images: assets.images };
   if (assets.brandColor !== undefined) merged.brandColor = assets.brandColor;
   if (assets.imageDescriptions !== undefined) merged.imageDescriptions = assets.imageDescriptions;
+  if (assets.uiRecords !== undefined) merged.uiRecords = assets.uiRecords;
 
-  // Drop captions for images that are no longer attached. They are keyed by staged filename, so
-  // without this they accumulate forever and a removed image keeps a description describing it.
+  // Drop captions and extracted text for images that are no longer attached. Both are keyed by
+  // staged filename, so without this they accumulate forever and a removed image keeps a
+  // description describing it - and, worse, keeps text a scene would be allowed to render.
   const keep = new Set(assets.images.map((url) => url.split("?")[0].split("/").pop()));
-  const descriptions = merged.imageDescriptions;
-  if (descriptions && typeof descriptions === "object") {
-    merged.imageDescriptions = Object.fromEntries(
-      Object.entries(descriptions as Record<string, string>).filter(([file]) => {
-        // An SVG is staged as .png, so match either spelling of the same object.
-        return keep.has(file) || keep.has(file.replace(/\.png$/i, ".svg"));
-      }),
-    );
+  for (const field of ["imageDescriptions", "uiRecords"] as const) {
+    const map = merged[field];
+    if (map && typeof map === "object") {
+      merged[field] = Object.fromEntries(
+        Object.entries(map as Record<string, unknown>).filter(([file]) => {
+          // An SVG is staged as .png, so match either spelling of the same object.
+          return keep.has(file) || keep.has(file.replace(/\.png$/i, ".svg"));
+        }),
+      );
+    }
   }
 
   const { error } = await supabase.from("briefs").update({ assets: merged }).eq("id", briefId);
@@ -1209,6 +1214,24 @@ export async function getBriefAssets(
   if (error) throw new Error(`getBriefAssets failed: ${error.message}`);
   const assets = (data as { assets: Record<string, unknown> | null } | null)?.assets;
   return assets && Object.keys(assets).length > 0 ? assets : null;
+}
+
+/**
+ * The verbatim on-screen text extracted for each of a brief's images, keyed by staged filename.
+ *
+ * Read back on every save for the same reason descriptions are: an image already read must not be
+ * paid for again, and re-reading risks a different transcription of the same screenshot.
+ */
+export async function getBriefUiRecords(briefId: string): Promise<Record<string, never>> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("briefs")
+    .select("assets")
+    .eq("id", briefId)
+    .maybeSingle();
+  if (error) throw new Error(`getBriefUiRecords failed: ${error.message}`);
+  const records = (data as { assets: { uiRecords?: unknown } | null } | null)?.assets?.uiRecords;
+  return records && typeof records === "object" ? (records as Record<string, never>) : {};
 }
 
 /** What we already know each of a brief's images shows, so re-uploading does not re-caption. */

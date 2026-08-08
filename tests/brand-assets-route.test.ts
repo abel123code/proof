@@ -26,13 +26,14 @@ vi.mock("@/lib/db", () => ({
   setBriefAssets: (...a: unknown[]) => setBriefAssets(...a),
   createAssetUploadTicket: (...a: unknown[]) => createAssetUploadTicket(...a),
   getBriefAssetDescriptions: async () => ({}),
+  getBriefUiRecords: async () => ({}),
   getBriefAssets: (...a: unknown[]) => getBriefAssets(...a),
   removeBrandAssetObjects: (...a: unknown[]) => removeBrandAssetObjects(...a),
 }));
 
-// Captioning is a vision call; stub it so the route tests stay offline and deterministic.
+// Reading an image is a vision call; stub it so the route tests stay offline and deterministic.
 vi.mock("@/lib/describe-image", () => ({
-  describeImageUrl: async () => "A deadline list, panel centred",
+  describeImageUrl: async () => ({ caption: "A deadline list, panel centred", record: null }),
 }));
 
 const SUPABASE_URL = "https://yivjxeyokdeeyfmzhwcw.supabase.co";
@@ -105,6 +106,9 @@ describe("POST /api/assets", () => {
         "a.png": "A deadline list, panel centred",
         "b.png": "A deadline list, panel centred",
       },
+      // No record for these fixtures: the stub reads no on-screen text, which is the normal
+      // outcome for a logo or a photo and must not stop the save.
+      uiRecords: {},
     });
   });
 
