@@ -26,7 +26,10 @@ export async function describeImageUrl(url: string): Promise<ImageReading> {
   const client = getOpenAI();
   const response = await client.responses.create({
     model: OPENAI_MINI_MODEL,
-    max_output_tokens: 2000,
+    // A real Gradescope capture yielded 48 strings, roughly 2k tokens of items on their own, so
+    // the original 2000 cap could not fit a caption and a full page of interface text. It
+    // truncated mid-string on the densest screenshot, which is the one the feature is for.
+    max_output_tokens: 8000,
     input: [
       {
         role: "system",
@@ -51,18 +54,40 @@ export async function describeImageUrl(url: string): Promise<ImageReading> {
   });
 
   const text = response.output_text ?? "";
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    const parsed = JSON.parse(text) as { caption?: unknown };
+    return {
+      caption: typeof parsed?.caption === "string" ? parsed.caption : "",
+      record: normalizeUiRecord(parsed),
+    };
   } catch {
-    // A non-JSON reply must not break an upload. The image stays usable; the planner reads a
-    // missing caption as "unknown" and the author falls back to placing rather than rebuilding it.
-    return { caption: "", record: null };
+    // Not valid JSON. Usually the reply was cut off at the token cap part-way through an item,
+    // which is most likely on exactly the dense product screenshots this feature exists for.
+    // Throwing the whole thing away also threw away the caption, so a busy screenshot ended up
+    // worse off than before any of this existed. Salvage what completed instead.
+    return salvage(text);
   }
+}
 
-  const rawCaption = (parsed as { caption?: unknown } | null)?.caption;
+/**
+ * Recover a caption and any complete items from a truncated reply.
+ *
+ * The caption is emitted first, so it almost always survives; items are whole objects up to the
+ * cut, and the partial one at the end is dropped. A partially-read row is exactly the thing that
+ * must never reach a scene, so dropping it is the point rather than a limitation.
+ */
+function salvage(text: string): ImageReading {
+  const caption = /"caption"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(text)?.[1] ?? "";
+  const items: unknown[] = [];
+  for (const match of text.matchAll(/\{[^{}]*"text"\s*:[^{}]*\}/g)) {
+    try {
+      items.push(JSON.parse(match[0]));
+    } catch {
+      // A malformed fragment is skipped; the surrounding loop keeps the good ones.
+    }
+  }
   return {
-    caption: typeof rawCaption === "string" ? rawCaption : "",
-    record: normalizeUiRecord(parsed),
+    caption: caption.replace(/\\"/g, '"').replace(/\\\\/g, "\\"),
+    record: normalizeUiRecord({ items }),
   };
 }
