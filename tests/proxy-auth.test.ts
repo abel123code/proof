@@ -59,3 +59,28 @@ describe("proxy (misconfigured auth)", () => {
     expect(response.headers.get("location")).toBeFalsy();
   });
 });
+
+/**
+ * The identical reasoning applies when auth IS configured and the caller simply is not signed in.
+ * That branch was missed when the misconfigured one was fixed: a signed-out fetch to an API route
+ * got a 307 to /login, fetch followed it, and the caller parsed login HTML instead of the
+ * handler's 401. In the product that surfaced as a meaningless error the moment a session expired
+ * mid-use. Verified against production before fixing: POST /api/render returned 307 -> /login.
+ */
+describe("proxy (configured, signed out)", () => {
+  beforeEach(() => {
+    setEnv("https://x.supabase.co", "anon-key", "production");
+  });
+
+  it("redirects a signed-out visitor away from a page route", async () => {
+    const response = await proxy(new NextRequest("http://localhost/connect"));
+    const location = response.headers.get("location");
+    expect(location).toBeTruthy();
+    expect(new URL(location!).pathname).toBe("/login");
+  });
+
+  it("lets a signed-out /api/* call reach the handler, so it can answer 401 JSON", async () => {
+    const response = await proxy(new NextRequest("http://localhost/api/profile"));
+    expect(response.headers.get("location")).toBeFalsy();
+  });
+});

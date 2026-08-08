@@ -659,14 +659,21 @@ export function BriefPanel() {
               ● Record
             </Button>
             {renderActive ? (
-              <Button
-                size="sm"
-                disabled
- title="Editing your video, this can take a few minutes. You can leave this page and come back; it'll keep going."
-              >
-                <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />
-                {renderStatusLabel}
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  disabled
+                  title="Editing your video. You can leave this page and come back; it'll keep going."
+                >
+                  <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />
+                  {renderStatusLabel}
+                </Button>
+                {/* Renders measure ~8 minutes. Without a number people read the spinner as a hang
+                    and re-run the job, paying twice. Quiet, one line, no progress theatre. */}
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  ~8 min · leave this page if you want
+                </span>
+              </>
             ) : renderUrl ? (
               <>
                 <Button size="sm" onClick={() => setShowRender(true)}>

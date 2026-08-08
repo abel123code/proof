@@ -402,6 +402,14 @@ export default function Landing() {
             <span>Proof</span>
           </div>
           <p className="tracking-wide">You build. We get you seen.</p>
+          <div className="flex items-center gap-5">
+            <Link href="/privacy" className="transition-colors hover:text-foreground">
+              privacy
+            </Link>
+            <Link href="/terms" className="transition-colors hover:text-foreground">
+              terms
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

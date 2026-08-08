@@ -65,8 +65,12 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Not signed in -> login.
-  if (!user && !isPublic(pathname)) {
+  // Not signed in -> login. /api/* is excluded for the same reason as the misconfigured branch
+  // above: those routes self-gate via requireApprovedUser and answer 401 JSON, and redirecting a
+  // fetch() to /login is worse than useless. fetch follows the redirect, the caller gets login
+  // HTML with status 200, and res.json() throws a parse error. In the product that showed up as a
+  // meaningless failure the instant a session expired mid-use, instead of "please sign in again".
+  if (!user && !isPublic(pathname) && !pathname.startsWith("/api")) {
     const redirect = request.nextUrl.clone();
     redirect.pathname = "/login";
     redirect.searchParams.set("next", pathname);
