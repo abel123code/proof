@@ -16,13 +16,49 @@ Proof already runs one product path from repository analysis to a final vertical
 
 The current verification baseline is recorded in `README.md` and `OPENAI_BUILD_WEEK.md`.
 
+## Measured render performance (2026-08-08)
+
+Same brief, clips and assets throughout; stage split from the worker's timestamped logs via
+`render/scripts/bench-render.ts`:
+
+| | before | after |
+|---|---|---|
+| total | 593.1s | **465.8s** |
+| scene authoring + QA | 386.8s | 308.8s |
+| caption overlay render | 65.8s | 67.2s |
+| wasted authoring attempts | 2 | **0** |
+
+Scene authoring is ~two thirds of a render and is already parallel (`PREMIUM_CONCURRENCY`, default
+2). Raising it is **unmeasured**: the 2026-07-10 load test found that one render already saturates
+the CPU and that 3 concurrent whole-renders OOM the composite, so more workers may split the same
+cores rather than add throughput. Measure before assuming.
+
+The caption overlay is rendered before premium starts, but `runPremium` only needs it for its final
+composite. Overlapping the two is worth roughly 66s of a ~470s render - real, but the smaller lever.
+
+## Known gaps (carry these into any launch decision)
+
+1. **Frame-edge overflow has no deterministic check.** The vision QA notices it sometimes; nothing
+   enforces it. This is the most likely visible defect in a user's video.
+2. **One retry budget is shared by every gate.** Deterministic gates run before the render and the
+   vision QA after it, so a misfiring gate can consume every attempt and starve the visual review -
+   the failure that shipped a clipped screenshot on job `f68a8dab`. Separate budgets are the fix.
+3. **A full desktop page in 9:16 leaves interface text small.** Showing fewer rows larger -
+   selection rather than reproduction - is the real answer and is not built.
+4. **No brand-colour control in the UI.** `/api/assets` accepts `brandColor` but nothing sends one,
+   so a stale value can only be changed by editing the database directly.
+
 ## Next quality bar
 
-### 1. Brand-aware scene direction
+### 1. Brand-aware scene direction (partly shipped)
 
-Let a founder attach a repository or assets folder, then extract its visual language: real
-screenshots, logos, typography, colour, spacing, interface patterns, and recurring motifs. Carry
-that design system into every authored scene instead of asking the model to invent one from text.
+Shipped: a brief carries its own screenshots and logos, each read once at upload into a caption plus
+the verbatim on-screen text. Scenes rebuild a product interface as HTML from those strings rather
+than cropping the bitmap, and a deterministic gate rejects any text inside a reconstruction that the
+screenshot did not contain.
+
+Next: derive palette and typography from the assets rather than letting the planner invent an accent
+per render, and add the missing brand-colour control.
 
 ### 2. A stronger visual correction loop
 

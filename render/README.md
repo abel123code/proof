@@ -15,8 +15,10 @@ scene clips
   -> Remotion captions on a transparent ProRes overlay
   -> GPT-5.6 Sol global editorial plan (clean / overlay / full-frame)
   -> deterministic coverage and recovery budgets
-  -> GPT-5.6 Sol scene author with one shared visual system
+  -> GPT-5.6 Sol scene author with one shared visual system, given the words spoken in its
+     scene with per-word timings rebased to the scene's own clock
   -> sanitize model HTML
+  -> reject any text inside a `data-ui-source` reconstruction that the screenshot did not contain
   -> HyperFrames transparent scene render; FFmpeg optionally hard-cuts full-frame beats to black
   -> deterministic caption-band alpha mask for overlays; readable graphics may overlap the face
   -> five-frame GPT-5.6 Sol vision QA
@@ -54,6 +56,18 @@ Vision review sends five final-order composites (footage, scene, captions) with 
 over face visibility. Full-frame QA uses the planned background: black takeovers treat the absent speaker
 as intentional, while footage-backed scenes allow face overlap. There is no runtime QA bypass.
 Subjective notes never drive an automatic re-author.
+
+Vision review is also where a frozen scene is caught. A deterministic gate used to answer that by
+matching GSAP calls in the authored HTML; it was deleted on 2026-08-08 because whether something
+animates is a property of the rendered output, not of the source text. It reported frozen for
+timelines chained off `gsap.timeline()`, for chained `.from()` calls, for CSS `@keyframes` and for
+the Web Animations API, and each false positive consumed attempts from the budget shared with this
+review. See DECISIONS.md and POST_MORTEMS.md, both 2026-08-08.
+
+**Every gate shares one retry budget** (`PREMIUM_MAX_QA_ITERS`, default 2), and the deterministic
+gates run *before* the render while vision review runs *after* it. A gate that misfires can
+therefore consume every attempt and leave this review with nothing to spend. Keep that in mind
+before adding another pre-render check.
 
 The global plan preserves at least 25% clean A-roll, caps full-frame coverage at 40%, caps overlay
 coverage at 35%, keeps the opening and closing face-led, and preserves a three-second clean interval

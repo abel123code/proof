@@ -1,8 +1,84 @@
-# Post-mortems
+﻿# Post-mortems
 
 Failure modes that cost real time, written down so they are not repeated. Newest first.
 
 ---
+
+---
+
+## 2026-08-08: A gate that lied burned the budget the real review needed
+
+**What happened.** The frozen-scene gate decided whether a scene animated by matching `.to(` in the
+authored HTML. A reveal is idiomatically written `.from(".row", { opacity: 0 })`, so scenes that
+visibly animated were reported as "0 real tweens - frozen" and re-authored against a defect that did
+not exist. Tested against ordinary authoring styles, it reported frozen for timelines chained off
+`gsap.timeline()`, chained `.from()` calls, CSS `@keyframes` and the Web Animations API - everything
+except the one shape it was written against.
+
+That alone would only waste model calls. The damage was structural: every gate shares one retry
+budget, deterministic gates run before the render and the vision QA runs after it. Two false
+positives consumed every attempt, so QA ran once, on the final iteration, with nothing left to
+spend. On job `f68a8dab` its real finding - the Gradescope page cropped at the right edge - shipped
+unfixed. The user saw an oversized, sliced screenshot and asked why QA had not caught it. QA had
+caught it. It had nowhere to put the fix.
+
+**Why it survived.** Its own tests passed, because they were written in the same `.to()` style as
+the gate expected. A detector's tests must exercise the inputs it will actually see, not the inputs
+its author had in mind.
+
+**The lesson.** Whether something animates is a property of the rendered output, not of the source
+text, and a regex cannot decide it. A false alarm that consumes a shared budget is worse than no
+alarm: it crowds out the true one. Judge rendered artifacts by measuring them.
+
+**Fixed by** deleting the gate (PR #36). The render immediately after used zero re-authors, against
+5 in the run before, and total time fell to 465.8s from a 593.1s baseline.
+
+---
+
+## 2026-08-08: A readability floor made a faithful rebuild impossible
+
+**What happened.** Screenshots were changed from cropped bitmaps to HTML reconstructions, and the
+new instruction inherited a 56px minimum type size from the editorial-wording rules. For a rebuilt
+interface that floor cannot be satisfied: the source page carries ~14px text across 1280px, so at
+56px in a 1080px frame roughly 18% of the page fits. Every faithful rebuild had to overflow. The
+result was an enormous screenshot sliced on all four sides, sidebar cut mid-word, floating labels
+overlapping the content.
+
+**Why it happened.** The crop rules it replaced held the same contradiction - "show LESS of the
+image and scale further" alongside "nothing may be clipped at a frame edge" - and the replacement
+reproduced it in different words. The mechanism changed; the impossible pair of constraints did not.
+
+**A second-order version of the same mistake.** The first repair said "content you cannot fit is
+content to leave out rather than to overflow". The following render produced text-free placeholder
+cards where the previous one had shown real labels: the model read a sizing instruction as licence
+to drop content. Reworded to "scale the whole thing down until it fits - zoom out, do not drop
+content".
+
+**The lesson.** Before writing a constraint, check it is satisfiable with arithmetic. Two rules that
+each sound reasonable can be jointly impossible, and a model told to satisfy both will oscillate
+between violating one and violating the other, which reads as incompetence rather than as a
+contradiction in the brief.
+
+---
+
+## 2026-08-08: The densest screenshot silently lost both its caption and its text
+
+**What happened.** Upload-time extraction was capped at 2000 output tokens. The busiest screenshot -
+the deadline panel, the one the whole feature exists for - overran it, the JSON truncated mid-string,
+`JSON.parse` threw, and the catch returned an empty caption and no record. It had had a working
+caption before the change, so the most important image was made strictly worse, and silently: four
+of five images looked fine.
+
+**How it was found.** Re-uploading through the live UI and counting records, not by a test. Nothing
+in the suite could see it, because the failure needed a real screenshot dense enough to overrun a
+real token cap.
+
+**Fixed by** raising the cap to 8000 (the same image now completes in 2681 tokens) and salvaging
+truncated replies: the caption is emitted first so it survives, whole items up to the cut are kept,
+and the partial one at the end is dropped. A half-read row is exactly what must never reach a scene.
+
+**The lesson.** A catch-all that degrades to "no data" hides the failures that matter most, because
+the inputs that break a limit are the inputs that matter most. Degrade partially, and log it.
 
 ## 2026-08-07: Every premium asset download failed on Node 22, and the suite stayed green
 
@@ -19,7 +95,7 @@ per Node's contract that requires an ARRAY of `{ address, family }`. Node read `
 got `undefined`, and threw. The production image is `node:22-bookworm-slim`, the same major version.
 
 **Why every test passed.** `render/tests/asset-source.test.ts` injects a fake `request` dependency.
-`pinnedHttpsRequest` — the one function containing the bug — was never executed by any test. The
+`pinnedHttpsRequest` â€” the one function containing the bug â€” was never executed by any test. The
 DNS-rebinding test asserted the *policy* while mocking away the *mechanism*. Dependency injection made
 the failure paths testable and simultaneously created a hole exactly the shape of the untested seam.
 
@@ -92,7 +168,7 @@ them checks what somebody already thought to ask.
 
 ## 2026-07-29: A deploy was called "verified" off a boot log, and shipped 0-animation videos
 
-**Impact.** Production renders completed successfully and shipped with **zero bespoke animations** —
+**Impact.** Production renders completed successfully and shipped with **zero bespoke animations** â€”
 captions only. The founder testing it saw "the video now has 0 animations" and reasonably assumed the
 most recent change (removing the music feature) had broken the pipeline. Roughly a day of
 back-and-forth went into a bug that a 10-minute check would have caught before anyone noticed.
@@ -109,10 +185,10 @@ back-and-forth went into a bug that a 10-minute check would have caught before a
    only looked like it worked because the founder rendered locally, where a system Chrome exists.
 2. **The speaker-safe mask segfaulted ffmpeg.** `SPEAKER_SAFE_ALPHA_FILTER` ran
    `format=rgba,drawbox=...,format=yuva444p10le` over HyperFrames' ProRes 4444 **yuva444p12le**
-   output. That 12-bit → 8-bit rgba → 10-bit chain **crashes ffmpeg 5.1** (exit 139 / SIGSEGV,
+   output. That 12-bit â†’ 8-bit rgba â†’ 10-bit chain **crashes ffmpeg 5.1** (exit 139 / SIGSEGV,
    deterministically reproducible). `maskOverlaySafeZones` only runs for `mode === "overlay"`
    (`render/src/premium/index.ts`), so the crash silently killed **every overlay-mode scene** while
-   full-frame scenes rendered fine — which reads as "half the animations are missing".
+   full-frame scenes rendered fine â€” which reads as "half the animations are missing".
 
 **The real mistake: a proxy was accepted as proof.**
 
@@ -123,7 +199,7 @@ proof render service listening on 0.0.0.0:8080 (token-required, max 2 concurrent
 ```
 
 That line proves the process started and the **HyperFrames CLI is importable**. It proves nothing about
-whether a *browser* exists. Worse, `hyperframesAvailable()` only calls `require.resolve` — and that
+whether a *browser* exists. Worse, `hyperframesAvailable()` only calls `require.resolve` â€” and that
 exact limitation had been written into `render/src/premium/fallback.ts` days earlier, in a comment, by
 the same person who then ignored it. **The check was known to be insufficient and was used anyway.**
 
@@ -139,7 +215,7 @@ real one was found:
 
 | Guess | How it was actually disproved |
 |---|---|
-| OOM / memory contention between parallel ProRes composites (the "exactly one scene per pair dies" pattern looked convincing) | cgroup: `oom_kill 0`, peak **5.2 GB of a 24 GB** limit. Never memory. The pattern was coincidence — the dying scenes were the *overlay-mode* ones. |
+| OOM / memory contention between parallel ProRes composites (the "exactly one scene per pair dies" pattern looked convincing) | cgroup: `oom_kill 0`, peak **5.2 GB of a 24 GB** limit. Never memory. The pattern was coincidence â€” the dying scenes were the *overlay-mode* ones. |
 | Node killing the child over a `maxBuffer` limit | `ffmpeg.ts` uses `spawn`, not `exec`. `spawn` has no maxBuffer. |
 
 Both were plausible stories built on partial evidence. The answer arrived in one step once the failing
@@ -152,7 +228,7 @@ command was **run by hand inside the production container** and printed `Segment
 2. **`hyperframesAvailable()` does not mean HyperFrames works.** It checks that the CLI resolves. The
    browser is a separate, independent requirement. Same trap applies to any "is X installed" preflight.
 3. **Reproduce before theorising.** When a child process dies with exit code `null`, that is a signal
-   kill — get the signal (`echo $?` → 139 = SIGSEGV) and re-run the exact command in the real
+   kill â€” get the signal (`echo $?` â†’ 139 = SIGSEGV) and re-run the exact command in the real
    environment. Two wrong hypotheses cost more time than the reproduction did.
 4. **Exonerate by diff, not by vibe.** "The last change broke it" is the default assumption and was
    wrong here. `git log -S "<symbol>"` proved `unzip` and `hyperframes browser ensure` had *never*
@@ -163,3 +239,4 @@ command was **run by hand inside the production container** and printed `Segment
 **References.** `render/Dockerfile`, `render/src/ffmpeg.ts` (`SPEAKER_SAFE_ALPHA_FILTER`),
 `render/src/premium/index.ts` (mask call site), `render/src/premium/fallback.ts`, PR #18,
 `DECISIONS.md` 2026-07-29.
+

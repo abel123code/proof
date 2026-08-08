@@ -515,3 +515,131 @@ tuned further.
 
 **References:** `render/src/premium/motion-gate.ts`, `render/src/premium/author.ts`,
 `render/tests/motion-gate.test.ts`, PR #30.
+
+---
+
+## 2026-08-08: Rebuild product screenshots as HTML instead of cropping them
+
+**Context:** A scene showing a product screenshot placed it as an `<img>` and cropped it with CSS.
+For a wide desktop capture in a 1080x1920 frame this cannot work, and the reason is arithmetic
+rather than prompt wording. Fitting the full width of a 1280px capture renders it at 0.84x, so 14px
+interface text lands near 12px - unreadable, and far under the 56px floor the author prompt
+required. Making that text readable needs roughly 4x scale, at which point about a quarter of the
+width is inside the frame. The prompt asked for both at once (`author.ts` said to show LESS of the
+image and scale further, and then that nothing may be clipped at a frame edge), so the author
+oscillated: told the "Deadline Center" wordmark was cut, it shifted the crop and cut "eDimension"
+instead. Job `a67b5bf6` shows QA raising the clipping twice and the scene shipping clipped anyway.
+
+The same design also broke synchronisation: graphics animated over a static bitmap, so a highlight
+and the row it referred to were unrelated objects and could never line up.
+
+**Decision:** when an asset carries extracted text, rebuild that interface as HTML laid out for
+9:16 rather than cropping the bitmap. Nothing is cropped, so nothing clips; text is text at whatever
+size the frame needs; and individual rows become animatable, so a reveal can land on the row the
+voiceover names.
+
+The risk this introduces is invention - a model writing UI markup can produce a course code that was
+never on screen - so reading is separated from drawing:
+
+1. **Extract at upload.** The vision call that already captions each image also returns the
+   screenshot's verbatim text, per region, each string flagged legible or not. It runs at
+   `detail: "high"`, because at low detail the image is downsampled past the point where 14px text
+   is readable and a confident misreading is worse than no record. Anything other than an explicit
+   `legible: true` is treated as unreadable, so a model that stays silent is never taken to have
+   vouched for the text.
+2. **Lay out at author time.** The author receives the strings and never sees the pixels, so it has
+   nothing to misread.
+3. **Verify deterministically.** `checkInvention` requires every string inside a `data-ui-source`
+   container to appear in that file's record. The scene's own editorial copy sits outside the
+   container and stays free. It runs before the render, because a wrong digit is a string comparison
+   and catching it early saves a whole HyperFrames pass.
+
+**Alternatives considered:**
+- **One-pass vision to HTML** - rejected as the default. The same pass that might read "10.016" as
+  "10.018" is the one drawing it, so nothing independent catches the error. Kept as a fallback if
+  reconstruction quality disappoints.
+- **Scrape the connected repo for UI markup** - rejected. `src/lib/github.ts` records a deliberate
+  boundary: Proof reads the README, language stats and file paths only, never source file contents.
+  Reversing that is a privacy decision, not a rendering optimisation, and the app ships no privacy
+  or terms page that would disclose it. It also would not generalise - most connected repos are
+  backends or libraries with no UI markup, and static markup lacks the real content, which only
+  exists in the screenshot.
+- **Better crop rules** - rejected. The constraint is arithmetic; no wording satisfies both.
+
+**Consequences:** assets with no extracted text (photographs, logos) keep the image-crop path
+unchanged, as do briefs whose assets were uploaded before this shipped. In production the gate
+caught a real invention: a scene tried to render "01.011 - Professional Practice Programme", a
+string the extractor had marked illegible, and came back clean after the rejection.
+
+**Still open:** fitting a full desktop page into 9:16 leaves interface text small. Showing fewer
+rows larger - selection rather than reproduction - is the real answer and is not attempted here.
+
+**References:** `src/lib/ui-record.ts`, `src/lib/describe-image.ts`, `src/lib/asset-caption.ts`,
+`render/src/premium/invention-gate.ts`, `render/src/premium/author.ts`, PRs #34, #35.
+
+---
+
+## 2026-08-08: Time scene beats to the words being spoken
+
+**Context:** the author was handed a scene's words as one string plus a duration, and nothing else
+about time. The scene START was anchored to a real word boundary (`SceneSpec.anchorMs`) but nothing
+inside it was, so the prompt asked for an entrance and then a beat after the midpoint, and the model
+paced by arithmetic. Watching the output, things appeared before they were mentioned and several
+moved at once while the voice was still on the previous point.
+
+The transcript has carried per-word timings all along and `runPremium` already held them; they
+stopped at the planner.
+
+**Decision:** `sceneWords` slices the words spoken during a scene and rebases them onto the scene's
+own clock - the same zero the author's GSAP timeline uses, so absolute transcript times would have
+been unusable. A word belongs to a scene when most of it falls inside the window; counting a
+straddling word in both neighbours would fire a reveal against a word the viewer already heard.
+
+This is data the author never had rather than another rule to obey, so it applies to every render:
+every video has a transcript.
+
+**Consequences:** measured on the same brief and clips, total render time fell from 593.1s to 485.1s
+and re-edits from 4 to 2 - the author needed fewer QA corrections when it could see the timings.
+Beat-to-word alignment was measured by transcribing the finished videos: the word-timed cut beats a
+chance baseline (median 80ms to the nearest word onset against 96ms for evenly spaced beats) where
+the previous cut did not (100ms against 91ms). The margin is small and the metric is weak at ~2.9
+words/second, so it is directional evidence rather than proof.
+
+**References:** `render/src/premium/scene-words.ts`, `render/src/premium/author.ts`, PR #36.
+
+---
+
+## 2026-08-08: Delete the frozen-scene gate; judge motion from rendered frames
+
+**Context:** the gate at `render/src/premium/motion-gate.ts` (added 2026-08-07, see the entry above)
+decided whether a scene animated by pattern-matching GSAP calls in the authored HTML. Whether
+something animates is not decidable that way. Measured against ordinary authoring styles it reported
+frozen for timelines chained off `gsap.timeline()`, for chained `.from()` calls, for CSS
+`@keyframes`, and for the Web Animations API - everything except the single shape it was written
+against. Adding `.from`/`.fromTo` to its regex fixed one of those and left the mechanism broken.
+
+The cost was not merely a wasted check. Every gate shares one retry budget (`MAX_QA_ITERS = 2`), the
+deterministic gates run before the render and the vision QA runs after it. So two false positives
+consumed every attempt, and the vision QA ran once, on the final iteration, with nothing left to
+spend. On job `f68a8dab` that starved scene-4: QA's real finding - the Gradescope page cropped at
+the right edge - arrived too late and shipped unfixed. A false alarm crowding out a true one is
+worse than no alarm.
+
+**Decision:** delete the gate and its tests. Nothing replaces it. The vision QA already samples five
+real frames and is explicitly asked to judge motion, which answers the question from the rendered
+output rather than from source.
+
+**Alternatives considered:**
+- **Extend the regex further** - rejected. Each authoring style is a new false positive, forever.
+- **A pixel-delta measurement on the rendered MOV** - correct, and the replacement if QA ever proves
+  to miss a genuinely frozen scene. Not built now: it would run after the render, and QA already
+  looks at those frames.
+
+**Consequences:** the render immediately after deletion used zero re-authors, against 5 in the run
+before it, and total time fell to 465.8s from a 593.1s baseline. The pipeline went from five
+deterministic gates to four.
+
+**Still open:** the shared retry budget is unchanged, so any future deterministic gate can starve
+the visual review the same way. Separate budgets are the general fix.
+
+**References:** PR #36, `render/src/premium/index.ts` (the comment where the gate used to run).
