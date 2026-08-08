@@ -21,7 +21,7 @@ import { fetchAssetBytes } from "./asset-source.js";
 import { assetsNamedInIntent, missingAssets } from "./assets-gate.js";
 import { DEFAULT_ACCENT } from "./accent.js";
 import { checkInvention } from "./invention-gate.js";
-import { checkSceneMotion } from "./motion-gate.js";
+import { sceneWords } from "./scene-words.js";
 import { checkImageFraming } from "./framing-gate.js";
 import { createSemaphore } from "../semaphore.js";
 import { captionIntrusionIssue, overlayIntrudesCaptionBand } from "./caption-guard.js";
@@ -135,6 +135,8 @@ export async function produceScene(
     /** What each asset depicts and where its important content sits, keyed by filename — forwarded
      *  to the author so it can crop to the named region instead of placing a wide capture whole. */
     assetDescriptions?: Record<string, string>;
+    /** Full transcript. The scene's own slice is derived from spec.anchorMs / spec.durMs. */
+    words?: Word[];
     assetsDir: string;
     premiumDir: string;
     basePath: string;
@@ -226,6 +228,9 @@ export async function produceScene(
         assetHints,
         assetDescriptions,
         uiRecords: brief.assets?.uiRecords,
+        // Rebased onto this scene's clock so the author can time a reveal to the word that names
+        // the thing being revealed, instead of dividing the duration into equal beats.
+        spokenWords: sceneWords(args.words ?? [], spec.anchorMs, spec.durMs),
         priorIssues: safetyIssues.length ? texts(safetyIssues) : undefined,
         priorHtml,
       });
@@ -315,22 +320,18 @@ export async function produceScene(
         deterministicFlags.push(framingIssue);
       }
 
-      // Motion (objective): a timeline dominated by an empty padding tween, or with only one real
-      // beat, is a frozen scene wearing an animation's clothes — the #1 measured pass-rate failure
-      // (53s production render, mean pixel delta 0.0-1.9 between cuts for seconds at a time). Drives
-      // a patch; on the final attempt the scene still RENDERS and SHIPS FLAGGED (never omitted).
-      const motion = checkSceneMotion(html, spec.durMs / 1000);
-      if (!motion.ok) {
-        const motionIssue: SceneIssue = { kind: "safety", text: motion.reason! };
-        if (!last) {
-          safetyIssues = [motionIssue];
-          priorHtml = html;
-          log(`  ${spec.id}: re-author ${attempts} — frozen timeline (holdRatio ${motion.holdRatio.toFixed(2)})`);
-          continue;
-        }
-        deterministicFlags.push(motionIssue);
-      }
-
+      // A frozen-scene check used to run here, parsing the HTML for GSAP tweens. It was deleted:
+      // whether something animates is not decidable by pattern-matching source text, and it was
+      // wrong far more often than right. Measured against ordinary authoring styles it reported
+      // "frozen" for timelines chained off gsap.timeline(), for chained .from() calls, for CSS
+      // @keyframes and for the Web Animations API — everything except the one shape it was written
+      // against. Each false positive cost two authoring round-trips AND consumed the shared retry
+      // budget, so the vision QA (which samples real frames and is explicitly asked to judge motion)
+      // arrived last with nothing left to spend and its true findings shipped unfixed.
+      //
+      // Judging motion from the rendered frames is the only honest way to do it. The vision QA
+      // already does exactly that; if it ever proves to miss a genuinely frozen scene, the
+      // replacement is a pixel-delta measurement on the rendered MOV, never another source parser.
       await deps.render({ html, sceneDir, outMovPath: movPath, fps });
       if (spec.mode === "overlay" && deps.mask) await deps.mask(movPath);
       hasRender = true;
@@ -487,6 +488,7 @@ export async function runPremium(args: {
             creativeDirection: editPlan.creativeDirection,
             assetHints,
             assetDescriptions: brief.assets?.imageDescriptions,
+            words,
             assetsDir,
             premiumDir,
             basePath,

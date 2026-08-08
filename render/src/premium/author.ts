@@ -103,12 +103,21 @@ asset's uiText, copied character for character — same digits, casing and punct
 reconstruction in ONE element carrying data-ui-source="<that asset's file name>". Every string inside that
 element must appear in that asset's uiText; text you were not given must not be inferred, completed or invented,
 and a string that is missing simply does not appear. Outside that element you write the scene's own editorial
-copy freely. Because you are rebuilding rather than cropping, nothing is cut off: size type for the frame (56px
-minimum, 64-96px for anything the voiceover names) and reveal rows individually so a highlight lands on the row
+copy freely. The 56px minimum stated above governs the scene's own editorial wording and does NOT apply inside a
+reconstruction: an interface has its own hierarchy, and forcing every label to headline size makes a real page
+impossible to fit. Size the reconstruction so all of it sits inside the 1080x1920 frame: if it does not
+fit, scale the whole thing down until it does. Zoom out, do not drop content and do not let it run past the
+edges — a viewer cannot read what is outside the frame. Reveal rows individually so a highlight lands on the row
 being spoken about.
 When an asset has NO uiText (a photograph, a logo, a phone capture), place it as an image instead: crop to the
 region its description names — a wrapper with overflow:hidden sized to the visible area and a scaled/positioned
 <img> inside it — and animate that crop rather than the raw image.
+TIMING (this is data, not a guideline — read the numbers): spokenWords lists every word spoken in this scene,
+each with atMs measured from the SCENE's own start, which is the same zero your timeline uses. Time your beats
+against it. When a beat introduces something the voiceover names, that beat lands within 150ms AFTER the atMs of
+the word naming it — never before it, because revealing a thing before it is mentioned is what makes a scene feel
+rushed and busy. Do not divide the duration into equal parts: speech is not evenly paced, and a beat placed by
+arithmetic will drift away from the voice. If spokenWords is empty the scene is silent and you may pace it freely.
 MOTION DEVELOPMENT: the frame must keep developing across its full duration, not just at the start. Build
 at least TWO distinct beats: an entrance, then a second beat that starts after the scene's midpoint. This is
 NOT a licence for ambient motion — the ban above still applies. The difference is what the second beat DOES:
@@ -171,6 +180,8 @@ export async function authorScene(args: {
   assetDescriptions?: Record<string, string>;
   /** Verbatim on-screen text per asset filename, so an interface is rebuilt rather than cropped. */
   uiRecords?: Record<string, { items: { text: string; region: string; legible: boolean }[] }>;
+  /** Words spoken during this scene, timed from the scene's start, so beats can land on them. */
+  spokenWords?: { text: string; atMs: number }[];
   priorIssues?: string[];
   priorHtml?: string;
 }): Promise<string> {
@@ -183,6 +194,7 @@ export async function authorScene(args: {
     rationale: spec.rationale,
     intent: spec.intent,
     spokenContext: spec.captionText,
+    spokenWords: args.spokenWords ?? [],
     motif: spec.motif,
     creativeDirection,
     brandColor: brief.assets?.brandColor || brief.accentColor || creativeDirection.emphasisColor,
