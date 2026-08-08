@@ -105,9 +105,10 @@ element must appear in that asset's uiText; text you were not given must not be 
 and a string that is missing simply does not appear. Outside that element you write the scene's own editorial
 copy freely. The 56px minimum stated above governs the scene's own editorial wording and does NOT apply inside a
 reconstruction: an interface has its own hierarchy, and forcing every label to headline size makes a real page
-impossible to fit. Size the reconstruction so all of it sits inside the 1080x1920 frame — a viewer cannot read
-what is outside the frame, and content you cannot fit is content to leave out rather than to overflow. Reveal
-rows individually so a highlight lands on the row being spoken about.
+impossible to fit. Size the reconstruction so all of it sits inside the 1080x1920 frame: if it does not
+fit, scale the whole thing down until it does. Zoom out, do not drop content and do not let it run past the
+edges — a viewer cannot read what is outside the frame. Reveal rows individually so a highlight lands on the row
+being spoken about.
 When an asset has NO uiText (a photograph, a logo, a phone capture), place it as an image instead: crop to the
 region its description names — a wrapper with overflow:hidden sized to the visible area and a scaled/positioned
 <img> inside it — and animate that crop rather than the raw image.
