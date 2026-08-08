@@ -27,7 +27,9 @@ export function authorSystemPrompt(
    - Preserve 35-50% negative space. Use no more than two font families and three hierarchy sizes.
    - Keep the bottom caption region visually quiet. Captions are composited after this scene.
    - Do not create a miniature website: no dashboards, no waveforms, no scanner frames, no status badges,
-     no decorative metadata, no nested cards, and no permanent interface chrome.`
+     no decorative metadata, no nested cards, and no permanent interface chrome. This ban is about INVENTED
+     chrome; it does not cover a data-ui-source reconstruction of a real screenshot the user uploaded, which
+     is a faithful rebuild of something that exists.`
     : mode === "full-frame"
       ? `FULL-FRAME FOOTAGE MODE:
    - Keep html, body, and #stage transparent; the source footage remains visible behind the animation.
@@ -38,7 +40,9 @@ export function authorSystemPrompt(
      timelines, and proof artifacts may dominate the frame without needlessly hiding the person.
    - Keep the bottom caption region visually quiet. Captions are composited after this scene.
    - Do not create a miniature website: no dashboards, no waveforms, no scanner frames, no status badges,
-     no decorative metadata, no nested cards, and no permanent interface chrome.`
+     no decorative metadata, no nested cards, and no permanent interface chrome. This ban is about INVENTED
+     chrome; it does not cover a data-ui-source reconstruction of a real screenshot the user uploaded, which
+     is a faithful rebuild of something that exists.`
     : `OVERLAY MODE (over-the-head):
    - The speaker remains the primary visual. Add ONE visual authority that lives OVER THE HEAD.
    - PLACEMENT: keep all overlay content inside the TOP region, y=80..640, horizontally CENTERED, with
@@ -92,14 +96,19 @@ HARD CONTRACT:
 
 DESIGN: creator-native, restrained, intentional, and on-brand. Animation must reveal, compare, count, connect,
 change state, confirm, fail, or transition. Do not add ambient motion merely to keep the frame busy.
-FRAMING (comes before motion — get the crop right first, then animate it): a provided screenshot is a wide
-desktop capture, not a pre-cropped portrait asset — placing it whole into a 1080x1920 frame is a failed scene,
-the interface text becomes unreadable. Each asset's description names where its important content sits (for
-example "the deadline panel occupies the center-right"); crop to that region and scale it up with CSS — a
-wrapper with overflow:hidden sized to the visible area, and a scaled/positioned <img> inside it — the source
-file itself is never pre-cropped, you make the crop. Essential interface text must still clear the 56px minimum
-after that scaling; if it cannot, show LESS of the image and scale further, not more of it. Nothing may be
-clipped at a frame edge — a label cut to "imension" is a failure, not an acceptable crop.
+FRAMING (comes before motion — get the layout right first, then animate it).
+When an asset arrives with uiText, do NOT place the screenshot as an image. REBUILD that interface as HTML laid
+out for 1080x1920: a vertical stack of real elements at real sizes. Use ONLY the exact strings given in that
+asset's uiText, copied character for character — same digits, casing and punctuation. Wrap the entire
+reconstruction in ONE element carrying data-ui-source="<that asset's file name>". Every string inside that
+element must appear in that asset's uiText; text you were not given must not be inferred, completed or invented,
+and a string that is missing simply does not appear. Outside that element you write the scene's own editorial
+copy freely. Because you are rebuilding rather than cropping, nothing is cut off: size type for the frame (56px
+minimum, 64-96px for anything the voiceover names) and reveal rows individually so a highlight lands on the row
+being spoken about.
+When an asset has NO uiText (a photograph, a logo, a phone capture), place it as an image instead: crop to the
+region its description names — a wrapper with overflow:hidden sized to the visible area and a scaled/positioned
+<img> inside it — and animate that crop rather than the raw image.
 MOTION DEVELOPMENT: the frame must keep developing across its full duration, not just at the start. Build
 at least TWO distinct beats: an entrance, then a second beat that starts after the scene's midpoint. This is
 NOT a licence for ambient motion — the ban above still applies. The difference is what the second beat DOES:
@@ -160,6 +169,8 @@ export async function authorScene(args: {
   /** What each asset depicts and where its important content sits (upload-time caption, keyed by
    *  filename) — without this the author only sees a bare filename and has no basis to crop. */
   assetDescriptions?: Record<string, string>;
+  /** Verbatim on-screen text per asset filename, so an interface is rebuilt rather than cropped. */
+  uiRecords?: Record<string, { items: { text: string; region: string; legible: boolean }[] }>;
   priorIssues?: string[];
   priorHtml?: string;
 }): Promise<string> {
@@ -176,7 +187,15 @@ export async function authorScene(args: {
     creativeDirection,
     brandColor: brief.assets?.brandColor || brief.accentColor || creativeDirection.emphasisColor,
     brandVoice: brief.assets?.brandVoice || null,
-    assets: assetHints.map((file) => ({ file, depicts: assetDescriptions?.[file] ?? "unknown" })),
+    assets: assetHints.map((file) => ({
+      file,
+      depicts: assetDescriptions?.[file] ?? "unknown",
+      // Only the legible strings. An illegible item exists to say "there is text here I could not
+      // read"; showing the model its uncertain reading would invite it to tidy the guess up.
+      uiText: (args.uiRecords?.[file]?.items ?? [])
+        .filter((item) => item.legible)
+        .map((item) => ({ text: item.text, region: item.region })),
+    })),
   };
 
   const system = authorSystemPrompt(
