@@ -643,3 +643,43 @@ deterministic gates to four.
 the visual review the same way. Separate budgets are the general fix.
 
 **References:** PR #36, `render/src/premium/index.ts` (the comment where the gate used to run).
+
+---
+
+## 2026-08-08: Ship privacy and terms, and answer signed-out API calls with JSON
+
+**Context:** Proof reads a connected repository and records the user's face, and it shipped with no
+page saying what it stores or who it goes to. That was tolerable while the only users were the two
+founders. It is not tolerable pointing a university cohort at it, and it also blocked a wider
+decision: reading source files from a connected repo was rejected partly because no policy page
+existed that would disclose it (see the HTML-scenes entry above).
+
+Separately, `proxy.ts` redirected signed-out callers of `/api/*` to `/login` with a 307. `fetch`
+follows the redirect, the caller receives the login page's HTML with status 200, and `res.json()`
+throws a parse error. The misconfigured-auth branch already excluded `/api` for exactly this reason;
+the ordinary signed-out branch was missed when that was fixed. Confirmed against production before
+changing anything: `POST /api/render` returned `307 -> /login`.
+
+**Decision:**
+
+1. Add `/privacy` and `/terms`, written plainly rather than as boilerplate, with every claim checked
+   against the code: that GitHub access reads README, language stats and file paths but never source
+   contents; that uploaded images live at unguessable but publicly readable URLs, so a leaked link
+   opens the file; and that deleting an image deletes the object. The public-bucket disclosure is
+   uncomfortable and belongs there anyway.
+2. Add both routes to `PUBLIC_PREFIXES`. A policy nobody can read without an account is not a policy,
+   and the person deciding whether to hand over their repository and a recording of their face needs
+   to read it *before* signing in.
+3. Exclude `/api/*` from the signed-out redirect so the route handlers answer with their own 401 JSON.
+
+**Consequences:** an expired session now surfaces as a real error instead of a JSON parse failure.
+A production audit of the deployed app went from 10/15 to 12/15 checks passing, with the three
+remaining failures being two faults in the audit script itself and the known campus network block on
+the custom domain.
+
+**Also in this change:** the render-confirmation copy said "a few minutes" against a measured eight.
+That reads as a hang, and someone who believes a job has hung re-runs it and pays twice. It now names
+the number.
+
+**References:** `src/app/privacy/page.tsx`, `src/app/terms/page.tsx`, `src/components/legal-page.tsx`,
+`src/proxy.ts`, `src/lib/render-confirmation.ts`, commits `061d4b39` and `c1eadebb`.

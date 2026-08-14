@@ -76,3 +76,10 @@ next-env.d.ts
 /*-shots/
 /asset-proof-shots/
 /scene-eyeball/
+# Same category, different naming: comparison renders kept while tuning the scene engine.
+# Four of these came to 110 MB, and the `*-shots` pattern above does not catch them.
+/sutd-render-*/
+/final-render-*/
+
+# Agent config, local to whoever is working in the repo.
+/.claude/

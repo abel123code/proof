@@ -1,8 +1,34 @@
-﻿# Post-mortems
+# Post-mortems
 
 Failure modes that cost real time, written down so they are not repeated. Newest first.
 
 ---
+
+---
+
+## 2026-08-08: The new pages returned 200, and the body was the login screen
+
+**What happened.** `/privacy` and `/terms` shipped and were verified with an automated check that
+fetched both, asserted `http 200`, and measured that neither overflowed a 390px viewport. Both
+passed. Both were wrong: `isPublic()` did not list them, so the proxy redirected a signed-out visitor
+to `/login`, and the login page returns 200. The check was reading a real HTTP success from the wrong
+page.
+
+It was caught by screenshotting the result and looking at it. The image was a sign-in form.
+
+**Why the check could not see it.** Every assertion was about the response, not the content. Status
+was 200 because a page rendered. Width was fine because the login page is also responsive. Nothing
+compared what came back against what was supposed to come back. The page title was in the output the
+whole time, reading "proof, get your github projects seen" rather than "Privacy - Proof", and it was
+not asserted on.
+
+**The lesson.** A status code proves a server answered, not that it answered with the thing you
+asked for. Any check that a page "works" needs at least one assertion tied to that page's own
+content. For anything visual, look at the render: the same screenshot pass later caught two deck
+slides overflowing by 773px and 628px, which no status code would ever have revealed.
+
+**Fixed by** adding `/privacy` and `/terms` to `PUBLIC_PREFIXES`, with a test that fails if either
+stops being public, and by asserting on page title in the verification script.
 
 ---
 
