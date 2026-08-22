@@ -173,17 +173,20 @@ export default function Landing() {
           </Reveal>
         </section>
 
-        {/* ---------- Why now (the insight beat) ---------- */}
-        <section id="why-now" className="border-t border-border/60">
-          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
-            <p className="kicker">why now</p>
-            <h2 className="mt-5 max-w-[20ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
+        {/* ---------- Why now (the insight beat) ----------
+            This is the page's thesis, so it is the page's one peak: ink ground,
+            largest type, most air, and no eyebrow -- the colour change already
+            announces the section, and a label on top of that is one mark too
+            many. Every other section reads as support after this. */}
+        <section id="why-now" className="section-ink">
+          <Reveal className="mx-auto max-w-6xl px-5 py-28 sm:px-8 md:py-36">
+            <h2 className="max-w-[20ch] font-display text-5xl font-medium leading-[1.03] tracking-tight sm:text-6xl lg:text-7xl">
               Everyone can build now.
               <br />
               <span className="text-primary">Almost nobody can get seen.</span>
             </h2>
 
-            <div className="mt-10 grid max-w-3xl gap-6 sm:grid-cols-2">
+            <div className="mt-12 grid max-w-3xl gap-6 sm:grid-cols-2">
               <p className="text-lg leading-relaxed text-muted-foreground">
                 AI collapsed the cost of shipping. A weekend gets you a working product, so a working
                 product stopped being the thing that sets you apart.
@@ -194,26 +197,31 @@ export default function Landing() {
               </p>
             </div>
 
-            <p className="mt-10 max-w-[26ch] font-display text-2xl font-medium leading-tight tracking-tight sm:text-3xl">
+            <p className="mt-14 max-w-[26ch] font-display text-3xl font-medium leading-tight tracking-tight sm:text-4xl">
               Writing code is cheap now.{" "}
               <span className="text-primary">Distribution is the moat.</span>
             </p>
           </Reveal>
         </section>
 
-        {/* ---------- What it is ---------- */}
+        {/* ---------- What it is ----------
+            Connective tissue between the thesis and the comparison, so it is
+            typed as a band rather than a full beat: no eyebrow, smaller
+            headline on one line, tags pulled alongside instead of stacked
+            underneath. Giving this the same weight as the thesis is what made
+            the page read flat. */}
         <section className="border-t border-border/60">
-          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
-            <p className="kicker">what it is</p>
-            <h2 className="mt-5 font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
-              Connect a repo.
-              <br />
-              <span className="text-primary">Get a video you&apos;d post.</span>
-            </h2>
-            <p className="mt-5 text-lg text-muted-foreground">
-              you film. it does the rest.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+          <Reveal className="mx-auto flex max-w-6xl flex-col gap-7 px-5 py-14 sm:px-8 md:flex-row md:items-center md:justify-between md:gap-12 md:py-16">
+            <div>
+              <h2 className="font-display text-2xl font-medium leading-tight tracking-tight sm:text-3xl">
+                Connect a repo.{" "}
+                <span className="text-primary">Get a video you&apos;d post.</span>
+              </h2>
+              <p className="mt-2 text-base text-muted-foreground">
+                you film. it does the rest.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3 md:shrink-0">
               {teleprompterTags.map((tag) => (
                 <span
                   key={tag}
@@ -355,8 +363,9 @@ export default function Landing() {
         {/* ---------- Why us ---------- */}
         <section className="border-t border-border/60 bg-card/40">
           <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
-            <p className="kicker">why us</p>
-            <h2 className="mt-5 max-w-[20ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
+            {/* No eyebrow: this is the only headline on the page that does not
+                use the two-clause device, so it can stand on its own. */}
+            <h2 className="max-w-[20ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
               We&apos;re devs who never market our own work.
             </h2>
             <p className="mt-5 text-lg text-muted-foreground">
@@ -375,8 +384,12 @@ export default function Landing() {
         <section className="border-t border-border/60">
           <Reveal className="mx-auto max-w-6xl px-5 py-24 text-center sm:px-8 md:py-32">
             <p className="kicker justify-center">demo</p>
-            <h2 className="mx-auto mt-5 max-w-[18ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-6xl">
-              The best version of you.{" "}
+            {/* The payoff clause drops to its own line here instead of running
+                inline, so the page's last beat lands rather than repeating the
+                shape it has used seven times already. Same words. */}
+            <h2 className="mx-auto mt-5 max-w-[18ch] font-display text-4xl font-medium leading-[1.05] tracking-tight sm:text-6xl">
+              The best version of you.
+              <br />
               <span className="text-primary">Posted.</span>
             </h2>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-4">

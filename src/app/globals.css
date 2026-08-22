@@ -118,6 +118,20 @@
     letter-spacing: 0.01em;
     color: var(--primary);
   }
+
+  /* One ink section carries the page's thesis. It re-maps the palette locally
+     rather than hardcoding colours, so text-primary / text-muted-foreground /
+     border-border keep working unchanged on the children. The accent is lifted
+     off the base vermilion because 0.605 lightness is muddy on ink. */
+  .section-ink {
+    --background: oklch(0.22 0.012 55);
+    --foreground: oklch(0.96 0.008 85);
+    --muted-foreground: oklch(0.76 0.014 72);
+    --primary: oklch(0.72 0.17 38);
+    --border: oklch(1 0 0 / 12%);
+    background: var(--background);
+    color: var(--foreground);
+  }
 }
 
 @keyframes demo-target-flash {
