@@ -38,7 +38,7 @@ export function LegalPage({
       </header>
 
       <main className="mx-auto max-w-3xl px-5 py-14 sm:px-8 sm:py-20">
-        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary">{kicker}</p>
+        <p className="font-mono text-[11px] text-primary">{kicker}</p>
         <h1 className="mt-3 font-display text-4xl leading-[1.1] tracking-tight sm:text-5xl">{title}</h1>
         <p className="mt-4 font-mono text-xs text-muted-foreground">Last updated {updated}</p>
 

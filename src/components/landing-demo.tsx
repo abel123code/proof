@@ -71,7 +71,7 @@ export function LandingDemo() {
       <h2 className="sr-only">Try the teleprompter</h2>
       <div className="demo-scene-card overflow-hidden rounded-[1.75rem] border border-black/10 bg-[#2d2d2a] p-4 text-white shadow-[0_28px_70px_-36px_rgba(25,20,16,0.78)] sm:p-5">
         <div className="mx-auto max-w-[17rem]">
-          <p className="mb-3 text-center font-mono text-[9px] uppercase tracking-[0.2em] text-white/45">
+          <p className="mb-3 text-center font-mono text-[9px] text-white/45">
             Interactive teleprompter · no account
           </p>
 
@@ -89,7 +89,7 @@ export function LandingDemo() {
                 <div className="absolute inset-x-0 top-0 h-[62%] overflow-hidden px-5 pt-8">
                   {/* Without this the demo reads as a plain webcam. The point is that the script was
                       written FOR you from a repo, so say so above the words being read. */}
-                  <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.16em] text-white/40">
+                  <p className="mb-3 font-mono text-[10px] text-white/40">
                     script Proof wrote from a repo
                   </p>
                   <p className="text-xl font-semibold leading-[1.18] text-white sm:text-2xl">
@@ -97,13 +97,13 @@ export function LandingDemo() {
                   </p>
                   <div className="mt-4 space-y-1 text-[10px] leading-relaxed text-white/35">
                     <p>
-                      <span className="font-mono uppercase tracking-[0.16em] text-white/25">
+                      <span className="font-mono text-white/25">
                         text ·{" "}
                       </span>
                       {DEMO_DOC.scenes[0].onScreenText}
                     </p>
                     <p className="italic">
-                      <span className="font-mono not-italic uppercase tracking-[0.16em] text-white/25">
+                      <span className="font-mono not-italic text-white/25">
                         show ·{" "}
                       </span>
                       {DEMO_DOC.scenes[0].brollCue}
@@ -122,7 +122,7 @@ export function LandingDemo() {
                       <Camera className="size-5" aria-hidden />
                     </span>
                   </button>
-                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-white/55">
+                  <p className="font-mono text-[9px] text-white/55">
                     tap to record · ~20s
                   </p>
                 </div>
@@ -133,7 +133,7 @@ export function LandingDemo() {
 
         <div className="mt-4 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-4 text-center sm:flex-row sm:text-left">
           <div>
-            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#ff735b]">
+            <p className="font-mono text-[9px] text-[#ff735b]">
               {previewUrl ? "Your take" : "Camera starts after you tap"}
             </p>
             <p className="mt-1 max-w-xs text-xs leading-relaxed text-white/55">

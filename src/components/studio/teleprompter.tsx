@@ -562,7 +562,7 @@ export function Teleprompter({
             {!camReady && !camError && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-neutral-900/80 text-white/70">
                 <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-white" />
-                <span className="font-mono text-xs uppercase tracking-[0.2em]">
+                <span className="font-mono text-xs">
                   Starting camera…
                 </span>
               </div>
@@ -627,7 +627,7 @@ export function Teleprompter({
               <div className="mt-2 space-y-0.5 text-white/35">
                 {scene?.onScreenText && (
                   <p className="text-[11px]">
-                    <span className="font-mono uppercase tracking-widest text-white/30">
+                    <span className="font-mono text-white/30">
                       text ·{" "}
                     </span>
                     {scene.onScreenText}
@@ -635,7 +635,7 @@ export function Teleprompter({
                 )}
                 {scene?.brollCue && (
                   <p className="text-[11px] italic">
-                    <span className="font-mono uppercase not-italic tracking-widest text-white/30">
+                    <span className="font-mono not-italic text-white/30">
                       show ·{" "}
                     </span>
                     {scene.brollCue}
@@ -664,7 +664,7 @@ export function Teleprompter({
       >
         {/* Scene heading */}
         <div>
-          <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/50">
+          <p className="font-mono text-xs text-white/50">
             Scene {String(scene?.scene ?? active + 1).padStart(2, "0")} / {sceneCount}
           </p>
           {scene?.label && (
@@ -672,7 +672,7 @@ export function Teleprompter({
           )}
           {mode === "local" && (
             <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-3">
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#e0533d]">
+              <p className="font-mono text-[10px] text-[#e0533d]">
                 {currentUrl ? "Step 3 of 3" : recording ? "Step 2 of 3" : "Step 1 of 3"}
               </p>
               <p className="mt-1.5 text-sm leading-relaxed text-white/85">
@@ -785,7 +785,7 @@ export function Teleprompter({
               className="truncate font-mono text-[11px] text-white/55"
               title={currentName ?? "Recorded take"}
             >
-              <span className="uppercase tracking-[0.18em] text-white/35">clip · </span>
+              <span className="text-white/35">clip · </span>
               {currentName ?? "Recorded take"}
             </p>
             <div className="flex items-center gap-2">

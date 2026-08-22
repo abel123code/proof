@@ -66,7 +66,7 @@ export function BugReportDialog({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[60] bg-foreground/20 backdrop-blur-[2px] data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-[61] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-6 shadow-2xl outline-none data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-primary">
+          <p className="font-mono text-[10px] text-primary">
             Report a bug
           </p>
           <Dialog.Title className="mt-2 font-display text-2xl tracking-tight text-foreground">
@@ -87,7 +87,7 @@ export function BugReportDialog({
 
           {chips.length > 0 && (
             <div className="mt-3">
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
+              <p className="font-mono text-[10px] text-muted-foreground/70">
                 Attached automatically
               </p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">

@@ -42,7 +42,7 @@ export default function Landing() {
             </span>
           </Link>
 
-          <nav className="hidden items-center gap-8 font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground md:flex">
+          <nav className="hidden items-center gap-8 font-mono text-xs text-muted-foreground md:flex">
             <a href="#problem" className="transition-colors hover:text-foreground">
               Problem
             </a>
@@ -57,13 +57,13 @@ export default function Landing() {
           <div className="flex items-center gap-2">
             <Link
               href="#demo"
-              className="hidden rounded-full px-4 py-2 font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
+              className="hidden rounded-full px-4 py-2 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
             >
               Demo
             </Link>
             <Link
               href="/login"
-              className="inline-flex items-center rounded-full bg-primary px-5 py-2 font-mono text-xs font-medium uppercase tracking-[0.14em] text-primary-foreground transition-all hover:brightness-105 active:translate-y-px"
+              className="inline-flex items-center rounded-full bg-primary px-5 py-2 font-mono text-xs font-medium text-primary-foreground transition-all hover:brightness-105 active:translate-y-px"
             >
               Log in
             </Link>
@@ -76,7 +76,7 @@ export default function Landing() {
         <section className="relative overflow-hidden">
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 sm:px-8 md:py-28 lg:grid-cols-[0.92fr_1.08fr] lg:py-32">
             <div>
-              <p className="enter mb-5 font-mono text-xs uppercase tracking-[0.18em] text-primary" style={stagger(0)}>
+              <p className="enter mb-5 font-mono text-xs text-primary" style={stagger(0)}>
                 OpenAI Build Week · GPT-5.6 + Codex
               </p>
               <h1 className="enter font-display text-5xl font-medium leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl" style={stagger(90)}>
@@ -114,7 +114,8 @@ export default function Landing() {
               </p>
 
               {/* Beta users asked this unprompted, twice. Say it before they have to wonder. */}
-              <p className="enter mt-4 max-w-md font-mono text-[11px] leading-relaxed text-muted-foreground/70" style={stagger(420)}>
+              {/* Sans, not mono: this is prose. Mono is for labels and code. */}
+              <p className="enter mt-4 max-w-md text-[13px] leading-relaxed text-muted-foreground/80" style={stagger(420)}>
                 Proof reads your README, file names and language stats. It never reads your source
                 code, and the README is used to write your script, not stored.
               </p>
@@ -236,14 +237,14 @@ export default function Landing() {
             <div className="mt-10 grid gap-5 md:grid-cols-2">
               {/* Bad */}
               <article className="rounded-2xl border border-border bg-card p-7">
-                <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                <p className="font-mono text-xs text-muted-foreground">
                   how devs write it
                 </p>
                 <p className="mt-4 font-display text-xl leading-snug text-muted-foreground">
                   &ldquo;I built a CLI that parses OpenAPI specs and generates
                   typed clients with full runtime validation.&rdquo;
                 </p>
-                <ul className="mt-6 grid gap-2.5 font-mono text-sm text-muted-foreground">
+                <ul className="mt-6 grid gap-2.5 text-[15px] leading-relaxed text-muted-foreground">
                   {[
                     "technically correct, zero reason to care",
                     "opens on the what, never the why",
@@ -261,14 +262,14 @@ export default function Landing() {
 
               {/* Good */}
               <article className="rounded-2xl border border-primary/40 bg-background p-7 shadow-sm">
-                <p className="font-mono text-xs uppercase tracking-[0.2em] text-primary">
+                <p className="font-mono text-xs text-primary">
                   what proof writes
                 </p>
                 <p className="mt-4 font-display text-xl leading-snug text-foreground">
                   &ldquo;I got tired of hand-writing the same API client every
                   time the backend changed. So I made it generate itself.&rdquo;
                 </p>
-                <ul className="mt-6 grid gap-2.5 font-mono text-sm text-muted-foreground">
+                <ul className="mt-6 grid gap-2.5 text-[15px] leading-relaxed text-muted-foreground">
                   {[
                     "opens on the problem you actually had",
                     "one idea, said like a person",
@@ -316,34 +317,36 @@ export default function Landing() {
               ))}
             </div>
 
+            {/* Numbered, not accent-barred: this is a sequence, so the numeral
+                carries the structure and earns its place as content. */}
             <div className="mt-10 grid gap-8 md:grid-cols-3">
-              <div className="border-l-2 border-primary pl-4">
-                <p className="font-mono text-base font-bold text-primary">
-                  OpenAI GPT-5.6
-                </p>
-                <p className="mt-1.5 text-base leading-relaxed text-muted-foreground">
-                  Luna handles structured extraction and drafting. Sol researches
-                  current demand, ranks angles, authors scenes, and reviews the result.
-                </p>
-              </div>
-              <div className="border-l-2 border-primary pl-4">
-                <p className="font-mono text-base font-bold text-primary">
-                  Whisper + FFmpeg
-                </p>
-                <p className="mt-1.5 text-base leading-relaxed text-muted-foreground">
-                  Word timestamps drive dead-space removal, cuts, captions, and
-                  scene anchors without chopping speech mid-word.
-                </p>
-              </div>
-              <div className="border-l-2 border-primary pl-4">
-                <p className="font-mono text-base font-bold text-primary">
-                  HyperFrames + Sol Vision
-                </p>
-                <p className="mt-1.5 text-base leading-relaxed text-muted-foreground">
-                  Bespoke motion graphics are rendered, composited over the real
-                  footage, inspected across five frames, and repaired or omitted.
-                </p>
-              </div>
+              {[
+                {
+                  n: "01",
+                  title: "OpenAI GPT-5.6",
+                  body: "Luna handles structured extraction and drafting. Sol researches current demand, ranks angles, authors scenes, and reviews the result.",
+                },
+                {
+                  n: "02",
+                  title: "Whisper + FFmpeg",
+                  body: "Word timestamps drive dead-space removal, cuts, captions, and scene anchors without chopping speech mid-word.",
+                },
+                {
+                  n: "03",
+                  title: "HyperFrames + Sol Vision",
+                  body: "Bespoke motion graphics are rendered, composited over the real footage, inspected across five frames, and repaired or omitted.",
+                },
+              ].map((step) => (
+                <div key={step.n} className="border-t border-border pt-5">
+                  <p className="font-mono text-sm text-primary">{step.n}</p>
+                  <p className="mt-3 font-mono text-base font-bold text-foreground">
+                    {step.title}
+                  </p>
+                  <p className="mt-2 text-base leading-relaxed text-muted-foreground">
+                    {step.body}
+                  </p>
+                </div>
+              ))}
             </div>
 
           </Reveal>

@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
@@ -85,41 +85,6 @@
   --sidebar-ring: oklch(0.605 0.2 33);
 }
 
-.dark {
-  /* Dense, dark, Cursor-inspired "technical IDE" palette */
-  --background: oklch(0.16 0.004 285);
-  --foreground: oklch(0.96 0.003 285);
-  --card: oklch(0.19 0.005 285);
-  --card-foreground: oklch(0.96 0.003 285);
-  --popover: oklch(0.19 0.005 285);
-  --popover-foreground: oklch(0.96 0.003 285);
-  --primary: oklch(0.62 0.19 270);
-  --primary-foreground: oklch(0.98 0.003 285);
-  --secondary: oklch(0.25 0.006 285);
-  --secondary-foreground: oklch(0.96 0.003 285);
-  --muted: oklch(0.23 0.005 285);
-  --muted-foreground: oklch(0.68 0.01 285);
-  --accent: oklch(0.27 0.03 270);
-  --accent-foreground: oklch(0.96 0.003 285);
-  --destructive: oklch(0.65 0.2 25);
-  --border: oklch(1 0 0 / 9%);
-  --input: oklch(1 0 0 / 13%);
-  --ring: oklch(0.62 0.19 270);
-  --chart-1: oklch(0.62 0.19 270);
-  --chart-2: oklch(0.7 0.15 195);
-  --chart-3: oklch(0.75 0.16 85);
-  --chart-4: oklch(0.68 0.18 330);
-  --chart-5: oklch(0.65 0.18 25);
-  --sidebar: oklch(0.18 0.005 285);
-  --sidebar-foreground: oklch(0.96 0.003 285);
-  --sidebar-primary: oklch(0.62 0.19 270);
-  --sidebar-primary-foreground: oklch(0.98 0.003 285);
-  --sidebar-accent: oklch(0.25 0.006 285);
-  --sidebar-accent-foreground: oklch(0.96 0.003 285);
-  --sidebar-border: oklch(1 0 0 / 9%);
-  --sidebar-ring: oklch(0.62 0.19 270);
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -140,23 +105,18 @@
 }
 
 @layer components {
-  /* Small uppercase mono eyebrow used across landing sections. */
+  /* Section eyebrow. Lowercase on purpose: the page speaks lowercase throughout
+     ("or try it yourself, no account", "you film. it does the rest."), so
+     tracked-out caps here were shouting over the copy's own voice. The old
+     2rem leading rule went with it -- seven repeats of one ornament down a
+     page reads as a template, not a system. */
   .kicker {
     display: inline-flex;
     align-items: center;
-    gap: 0.7rem;
     font-family: var(--font-mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.28em;
-    text-transform: uppercase;
+    font-size: 0.78rem;
+    letter-spacing: 0.01em;
     color: var(--primary);
-  }
-  .kicker::before {
-    content: "";
-    width: 2rem;
-    height: 1px;
-    background: var(--primary);
-    opacity: 0.6;
   }
 }
 

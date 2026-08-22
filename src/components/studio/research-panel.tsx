@@ -326,7 +326,7 @@ export function ResearchPanel() {
               <dl className="mt-3 grid gap-3 sm:grid-cols-2">
                 {proof.targetUser && (
                   <div>
-                    <dt className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <dt className="font-mono text-[10px] text-muted-foreground">
                       Target user
                     </dt>
                     <dd className="mt-0.5 text-sm">{proof.targetUser}</dd>
@@ -334,7 +334,7 @@ export function ResearchPanel() {
                 )}
                 {proof.transformation && (
                   <div>
-                    <dt className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <dt className="font-mono text-[10px] text-muted-foreground">
                       Transformation
                     </dt>
                     <dd className="mt-0.5 text-sm">{proof.transformation}</dd>
@@ -381,7 +381,7 @@ export function ResearchPanel() {
                       {t.topic}
                     </span>
                     {loadingThis ? (
-                      <span className="flex shrink-0 items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-primary">
+                      <span className="flex shrink-0 items-center gap-1.5 font-mono text-[9px] text-primary">
                         <Spinner className="size-3" />
                         Scoring
                       </span>
@@ -524,7 +524,7 @@ function AngleCard({
                 recommended
               </Badge>
             )}
-            <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            <span className="min-w-0 truncate font-mono text-[10px] text-muted-foreground">
               {angle.hookFormat ?? angle.hookArchetype} · {angle.storyLoops?.length ?? 0} story {angle.storyLoops?.length === 1 ? "loop" : "loops"}
             </span>
           </div>
@@ -536,13 +536,13 @@ function AngleCard({
           <p className="font-display text-3xl leading-none tracking-tight text-primary">
             {angle.score.total}
           </p>
-          <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          <p className="font-mono text-[10px] text-muted-foreground">
             virality
           </p>
         </div>
       </div>
 
-      <div className="mt-3 rounded-md border-l-2 border-primary bg-secondary/40 p-3">
+      <div className="mt-3 rounded-md border border-primary/25 bg-primary/[0.06] p-3.5">
         <Kicker>Hook</Kicker>
         <p className="mt-1 font-display text-lg leading-snug tracking-tight">{selectedHook}</p>
       </div>
@@ -567,7 +567,7 @@ function AngleCard({
         {DIMENSIONS.map((d) => (
           <div key={d.key}>
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+              <span className="font-mono text-[9px] text-muted-foreground">
                 {d.label}
               </span>
               <span className="font-mono text-[10px] text-foreground">{scoreFor(d.key)}</span>
@@ -584,7 +584,7 @@ function AngleCard({
 
       {angle.hookOptions.length > 1 && (
         <details className="mt-4 rounded-lg border border-border px-3 py-2">
-          <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          <summary className="cursor-pointer font-mono text-[10px] text-muted-foreground">
             Adjust opening hook
           </summary>
           <div className="mt-3 grid gap-2">

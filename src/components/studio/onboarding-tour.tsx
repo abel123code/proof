@@ -408,13 +408,13 @@ export function OnboardingTour() {
         ) : (
           <>
             <div className="flex items-center justify-between gap-3">
-              <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-primary">
+              <span className="font-mono text-[10px] text-primary">
                 {step === "welcome" ? "Quick start" : `Step ${index} of ${TOUR_STEPS.length - 1}`}
               </span>
               <button
                 type="button"
                 onClick={() => setConfirmSkip(true)}
-                className="rounded px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded px-2 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Skip
               </button>
@@ -448,7 +448,7 @@ export function OnboardingTour() {
               {step === "welcome" ? (
                 <Button onClick={() => setStep("settings-nav")}>Start demo</Button>
               ) : (
-                <span className="text-right font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                <span className="text-right font-mono text-[10px] text-muted-foreground">
                   {definition.waiting ? "Working…" : "Use the highlighted control"}
                 </span>
               )}

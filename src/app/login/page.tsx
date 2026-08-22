@@ -60,7 +60,7 @@ function LoginInner() {
         </Button>
         <Link
           href="/"
-          className="mt-6 inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground"
+          className="mt-6 inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
           <span aria-hidden>←</span> Back to home
         </Link>

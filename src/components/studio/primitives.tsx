@@ -1,6 +1,6 @@
 export function Kicker({ children }: { children: React.ReactNode }) {
   return (
-    <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+    <span className="font-mono text-[11px] text-muted-foreground">
       {children}
     </span>
   );

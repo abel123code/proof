@@ -246,7 +246,7 @@ export function ProjectPanel() {
             <div className="mt-3 rounded-lg border border-border bg-secondary/30 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                  <p className="font-mono text-[11px] text-muted-foreground">
                     {githubApp.connected ? "Private repos connected" : "Private repos"}
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -410,13 +410,13 @@ export function ProjectPanel() {
 
           <dl className="mt-6 space-y-4 text-sm">
             <div>
-              <dt className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+              <dt className="font-mono text-[11px] text-muted-foreground">
                 Problem
               </dt>
               <dd className="mt-1">{project.understanding.problem}</dd>
             </div>
             <div>
-              <dt className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+              <dt className="font-mono text-[11px] text-muted-foreground">
                 Most interesting
               </dt>
               <dd className="mt-1">{project.understanding.interesting}</dd>

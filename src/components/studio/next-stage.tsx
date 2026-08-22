@@ -17,7 +17,7 @@ export function NextStage({ from, query }: { from: string; query?: string }) {
       className="mt-10 flex flex-col gap-3 rounded-lg border border-border bg-secondary/40 p-5 sm:flex-row sm:items-center sm:justify-between"
     >
       <div>
-        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+        <span className="font-mono text-[11px] text-muted-foreground">
           Up next · {next.n}
         </span>
         <p className="mt-1 font-display text-lg leading-snug tracking-tight">

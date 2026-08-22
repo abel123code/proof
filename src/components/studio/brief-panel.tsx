@@ -1038,7 +1038,7 @@ function BrandAssetsSection({
     <div className="mt-7 rounded-lg border border-border bg-card p-4">
       <div className="flex flex-wrap items-center gap-2">
         <Kicker>Brand assets</Kicker>
-        <Badge variant="secondary" className="font-mono text-[9px] uppercase tracking-wider">
+        <Badge variant="secondary" className="font-mono text-[9px]">
           beta
         </Badge>
       </div>
@@ -1151,7 +1151,7 @@ function BriefView({
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <p className="font-display text-xl tracking-tight">{doc.title}</p>
           {doc.targetFeeling && (
-            <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+            <span className="font-mono text-[11px] text-muted-foreground">
               feeling: {doc.targetFeeling}
             </span>
           )}
@@ -1159,7 +1159,7 @@ function BriefView({
         {doc.angle && (
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{doc.angle}</p>
         )}
-        <div className="mt-3 rounded-md border-l-2 border-primary bg-card p-3">
+        <div className="mt-3 rounded-md border border-primary/25 bg-primary/[0.06] p-3.5">
           <Kicker>Hook</Kicker>
           <p className="mt-1 font-display text-lg leading-snug tracking-tight">{doc.hook}</p>
         </div>
@@ -1308,7 +1308,7 @@ function BriefSkeleton() {
         </div>
         <Skeleton className="mt-3 h-4 w-full" />
         <Skeleton className="mt-2 h-4 w-4/5" />
-        <div className="mt-3 rounded-md border-l-2 border-primary/40 bg-card p-3">
+        <div className="mt-3 rounded-md border border-primary/15 bg-primary/[0.04] p-3.5">
           <Skeleton className="h-2.5 w-12" />
           <Skeleton className="mt-2 h-5 w-3/4" />
         </div>
