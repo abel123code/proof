@@ -683,3 +683,49 @@ the number.
 
 **References:** `src/app/privacy/page.tsx`, `src/app/terms/page.tsx`, `src/components/legal-page.tsx`,
 `src/proxy.ts`, `src/lib/render-confirmation.ts`, commits `061d4b39` and `c1eadebb`.
+
+## 2026-08-22: Retire the tracked-caps label system, and delete the unused dark palette
+
+**Context:** An audit of the landing page and studio against the common "vibe-coded" design tells
+found four of them present. The aesthetic direction itself was never the problem — warm bone canvas,
+Fraunces display serif, vermilion accent, and a lowercase voice is a real point of view and nothing
+like the purple-gradient default. The problem was that one label treatment, small mono in uppercase
+at 0.14–0.28em tracking, was used at **42 sites across 17 files**. At that density it stops reading
+as an accent and starts reading as a template. It also fought the copy: the landing page speaks
+lowercase throughout while every eyebrow above it shouted, and the worst instance wrapped a full
+sentence with punctuation in tracked caps in the brief panel.
+
+Separately, `globals.css` carried a 34-line `.dark` block whose `--primary` was
+`oklch(0.62 0.19 270)` — violet. **Nothing in the app ever applies a `.dark` class.** There is no
+theme provider and no toggle; the only `next-themes` import is the toast component. So it never
+shipped a single pixel, and the only `dark:` utilities are untouched shadcn defaults that likewise
+never fire.
+
+**Decision:**
+
+1. Drop `uppercase` wherever it was paired with a wide tracking utility, keeping the two short badges
+   that use bare `uppercase` with no tracking, and leaving plain `tracking-wide` alone. Swept by
+   script so the diff stays reviewable, then read.
+2. Remove the six `border-l-2 border-primary` accent-bar cards. "How it works" is a sequence, so it
+   is numbered instead — the numeral is content and carries the structure, where the bar was ornament.
+3. Move landing prose off mono onto sans. Mono is for labels and code; the README disclaimer and both
+   comparison lists were body copy, and on mobile that was three stacked mono paragraphs.
+4. **Delete the `.dark` block rather than recolour it.** Recolouring would have meant inventing and
+   shipping a dark palette nobody has ever seen or tested, on the strength of a guess.
+5. Give the page one peak instead of eight equal sections. `.section-ink` re-maps
+   `--background` / `--foreground` / `--primary` / `--muted-foreground` **locally** rather than
+   hardcoding colours, so `text-primary` and friends keep working unchanged on the children. Its
+   accent is lifted off the base vermilion because 0.605 lightness goes muddy on ink.
+
+**Alternatives considered:** rewriting the headlines to break the repeated two-clause device was
+scoped and then deliberately rejected — the device is good, it carries the argument, and the risk of
+flattening copy that was written well outweighed a tell only a designer would clock. The equal-weight
+problem was solved structurally instead, with **no word changed**.
+
+**Consequences:** if anyone adds dark mode later, they start from nothing on purpose — the absence is
+a decision, not an omission, and the violet is not lying in wait to become the brand. `.section-ink`
+is the pattern to copy for any future inverted section. The repeated headline device is still live on
+the landing page and is a known, accepted cosmetic weakness.
+
+**References:** `src/app/globals.css`, `src/app/page.tsx`, `src/components/studio/primitives.tsx`,
+commits `615bb560` and `2c821b83`. Verified live on tryproof.org.

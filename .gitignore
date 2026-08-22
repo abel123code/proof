@@ -80,6 +80,9 @@ next-env.d.ts
 # Four of these came to 110 MB, and the `*-shots` pattern above does not catch them.
 /sutd-render-*/
 /final-render-*/
+# And again, for design before/after captures. Third naming variant to slip past
+# `/*-shots/`; if you add a fourth, put it here rather than renaming the directory.
+/slop-audit-*/
 
 # Agent config, local to whoever is working in the repo.
 /.claude/

@@ -6,6 +6,44 @@ Failure modes that cost real time, written down so they are not repeated. Newest
 
 ---
 
+## 2026-08-22: A full-page screenshot rendered the landing page empty, and it was the screenshot that was wrong
+
+**What happened.** Verifying a landing-page design change, a Playwright `fullPage` screenshot came
+back with the hero intact and **every section below it blank** — the ink section rendered as a solid
+dark band with no text in it at all. The page looked catastrophically broken. It was not: the page
+was fine in a browser the whole time.
+
+**Why.** Sections below the fold are gated on `.reveal`, which is hidden by
+`.reveal-ready .reveal { opacity: 0 }` until an `IntersectionObserver` adds `.is-visible` on scroll.
+A `fullPage` screenshot expands the viewport and captures in one pass; the observer never fires for
+content that was never scrolled through. The first attempt to fix it — scrolling the page in a loop
+with 60ms pauses before shooting — did not work either, and produced the same empty page a second
+time. Section *backgrounds* rendered normally throughout, which is what made it read as "the content
+is gone" rather than "the capture is wrong".
+
+**What made it recoverable.** The dark band was in the right place and the right colour. A genuinely
+broken section would not have laid itself out correctly and then omitted only its text. That
+mismatch was the tell that the tool was lying, not the page.
+
+**The lesson.** This is the inverse of the 2026-08-08 entry below: there, a green signal hid a real
+failure; here, a red signal was itself the artifact. Both come from trusting the harness instead of
+the thing being measured. **Before believing a screenshot shows a bug, confirm the capture method
+can even see a correct page** — for anything gated on scroll, animation, or an observer, drive it to
+its finished state deterministically rather than trying to trigger it. Do not iterate on a fix for a
+defect until the instrument has been shown to work.
+
+**Fixed by** stripping the gate directly before capture rather than simulating scroll, which is the
+same state a no-JS visitor gets:
+
+```js
+for (const el of document.querySelectorAll(".reveal-ready")) el.classList.remove("reveal-ready");
+for (const el of document.querySelectorAll(".reveal")) el.classList.add("is-visible");
+```
+
+Any future full-page capture of `/` needs this, or it will report the same phantom breakage.
+
+---
+
 ## 2026-08-08: The new pages returned 200, and the body was the login screen
 
 **What happened.** `/privacy` and `/terms` shipped and were verified with an automated check that

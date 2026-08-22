@@ -1,6 +1,7 @@
 # Proof roadmap
 
-Last updated: 2026-08-08.
+Last updated: 2026-08-22. The render-pipeline priorities below are unchanged since 2026-08-08; the
+work since then has been on the web app (legal pages, then a landing-page design pass).
 
 ## Shipped foundation
 
