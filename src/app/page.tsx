@@ -85,10 +85,11 @@ export default function Landing() {
                 <span className="text-primary"> watch.</span>
               </h1>
 
+              {/* The thesis ("writing code is cheap now, distribution is the
+                  moat") used to open this paragraph and then close the ink
+                  section verbatim. It lands once now, at the peak. The hero's
+                  job is to say what the thing does. */}
               <p className="enter mt-7 max-w-md text-lg leading-relaxed text-muted-foreground" style={stagger(190)}>
-                <span className="font-medium text-foreground">
-                  Writing code is cheap now. Distribution is the moat.
-                </span>{" "}
                 Proof researches the angle, writes the brief, gives you a
                 teleprompter, cuts the take, and authors the graphics. You choose
                 the story and record it.
@@ -136,63 +137,23 @@ export default function Landing() {
           <OutputVideo />
         </section>
 
-        {/* ---------- Problem ---------- */}
-        <section
-          id="problem"
-          className="border-t border-border/60 bg-card/40"
-        >
-          <Reveal className="mx-auto max-w-6xl px-5 py-20 sm:px-8 md:py-28">
-            <p className="kicker">the problem</p>
-            <h2 className="mt-5 max-w-[16ch] font-display text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
+        {/* ---------- The argument ----------
+            This was two sections. "The problem" and "why now" made the same
+            case back to back, in the same three beats: building got easy,
+            attention did not, and marketing is the job developers dodge. The
+            second one was louder, so the first read as a warm-up for it.
+
+            Merged into one peak. The headline is the old problem headline,
+            which is the more human of the two ("nobody sees them" beats
+            "nobody can get seen"), on the ink ground that made the second
+            section land. The three bullets are gone because the two columns
+            below already say all three. */}
+        <section id="problem" className="section-ink">
+          <Reveal className="mx-auto max-w-6xl px-5 py-28 sm:px-8 md:py-36">
+            <h2 className="max-w-[18ch] font-display text-4xl font-medium leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
               Projects don&apos;t die because they&apos;re bad.
               <br />
               <span className="text-primary">They die because nobody sees them.</span>
-            </h2>
-
-            <ul className="mt-10 grid max-w-2xl gap-5">
-              {[
-                <>
-                  Shipping is easy now. Getting people to{" "}
-                  <span className="font-semibold text-foreground">use</span> it
-                  isn&apos;t.
-                </>,
-                <>
-                  Traction comes from marketing, not from the code being good.
-                </>,
-                <>
-                  And marketing is the one thing developers{" "}
-                  <span className="font-semibold text-foreground">won&apos;t</span>{" "}
-                  do.
-                </>,
-              ].map((line, idx) => (
-                <li
-                  key={idx}
-                  className="relative pl-6 text-lg leading-relaxed text-muted-foreground"
-                >
-                  <span className="absolute left-0 top-[0.6em] size-[7px] rotate-45 bg-primary/60" />
-                  {line}
-                </li>
-              ))}
-            </ul>
-
-            <p className="mt-10 max-w-[24ch] font-display text-2xl font-medium leading-tight tracking-tight sm:text-3xl">
-              So the best work goes unseen,{" "}
-              <span className="text-primary">and no one ever hears about you.</span>
-            </p>
-          </Reveal>
-        </section>
-
-        {/* ---------- Why now (the insight beat) ----------
-            This is the page's thesis, so it is the page's one peak: ink ground,
-            largest type, most air, and no eyebrow -- the colour change already
-            announces the section, and a label on top of that is one mark too
-            many. Every other section reads as support after this. */}
-        <section id="why-now" className="section-ink">
-          <Reveal className="mx-auto max-w-6xl px-5 py-28 sm:px-8 md:py-36">
-            <h2 className="max-w-[20ch] font-display text-5xl font-medium leading-[1.03] tracking-tight sm:text-6xl lg:text-7xl">
-              Everyone can build now.
-              <br />
-              <span className="text-primary">Almost nobody can get seen.</span>
             </h2>
 
             <div className="mt-12 grid max-w-3xl gap-6 sm:grid-cols-2">
@@ -221,14 +182,14 @@ export default function Landing() {
             the page read flat. */}
         <section className="border-t border-border/60">
           <Reveal className="mx-auto flex max-w-6xl flex-col gap-7 px-5 py-14 sm:px-8 md:flex-row md:items-center md:justify-between md:gap-12 md:py-16">
+            {/* "you film. it does the rest." lived here and said the same thing
+                as the hero's "You choose the story and record it." The tags
+                carry this band on their own. */}
             <div>
               <h2 className="font-display text-2xl font-medium leading-tight tracking-tight sm:text-3xl">
                 Connect a repo.{" "}
                 <span className="text-primary">Get a video you&apos;d post.</span>
               </h2>
-              <p className="mt-2 text-base text-muted-foreground">
-                you film. it does the rest.
-              </p>
             </div>
             <div className="flex flex-wrap gap-3 md:shrink-0">
               {teleprompterTags.map((tag) => (
