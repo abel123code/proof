@@ -51,7 +51,7 @@ export function BugReportDialog({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Could not send");
-      toast.success("Thanks — we can see exactly what you were doing.");
+      toast.success("Thanks, we can see exactly what you were doing.");
       setMessage("");
       onOpenChange(false);
     } catch (e) {

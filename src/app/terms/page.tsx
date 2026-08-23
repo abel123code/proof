@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LegalPage, Section } from "@/components/legal-page";
 
 export const metadata: Metadata = {
-  title: "Terms — Proof",
+  title: "Terms · Proof",
   description: "What you can expect from Proof, and what it expects from you.",
 };
 

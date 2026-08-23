@@ -166,7 +166,7 @@ export function StudioHeader() {
           <button
             type="button"
             onClick={() => setReportOpen(true)}
-            title="Something broken? Tell us — we attach the technical details for you."
+            title="Something broken? Tell us and we attach the technical details for you."
             className="rounded-md px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
             Report a bug

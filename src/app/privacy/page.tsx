@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LegalPage, Section } from "@/components/legal-page";
 
 export const metadata: Metadata = {
-  title: "Privacy — Proof",
+  title: "Privacy · Proof",
   description: "What Proof stores, who it sends things to, and how to get it deleted.",
 };
 
@@ -50,20 +50,20 @@ export default function PrivacyPage() {
         </p>
         <ul>
           <li>
-            <strong>OpenAI</strong> — writes the brief and the scenes, transcribes your voice, and
+            <strong>OpenAI</strong>: writes the brief and the scenes, transcribes your voice, and
             reviews rendered frames. Your clips, transcript and uploaded images pass through it.
           </li>
           <li>
-            <strong>Supabase</strong> — the database and file storage.
+            <strong>Supabase</strong>: the database and file storage.
           </li>
           <li>
-            <strong>Railway</strong> — runs the rendering service.
+            <strong>Railway</strong>: runs the rendering service.
           </li>
           <li>
-            <strong>Vercel</strong> — hosts the website.
+            <strong>Vercel</strong>: hosts the website.
           </li>
           <li>
-            <strong>Google and GitHub</strong> — sign-in and repository access.
+            <strong>Google and GitHub</strong>: sign-in and repository access.
           </li>
         </ul>
       </Section>

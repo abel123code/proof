@@ -1044,7 +1044,7 @@ function BrandAssetsSection({
       </div>
       <p className="mt-1.5 max-w-xl text-xs leading-relaxed text-muted-foreground">
         Screenshots and a logo help the editor build scenes around your real product. Wide
-        desktop captures often get cropped awkwardly in a vertical video — tall screenshots
+        desktop captures often get cropped awkwardly in a vertical video. Tall screenshots
         work best. Check the result before you publish.
       </p>
 
