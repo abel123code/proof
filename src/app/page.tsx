@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { CSSProperties } from "react";
 import { ProofMark } from "@/components/proof-mark";
 import { LandingDemo } from "@/components/landing-demo";
-import { ScrollScrubVideo } from "@/components/scroll-scrub-video";
+import { OutputVideo } from "@/components/output-video";
 import { Reveal } from "@/components/reveal";
 import Link from "next/link";
 
@@ -128,12 +128,12 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* ---------- The output, scrubbed by scroll ----------
+        {/* ---------- The output ----------
             First thing after the hero on purpose. The page used to argue in
             prose for a product whose whole value is visual, and never showed a
             single frame of what it makes. Show the thing, then explain it. */}
         <section id="output" className="border-t border-border/60">
-          <ScrollScrubVideo />
+          <OutputVideo />
         </section>
 
         {/* ---------- Problem ---------- */}
