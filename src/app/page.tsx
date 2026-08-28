@@ -129,14 +129,6 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* ---------- The output ----------
-            First thing after the hero on purpose. The page used to argue in
-            prose for a product whose whole value is visual, and never showed a
-            single frame of what it makes. Show the thing, then explain it. */}
-        <section id="output" className="border-t border-border/60">
-          <OutputVideo />
-        </section>
-
         {/* ---------- The argument ----------
             This was two sections. "The problem" and "why now" made the same
             case back to back, in the same three beats: building got easy,
@@ -348,6 +340,17 @@ export default function Landing() {
               <span className="text-muted-foreground">powered by OpenAI</span>
             </div>
           </Reveal>
+        </section>
+
+        {/* ---------- The output ----------
+            Second to last, directly before the ask. The page gets read top to
+            bottom during a pitch, so it has to run in the order the argument
+            runs: the problem, then how it is solved, then the founders, and
+            only then the thing itself. Opening with the video answered a
+            question nobody had been asked yet. Here it is the payoff, and the
+            CTA is one scroll away from it. */}
+        <section id="output" className="border-t border-border/60">
+          <OutputVideo />
         </section>
 
         {/* ---------- Final CTA ---------- */}
