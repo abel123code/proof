@@ -10,11 +10,28 @@ import { resolveAuthConfig } from "@/lib/auth-config";
 // /privacy and /terms are public because they have to be: someone deciding whether to hand over
 // their repository and a recording of their face needs to read them BEFORE signing in, and a
 // policy behind an auth wall is no policy at all.
-const PUBLIC_PREFIXES = ["/", "/login", "/pending", "/auth", "/privacy", "/terms"];
+//
+// /opengraph-image and /twitter-image are public for the same reason one layer down: social
+// crawlers fetch them unauthenticated to build the preview card. The matcher below only exempts
+// paths with a file extension, and these generated routes have none, so without this they answer
+// 307 -> /login and every shared link renders with no image.
+const PUBLIC_PREFIXES = [
+  "/",
+  "/login",
+  "/pending",
+  "/auth",
+  "/privacy",
+  "/terms",
+  "/opengraph-image",
+  "/twitter-image",
+];
 
 export function isPublic(pathname: string): boolean {
-  if (pathname === "/") return true;
-  return PUBLIC_PREFIXES.some((p) => p !== "/" && pathname.startsWith(p));
+  // Match whole path segments, not raw prefixes: a bare startsWith would also
+  // open /loginsomething and /privacy-internal to the world.
+  return PUBLIC_PREFIXES.some(
+    (p) => pathname === p || (p !== "/" && pathname.startsWith(`${p}/`)),
+  );
 }
 
 export async function proxy(request: NextRequest) {
