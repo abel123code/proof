@@ -29,8 +29,19 @@ export function OutputVideo() {
   const [sound, setSound] = useState(false);
   const [inView, setInView] = useState(false);
 
-  // Reduced motion never gets an autoplaying video; it gets native controls.
-  const [reduced, setReduced] = useState(true);
+  // Reduced motion gets native controls ON TOP of playback, not instead of it.
+  //
+  // This used to refuse to autoplay at all when the media query matched, which
+  // meant any phone with Reduce Motion turned on saw a still poster and nothing
+  // else. That setting is common on iOS and Low Power Mode triggers it too, so
+  // a real share of visitors were told "this is the output" next to a video
+  // that never moved.
+  //
+  // prefers-reduced-motion is about parallax and vestibular triggers, not muted
+  // video content. The rule that actually governs autoplaying media is that it
+  // has to be stoppable, so these visitors get real controls and the video
+  // still plays.
+  const [reduced, setReduced] = useState(false);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -42,7 +53,7 @@ export function OutputVideo() {
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || reduced) return;
+    if (!video) return;
     const io = new IntersectionObserver(
       ([entry]) => setInView(entry.isIntersecting),
       // Wait until it is properly on screen. A video half out of frame starting
@@ -51,14 +62,18 @@ export function OutputVideo() {
     );
     io.observe(video);
     return () => io.disconnect();
-  }, [reduced]);
+  }, []);
 
+  // Belt and braces with the `autoplay` attribute below. The attribute is what
+  // actually starts it on a phone, because it needs no JavaScript and no
+  // observer; this only keeps it from talking to an empty room once it has
+  // scrolled past.
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || reduced) return;
+    if (!video) return;
     if (inView) void video.play().catch(() => {});
     else video.pause();
-  }, [inView, reduced]);
+  }, [inView]);
 
   const toggleSound = () => {
     const video = videoRef.current;
@@ -114,10 +129,15 @@ export function OutputVideo() {
             aria-label={sound ? "Mute the video" : "Play the video with sound"}
             className="group relative block aspect-[9/16] w-full cursor-pointer overflow-hidden rounded-[2rem] border-[6px] border-[#151515] bg-black shadow-[0_28px_70px_-36px_rgba(25,20,16,0.78)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4 focus-visible:ring-offset-background"
           >
+            {/* autoPlay + muted + playsInline + loop is the combination phones
+                actually honour, and it needs no JavaScript to start. Playback
+                used to depend on an IntersectionObserver calling play(), which
+                left it dead whenever that path did not run. */}
             <video
               ref={videoRef}
               src="/proof-demo.mp4"
               poster="/proof-demo-poster.jpg"
+              autoPlay
               muted={!sound}
               loop
               playsInline
@@ -142,23 +162,23 @@ export function OutputVideo() {
             )}
           </button>
 
-          {!reduced && (
-            <button
-              type="button"
-              onClick={toggleSound}
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 font-mono text-sm font-medium text-primary-foreground transition-all hover:brightness-105 active:translate-y-px"
-            >
-              {sound ? (
-                <>
-                  <VolumeX className="size-4" aria-hidden /> mute
-                </>
-              ) : (
-                <>
-                  <Volume2 className="size-4" aria-hidden /> play with sound
-                </>
-              )}
-            </button>
-          )}
+          {/* Shown to everyone. Reduced-motion visitors get the native controls
+              as well, but they still need the one-tap way to hear it. */}
+          <button
+            type="button"
+            onClick={toggleSound}
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 font-mono text-sm font-medium text-primary-foreground transition-all hover:brightness-105 active:translate-y-px"
+          >
+            {sound ? (
+              <>
+                <VolumeX className="size-4" aria-hidden /> mute
+              </>
+            ) : (
+              <>
+                <Volume2 className="size-4" aria-hidden /> play with sound
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>
