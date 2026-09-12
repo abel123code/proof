@@ -11,7 +11,7 @@ const stagger = (ms: number): CSSProperties => ({ "--stagger": `${ms}ms` } as CS
 
 export const metadata: Metadata = {
   // Brand comes from the root layout's "%s · proof" template, so don't repeat it here.
-  title: "Turn your GitHub work into a video people watch",
+  title: "Turn your GitHub repo into a video people watch",
   description:
     "Proof uses OpenAI GPT-5.6, Whisper, HyperFrames, and vision QA to research, script, cut, animate, and review product videos for founders.",
 };
@@ -81,7 +81,7 @@ export default function Landing() {
                 OpenAI Build Week · GPT-5.6 + Codex
               </p>
               <h1 className="enter font-display text-5xl font-medium leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl" style={stagger(90)}>
-                Turn your GitHub work into a video people
+                Turn your GitHub repo into a video people
                 <span className="text-primary"> watch.</span>
               </h1>
 

@@ -46,7 +46,7 @@ export function createSocialCard() {
             Built with Codex · Powered by OpenAI GPT-5.6
           </div>
           <div style={{ maxWidth: 970, fontSize: 68, lineHeight: 1.02, fontWeight: 750 }}>
-            Turn your GitHub work into a product video people watch.
+            Turn your GitHub repo into a video people watch.
           </div>
         </div>
 
